@@ -98,10 +98,10 @@ router.get("/users", protect, getUsers);
 router.post("/courses/:courseId/staff",protect, allocateStaffToCourse);
 router.post("/staff/:staffId/courses", protect, allocateCourseToStaff);
 router.put("/staff-courses/:staffCourseId", updateStaffAllocation);
-router.patch("/staff-courses/:staffCourseId", updateStaffCourseBatch);
+router.patch("/staff-courses/:staffCourseId", protect, updateStaffCourseBatch);
 router.get("/courses/:courseId/staff",protect,  getStaffAllocationsByCourse);
 router.get("/staff/:Userid/courses", getCourseAllocationsByStaff);
-router.delete("/staff-courses/:staffCourseId", deleteStaffAllocation);
+router.delete("/staff-courses/:staffCourseId", protect,  deleteStaffAllocation);
 router.get("/staff/:Userid/courses-enhanced", getCourseAllocationsByStaffEnhanced);
 
 /* =========================
@@ -121,7 +121,7 @@ router.get("/sections", getSections);
 router.get("/courses/:courseCode/sections", getSectionsForCourse);
 router.post("/courses/:courseCode/sections", protect,addSectionsToCourse);
 router.put("/courses/:courseCode/sections", updateSectionsForCourse);
-router.delete("/courses/:courseCode/sections/:sectionName", deleteSection);
+router.delete("/courses/:courseCode/sections/:sectionName", protect, deleteSection);
 
 /* =========================
    📌 Student Routes

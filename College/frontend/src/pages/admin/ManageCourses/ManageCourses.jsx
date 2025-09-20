@@ -146,12 +146,11 @@ const ManageCourses = () => {
 
   const getFilteredStaff = () => {
     return staffList.filter(staff =>
-      staff.name.toLowerCase().includes(staffSearch.toLowerCase()) ||
-      staff.id.toLowerCase().includes(staffSearch.toLowerCase()) ||
-      staff.departmentName.toLowerCase().includes(staffSearch.toLowerCase())
-    );
-  };
-
+      (staff.name || '').toLowerCase().includes(staffSearch.toLowerCase()) ||
+      String(staff.id || '').toLowerCase().includes(staffSearch.toLowerCase()) ||
+      (staff.departmentName || '').toLowerCase().includes(staffSearch.toLowerCase())
+      );
+    };
   const fetchCourseStaff = async (courseId) => {
     setFetchingSections(true);
     try {

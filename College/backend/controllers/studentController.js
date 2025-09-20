@@ -144,24 +144,36 @@ export const getStudentsByCourseAndSection = catchAsync(async (req, res) => {
     });
   }
 
-  const [rows] = await pool.execute(
-    `SELECT 
-      s.rollnumber,
-      s.name,
-      sec.sectionName AS batch
-     FROM StudentCourse sc
-     JOIN Student s ON sc.rollnumber = s.rollnumber
-     JOIN Section sec ON sc.sectionId = sec.sectionId
-     WHERE sc.courseCode = ? AND sc.sectionId = ? AND s.IsActive = 'YES' AND sec.IsActive = 'YES'`,
-    [courseCode, sectionId]
-  );
+  try {
+    const [rows] = await pool.execute(
+      `SELECT 
+        sd.regno AS rollnumber,
+        u.username AS name,
+        sec.sectionName AS batch
+       FROM StudentCourse sc
+       JOIN student_details sd ON sc.regno = sd.regno
+       JOIN users u ON sd.Userid = u.Userid
+       JOIN Section sec ON sc.sectionId = sec.sectionId
+       WHERE sc.courseCode = ? AND sc.sectionId = ? AND u.status = 'active' AND sec.isActive = 'YES'`,
+      [courseCode, sectionId]
+    );
 
-  res.status(200).json({
-    status: "success",
-    data: rows,
-  });
+    res.status(200).json({
+      status: "success",
+      data: rows,
+    });
+  } catch (err) {
+    console.error("Error fetching students by course and section:", {
+      message: err.message,
+      stack: err.stack,
+      query: { courseCode, sectionId },
+    });
+    res.status(500).json({
+      status: "error",
+      message: err.message,
+    });
+  }
 });
-
 export const getBranches = catchAsync(async (req, res) => {
   const [rows] = await pool.execute(`SELECT DISTINCT branch FROM Batch WHERE IsActive = 'YES'`);
   if (!rows.length) {

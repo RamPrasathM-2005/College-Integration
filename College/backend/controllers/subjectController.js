@@ -30,7 +30,6 @@ export const addCourse = catchAsync(async (req, res) => {
   try {
     await connection.beginTransaction();
 
-
     // Validate required fields
     if (
       !courseCode ||
@@ -102,50 +101,90 @@ export const addCourse = catchAsync(async (req, res) => {
       });
     }
 
-    // Check for existing courseCode
+    // Check for existing courseCode (active or inactive)
     const [existingCourse] = await connection.execute(
-      `SELECT courseId FROM Course WHERE courseCode = ? AND isActive = 'YES'`,
+      `SELECT courseId, isActive FROM Course WHERE courseCode = ?`,
       [courseCode]
     );
-    if (existingCourse.length > 0) {
-      return res.status(400).json({
-        status: 'failure',
-        message: `Course code ${courseCode} already exists`,
-      });
-    }
 
-    // Insert course
-    const [result] = await connection.execute(
-      `INSERT INTO Course 
-        (courseCode, semesterId, courseTitle, type, category, 
-         minMark, maxMark, isActive, createdBy, updatedBy, lectureHours, 
-         tutorialHours, practicalHours, experientialHours, totalContactPeriods, credits)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        courseCode,
-        semesterId,
-        courseTitle,
-        type,
-        category,
-        minMark,
-        maxMark,
-        isActive || 'YES', // Use database default if not provided
-        userEmail,
-        userEmail,
-        lectureHours,
-        tutorialHours,
-        practicalHours,
-        experientialHours,
-        totalContactPeriods,
-        credits,
-      ]
-    );
+    let courseId;
+    if (existingCourse.length > 0) {
+      if (existingCourse[0].isActive === 'YES') {
+        // Active course exists, return error
+        return res.status(400).json({
+          status: 'failure',
+          message: `Course code ${courseCode} already exists`,
+        });
+      } else {
+        // Inactive course exists, update it to isActive = 'YES'
+        const [updateResult] = await connection.execute(
+          `UPDATE Course 
+           SET semesterId = ?, courseTitle = ?, type = ?, category = ?, 
+               minMark = ?, maxMark = ?, isActive = 'YES', updatedBy = ?, 
+               lectureHours = ?, tutorialHours = ?, practicalHours = ?, 
+               experientialHours = ?, totalContactPeriods = ?, credits = ?
+           WHERE courseId = ?`,
+          [
+            semesterId,
+            courseTitle,
+            type,
+            category,
+            minMark,
+            maxMark,
+            userEmail,
+            lectureHours,
+            tutorialHours,
+            practicalHours,
+            experientialHours,
+            totalContactPeriods,
+            credits,
+            existingCourse[0].courseId
+          ]
+        );
+
+        if (updateResult.affectedRows === 0) {
+          return res.status(500).json({
+            status: 'failure',
+            message: 'Failed to update existing course',
+          });
+        }
+        courseId = existingCourse[0].courseId;
+      }
+    } else {
+      // No existing course, insert new course
+      const [insertResult] = await connection.execute(
+        `INSERT INTO Course 
+          (courseCode, semesterId, courseTitle, type, category, 
+           minMark, maxMark, isActive, createdBy, updatedBy, lectureHours, 
+           tutorialHours, practicalHours, experientialHours, totalContactPeriods, credits)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          courseCode,
+          semesterId,
+          courseTitle,
+          type,
+          category,
+          minMark,
+          maxMark,
+          isActive || 'YES', // Use database default if not provided
+          userEmail,
+          userEmail,
+          lectureHours,
+          tutorialHours,
+          practicalHours,
+          experientialHours,
+          totalContactPeriods,
+          credits,
+        ]
+      );
+      courseId = insertResult.insertId;
+    }
 
     await connection.commit();
     res.status(201).json({
       status: 'success',
       message: 'Course added successfully',
-      courseId: result.insertId,
+      courseId: courseId,
     });
   } catch (err) {
     await connection.rollback();

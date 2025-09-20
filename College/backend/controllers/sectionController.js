@@ -19,7 +19,7 @@ export const addSectionsToCourse = catchAsync(async (req, res) => {
 
     // Validate user email
     const [userCheck] = await connection.execute(
-      'SELECT Userid FROM users WHERE Email = ? AND status = "active"',
+      'SELECT Userid FROM users WHERE email = ? AND status = "active"',
       [userEmail]
     );
     if (userCheck.length === 0) {
@@ -41,27 +41,61 @@ export const addSectionsToCourse = catchAsync(async (req, res) => {
       });
     }
 
-
-
     // Find the current maximum Batch number among active sections
     const [maxRows] = await connection.execute(
       `SELECT MAX(CAST(SUBSTRING(sectionName, 6) AS UNSIGNED)) as maxNum 
        FROM Section 
-       WHERE courseCode = ? AND sectionName LIKE 'Batch%' AND IsActive = 'YES'`,
+       WHERE courseCode = ? AND sectionName LIKE 'Batch%' AND isActive = 'YES'`,
       [courseCode]
     );
     const currentMax = maxRows[0].maxNum || 0;
-    
 
     console.log(currentMax);
 
     const sectionsToAdd = [];
+    const sectionsToUpdate = [];
     let newSectionsAdded = 0;
+    let sectionsUpdated = 0;
+
     for (let i = 1; i <= numberOfSections; i++) {
       const sectionNum = currentMax + i;
       const sectionName = `Batch ${sectionNum}`;
-      sectionsToAdd.push([courseCode, sectionName, userEmail, userEmail]);
-      newSectionsAdded++;
+
+      // Check for existing section (active or inactive)
+      const [existingSection] = await connection.execute(
+        `SELECT sectionId, isActive FROM Section WHERE courseCode = ? AND sectionName = ?`,
+        [courseCode, sectionName]
+      );
+
+      if (existingSection.length > 0) {
+        if (existingSection[0].isActive === 'YES') {
+          // Active section exists, skip or return error
+          continue; // Skip to avoid duplicate active sections
+        } else {
+          // Inactive section exists, mark for update
+          sectionsToUpdate.push([userEmail, existingSection[0].sectionId, sectionName]);
+          sectionsUpdated++;
+        }
+      } else {
+        // No section exists, mark for insert
+        sectionsToAdd.push([courseCode, sectionName, userEmail, userEmail]);
+        newSectionsAdded++;
+      }
+    }
+
+    // Update inactive sections
+    if (sectionsToUpdate.length > 0) {
+      for (const [updatedBy, sectionId, sectionName] of sectionsToUpdate) {
+        const [updateResult] = await connection.execute(
+          `UPDATE Section 
+           SET isActive = 'YES', updatedBy = ?, updatedDate = CURRENT_TIMESTAMP
+           WHERE sectionId = ?`,
+          [updatedBy, sectionId]
+        );
+        if (updateResult.affectedRows === 0) {
+          throw new Error(`Failed to update section ${sectionName}`);
+        }
+      }
     }
 
     // Insert new sections
@@ -75,23 +109,28 @@ export const addSectionsToCourse = catchAsync(async (req, res) => {
       await connection.execute(query, values);
     }
 
-    console.log('inserting......');
+    console.log('inserting/updating......');
 
     await connection.commit();
     res.status(201).json({
       status: 'success',
-      message: `${newSectionsAdded} new section(s) added to course ${courseCode} successfully`,
-      data: sectionsToAdd.map(([_, sectionName]) => ({ sectionName })),
+      message: `${newSectionsAdded} new section(s) added and ${sectionsUpdated} section(s) reactivated for course ${courseCode}`,
+      data: [
+        ...sectionsToAdd.map(([_, sectionName]) => ({ sectionName })),
+        ...sectionsToUpdate.map(([_, __, sectionName]) => ({ sectionName })),
+      ],
     });
   } catch (err) {
     await connection.rollback();
-    console.error('Error adding sections:', err);
-    res.status(500).json({ status: 'failure', message: 'Failed to add sections' });
+    console.error('Error adding sections:', err.message, err.stack);
+    res.status(500).json({
+      status: 'failure',
+      message: `Failed to add sections: ${err.message}`,
+    });
   } finally {
     connection.release();
   }
 });
-
 export const getSectionsForCourse = catchAsync(async (req, res) => {
   const { courseCode } = req.params;
 
@@ -223,7 +262,7 @@ export const deleteSection = catchAsync(async (req, res) => {
 
     // Validate user email
     const [userCheck] = await connection.execute(
-      'SELECT Userid FROM users WHERE Email = ? AND IsActive = "YES"',
+      'SELECT Userid FROM users WHERE email = ? AND status = "active"',
       [userEmail]
     );
     if (userCheck.length === 0) {
@@ -235,7 +274,7 @@ export const deleteSection = catchAsync(async (req, res) => {
 
     // Validate section
     const [sectionRows] = await connection.execute(
-      `SELECT sectionId FROM Section WHERE courseCode = ? AND sectionName = ? AND IsActive = 'YES'`,
+      `SELECT sectionId FROM Section WHERE courseCode = ? AND sectionName = ? AND isActive = 'YES'`,
       [courseCode, sectionName]
     );
     if (sectionRows.length === 0) {
@@ -246,15 +285,23 @@ export const deleteSection = catchAsync(async (req, res) => {
     }
     const sectionId = sectionRows[0].sectionId;
 
-    // Delete associated staff allocations
+    // Delete associated records in tables with ON DELETE CASCADE
+    // StaffCourse, StudentCourse, and PeriodAttendance should be handled automatically by CASCADE
+    // Explicitly delete StaffCourse for clarity (optional, since CASCADE will handle it)
     await connection.execute(
       `DELETE FROM StaffCourse WHERE courseCode = ? AND sectionId = ?`,
       [courseCode, sectionId]
     );
 
+    // Ensure Timetable records are updated (set sectionId to NULL due to ON DELETE SET NULL)
+    await connection.execute(
+      `UPDATE Timetable SET sectionId = NULL WHERE sectionId = ?`,
+      [sectionId]
+    );
+
     // Soft delete the section
     await connection.execute(
-      `UPDATE Section SET IsActive = 'NO', updatedBy = ?, updatedDate = CURRENT_TIMESTAMP WHERE sectionId = ?`,
+      `UPDATE Section SET isActive = 'NO', updatedBy = ?, updatedDate = CURRENT_TIMESTAMP WHERE sectionId = ?`,
       [userEmail, sectionId]
     );
 
@@ -265,12 +312,15 @@ export const deleteSection = catchAsync(async (req, res) => {
     });
   } catch (err) {
     await connection.rollback();
-    console.error('Error deleting section:', err);
-    res.status(500).json({ status: 'failure', message: 'Failed to delete section' });
+    console.error('Error deleting section:', err.message, err.stack); // Enhanced error logging
+    res.status(500).json({
+      status: 'failure',
+      message: `Failed to delete section: ${err.message}`,
+    });
   } finally {
     connection.release();
   }
-});
+})
 
 export const allocateStaffToCourse = catchAsync(async (req, res) => {
   const { courseId } = req.params;
