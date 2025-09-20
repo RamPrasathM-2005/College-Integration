@@ -34,43 +34,101 @@ const initDatabase = async () => {
         connection = await pool.getConnection();
         await connection.beginTransaction();
 
-        // 1) Department - Stores departments with unique codes (e.g., CSE, ECE)
+        // 1) Department - Stores departments with unique codes
         await connection.execute(`
-            CREATE TABLE IF NOT EXISTS Department (
-                departmentId INT PRIMARY KEY AUTO_INCREMENT,
-                departmentName VARCHAR(100) NOT NULL UNIQUE,
-                departmentCode VARCHAR(10) NOT NULL UNIQUE,
-                isActive ENUM('YES','NO') DEFAULT 'YES',
-                createdBy VARCHAR(150),
-                updatedBy VARCHAR(150),
-                createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS department (
+                Deptid INT PRIMARY KEY,
+                Deptname VARCHAR(100) NOT NULL,
+                Deptacronym VARCHAR(10) NOT NULL
             )
         `);
 
-        // 2) Users - Stores admin and staff with department-specific staffId (e.g., CSE001 for Kalaiselvi)
+        // 2) Users - Stores admin, staff, and students
         await connection.execute(`
-            CREATE TABLE IF NOT EXISTS Users (
-                userId INT PRIMARY KEY AUTO_INCREMENT,
-                staffId VARCHAR(10),
-                name VARCHAR(100) NOT NULL,
-                email VARCHAR(100) UNIQUE NOT NULL,
-                passwordHash VARCHAR(255) NOT NULL,
-                role ENUM('ADMIN','STAFF') NOT NULL,
-                departmentId INT,
-                isActive ENUM('YES','NO') DEFAULT 'YES',
-                createdBy VARCHAR(150),
-                updatedBy VARCHAR(150),
-                createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                CONSTRAINT fk_user_dept FOREIGN KEY (departmentId) REFERENCES Department(departmentId)
+            CREATE TABLE IF NOT EXISTS users (
+                Userid INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(255) NOT NULL UNIQUE,
+                email VARCHAR(255) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL,
+                role ENUM('Student', 'Staff', 'Admin') NOT NULL,
+                status ENUM('active', 'inactive') DEFAULT 'active',
+                staffId INT UNIQUE,
+                Deptid INT NOT NULL,
+                image VARCHAR(500) DEFAULT '/Uploads/default.jpg',
+                resetPasswordToken VARCHAR(255),
+                resetPasswordExpires DATETIME,
+                skillrackProfile VARCHAR(255),
+                Created_by INT,
+                Updated_by INT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT fk_user_department FOREIGN KEY (Deptid) REFERENCES department(Deptid) ON DELETE RESTRICT,
+                CONSTRAINT fk_user_createdby FOREIGN KEY (Created_by) REFERENCES users(Userid) ON DELETE SET NULL,
+                CONSTRAINT fk_user_updatedby FOREIGN KEY (Updated_by) REFERENCES users(Userid) ON DELETE SET NULL
+            )
+        `);
+
+        // 3) Student Details - Stores detailed student information
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS student_details (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                Userid INT NOT NULL,
+                regno VARCHAR(50) UNIQUE NOT NULL,
+                Deptid INT NOT NULL,
+                batch INT,
+                Semester VARCHAR(255),
+                staffId INT,
+                Created_by INT,
+                Updated_by INT,
+                date_of_joining DATE,
+                date_of_birth DATE,
+                blood_group ENUM('A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'),
+                tutorEmail VARCHAR(255),
+                personal_email VARCHAR(255),
+                first_graduate ENUM('Yes', 'No'),
+                aadhar_card_no VARCHAR(12) UNIQUE,
+                student_type ENUM('Day-Scholar', 'Hosteller'),
+                mother_tongue VARCHAR(255),
+                identification_mark VARCHAR(255),
+                extracurricularID INT,
+                religion ENUM('Hindu', 'Muslim', 'Christian', 'Others'),
+                caste VARCHAR(255),
+                community ENUM('General', 'OBC', 'SC', 'ST', 'Others'),
+                gender ENUM('Male', 'Female', 'Transgender'),
+                seat_type ENUM('Counselling', 'Management'),
+                section VARCHAR(255),
+                door_no VARCHAR(255),
+                street VARCHAR(255),
+                cityID INT,
+                districtID INT,
+                stateID INT,
+                countryID INT,
+                pincode VARCHAR(6),
+                personal_phone VARCHAR(10),
+                pending BOOLEAN DEFAULT TRUE,
+                tutor_approval_status BOOLEAN DEFAULT FALSE,
+                Approved_by INT,
+                approved_at DATETIME,
+                messages JSON,
+                skillrackProfile VARCHAR(255),
+                createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT fk_student_details_user FOREIGN KEY (Userid) REFERENCES users(Userid)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_student_details_dept FOREIGN KEY (Deptid) REFERENCES department(Deptid)
+                    ON UPDATE CASCADE ON DELETE RESTRICT,
+                CONSTRAINT fk_student_details_tutor FOREIGN KEY (staffId) REFERENCES users(Userid)
                     ON UPDATE CASCADE ON DELETE SET NULL,
-                CONSTRAINT uk_staffId_dept UNIQUE (staffId, departmentId),
-                CONSTRAINT chk_staffId CHECK (staffId IS NULL OR staffId REGEXP '^[A-Z]{3}[0-9]{3}$')
+                CONSTRAINT fk_student_details_created FOREIGN KEY (Created_by) REFERENCES users(Userid)
+                    ON UPDATE CASCADE ON DELETE SET NULL,
+                CONSTRAINT fk_student_details_updated FOREIGN KEY (Updated_by) REFERENCES users(Userid)
+                    ON UPDATE CASCADE ON DELETE SET NULL,
+                CONSTRAINT fk_student_details_approved FOREIGN KEY (Approved_by) REFERENCES users(Userid)
+                    ON UPDATE CASCADE ON DELETE SET NULL
             )
         `);
 
-        // 3) Batch - Stores degree programs (e.g., B.E CSE 2023-2027)
+        // 4) Batch - Stores degree programs
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Batch (
                 batchId INT PRIMARY KEY AUTO_INCREMENT,
@@ -87,7 +145,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 4) Semester - Stores semesters for each batch
+        // 5) Semester - Stores semesters for each batch
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Semester (
                 semesterId INT PRIMARY KEY AUTO_INCREMENT,
@@ -106,7 +164,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 5) Course - Stores course details for each semester (e.g., Java course)
+        // 6) Course - Stores course details for each semester
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Course (
                 courseId INT PRIMARY KEY AUTO_INCREMENT,
@@ -133,7 +191,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 6) Section - Stores sections (e.g., A, B, C) for each course
+        // 7) Section - Stores sections for each course
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Section (
                 sectionId INT PRIMARY KEY AUTO_INCREMENT,
@@ -150,36 +208,19 @@ const initDatabase = async () => {
             )
         `);
 
-        // 7) Student - Stores student details with batch (section assigned per course in StudentCourse)
-        await connection.execute(`
-            CREATE TABLE IF NOT EXISTS Student (
-                rollnumber VARCHAR(20) PRIMARY KEY,
-                name VARCHAR(100) NOT NULL,
-                batchId INT NOT NULL,
-                semesterNumber INT NOT NULL CHECK (semesterNumber BETWEEN 1 AND 8),
-                isActive ENUM('YES','NO') DEFAULT 'YES',
-                createdBy VARCHAR(150),
-                updatedBy VARCHAR(150),
-                createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                CONSTRAINT fk_student_batch FOREIGN KEY (batchId) REFERENCES Batch(batchId)
-                    ON UPDATE CASCADE ON DELETE RESTRICT
-            )
-        `);
-
-        // 8) StudentCourse - Enrolls students in courses with section (e.g., Ram in Java, section A)
+        // 8) StudentCourse - Enrolls students in courses with sections
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS StudentCourse (
                 studentCourseId INT PRIMARY KEY AUTO_INCREMENT,
-                rollnumber VARCHAR(20) NOT NULL,
+                regno VARCHAR(50) NOT NULL,
                 courseCode VARCHAR(20) NOT NULL,
                 sectionId INT NOT NULL,
                 createdBy VARCHAR(150),
                 updatedBy VARCHAR(150),
                 createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE (rollnumber, courseCode, sectionId),
-                CONSTRAINT fk_sc_student FOREIGN KEY (rollnumber) REFERENCES Student(rollnumber)
+                UNIQUE (regno, courseCode, sectionId),
+                CONSTRAINT fk_sc_student FOREIGN KEY (regno) REFERENCES student_details(regno)
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 CONSTRAINT fk_sc_course FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
                     ON UPDATE CASCADE ON DELETE CASCADE,
@@ -188,16 +229,22 @@ const initDatabase = async () => {
             )
         `);
 
-        // 9) StaffCourse - Allocates staff to courses and sections (e.g., Kalaiselvi to Java, section A)
+        // 9) StaffCourse - Assigns staff to courses and sections
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS StaffCourse (
                 staffCourseId INT PRIMARY KEY AUTO_INCREMENT,
-                staffId VARCHAR(10) NOT NULL,
+                staffId INT NOT NULL,
                 courseCode VARCHAR(20) NOT NULL,
                 sectionId INT NOT NULL,
-                departmentId INT NOT NULL,
-                UNIQUE (staffId, courseCode, sectionId, departmentId),
-                CONSTRAINT fk_stc_staff_dept FOREIGN KEY (staffId, departmentId) REFERENCES Users(staffId, departmentId)
+                Deptid INT NOT NULL,
+                createdBy VARCHAR(150),
+                updatedBy VARCHAR(150),
+                createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE (staffId, courseCode, sectionId, Deptid),
+                CONSTRAINT fk_stc_staff FOREIGN KEY (staffId) REFERENCES users(staffId)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_stc_dept FOREIGN KEY (Deptid) REFERENCES department(Deptid)
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 CONSTRAINT fk_stc_course FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
                     ON UPDATE CASCADE ON DELETE CASCADE,
@@ -206,7 +253,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 10) CourseOutcome - Stores course outcomes with weightage
+        // 10) CourseOutcome - Stores course outcomes
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS CourseOutcome (
                 coId INT PRIMARY KEY AUTO_INCREMENT,
@@ -231,68 +278,66 @@ const initDatabase = async () => {
             )
         `);
 
-        // 12) StudentCOTool - Stores student marks for each tool
+        // 12) StudentCOTool - Stores student marks for each evaluation tool
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS StudentCOTool (
                 studentToolId INT PRIMARY KEY AUTO_INCREMENT,
-                rollnumber VARCHAR(20) NOT NULL,
+                regno VARCHAR(50) NOT NULL,
                 toolId INT NOT NULL,
                 marksObtained INT NOT NULL CHECK (marksObtained >= 0),
-                UNIQUE (rollnumber, toolId),
-                CONSTRAINT fk_sct_student FOREIGN KEY (rollnumber) REFERENCES Student(rollnumber)
+                UNIQUE (regno, toolId),
+                CONSTRAINT fk_sct_student FOREIGN KEY (regno) REFERENCES student_details(regno)
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 CONSTRAINT fk_sct_tool FOREIGN KEY (toolId) REFERENCES COTool(toolId)
                     ON UPDATE CASCADE ON DELETE CASCADE
             )
         `);
 
-        // 13) Timetable - Stores timetable with 6 days, 8 periods (including breaks; breaks managed in app logic)
+        // 13) Timetable - Stores class schedules
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Timetable (
                 timetableId INT PRIMARY KEY AUTO_INCREMENT,
-                courseCode VARCHAR(20) NOT NULL, -- No foreign key to allow manual entries
-                sectionId INT NULL, -- Nullable to make sections optional
+                courseCode VARCHAR(20) NOT NULL,
+                sectionId INT NULL,
                 dayOfWeek ENUM('MON','TUE','WED','THU','FRI','SAT') NOT NULL,
                 periodNumber INT NOT NULL CHECK (periodNumber BETWEEN 1 AND 8),
-                departmentId INT NOT NULL,
+                Deptid INT NOT NULL,
                 semesterId INT NOT NULL,
                 isActive ENUM('YES','NO') DEFAULT 'YES',
                 createdBy VARCHAR(150),
                 updatedBy VARCHAR(150),
                 createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                CONSTRAINT fk_tt_dept FOREIGN KEY (departmentId) REFERENCES Department(departmentId)
+                CONSTRAINT fk_tt_dept FOREIGN KEY (Deptid) REFERENCES department(Deptid)
                     ON UPDATE CASCADE ON DELETE RESTRICT,
                 CONSTRAINT fk_tt_sem FOREIGN KEY (semesterId) REFERENCES Semester(semesterId)
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 CONSTRAINT fk_tt_section FOREIGN KEY (sectionId) REFERENCES Section(sectionId)
                     ON UPDATE CASCADE ON DELETE SET NULL,
-                UNIQUE (semesterId, dayOfWeek, periodNumber) -- Prevent duplicate time slots
-            );
+                UNIQUE (semesterId, dayOfWeek, periodNumber)
+            )
         `);
-
-        
 
         // 14) DayAttendance - Stores daily attendance for students
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS DayAttendance (
                 dayAttendanceId INT PRIMARY KEY AUTO_INCREMENT,
-                rollnumber VARCHAR(20) NOT NULL,
+                regno VARCHAR(50) NOT NULL,
                 semesterNumber INT NOT NULL CHECK (semesterNumber BETWEEN 1 AND 8),
                 attendanceDate DATE NOT NULL,
                 status ENUM('P','A') NOT NULL,
-                UNIQUE (rollnumber, attendanceDate),
-                CONSTRAINT fk_da_student FOREIGN KEY (rollnumber) REFERENCES Student(rollnumber)
+                UNIQUE (regno, attendanceDate),
+                CONSTRAINT fk_da_student FOREIGN KEY (regno) REFERENCES student_details(regno)
                     ON UPDATE CASCADE ON DELETE CASCADE
             )
         `);
 
-        // 15) PeriodAttendance - Stores period-wise attendance (linked to timetable and section)
+        // 15) PeriodAttendance - Stores period-wise attendance
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS PeriodAttendance (
                 periodAttendanceId INT PRIMARY KEY AUTO_INCREMENT,
-                rollnumber VARCHAR(20) NOT NULL,
-                staffId VARCHAR(10) NOT NULL,
+                regno VARCHAR(50) NOT NULL,
+                staffId INT NOT NULL,
                 courseCode VARCHAR(20) NOT NULL,
                 sectionId INT NOT NULL,
                 semesterNumber INT NOT NULL CHECK (semesterNumber BETWEEN 1 AND 8),
@@ -300,11 +345,13 @@ const initDatabase = async () => {
                 periodNumber INT NOT NULL CHECK (periodNumber BETWEEN 1 AND 8),
                 attendanceDate DATE NOT NULL,
                 status ENUM('P','A') NOT NULL,
-                departmentId INT NOT NULL,
-                UNIQUE (rollnumber, courseCode, sectionId, attendanceDate, periodNumber),
-                CONSTRAINT fk_pa_student FOREIGN KEY (rollnumber) REFERENCES Student(rollnumber)
+                Deptid INT NOT NULL,
+                UNIQUE (regno, courseCode, sectionId, attendanceDate, periodNumber),
+                CONSTRAINT fk_pa_student FOREIGN KEY (regno) REFERENCES student_details(regno)
                     ON UPDATE CASCADE ON DELETE CASCADE,
-                CONSTRAINT fk_pa_staff_dept FOREIGN KEY (staffId, departmentId) REFERENCES Users(staffId, departmentId)
+                CONSTRAINT fk_pa_staff FOREIGN KEY (staffId) REFERENCES users(staffId)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_pa_dept FOREIGN KEY (Deptid) REFERENCES department(Deptid)
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 CONSTRAINT fk_pa_course FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
                     ON UPDATE CASCADE ON DELETE CASCADE,
@@ -313,7 +360,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // NEW: 16) CoursePartitions - Stores CO counts per partition for each course
+        // 16) CoursePartitions - Stores CO counts per partition for each course
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS CoursePartitions (
                 partitionId INT PRIMARY KEY AUTO_INCREMENT,
@@ -330,7 +377,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // NEW: 17) COType - Associates type to each CO (extends CourseOutcome without altering it)
+        // 17) COType - Associates type to each CO
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS COType (
                 coTypeId INT PRIMARY KEY AUTO_INCREMENT,
@@ -345,7 +392,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // NEW: 18) ToolDetails - Adds maxMarks to each tool (extends COTool without altering it)
+        // 18) ToolDetails - Adds maxMarks to each evaluation tool
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS ToolDetails (
                 toolDetailId INT PRIMARY KEY AUTO_INCREMENT,
@@ -360,21 +407,21 @@ const initDatabase = async () => {
             )
         `);
 
-        // Initial data for Department (unchanged)
+        // Insert initial department data
         await connection.execute(`
-            INSERT IGNORE INTO Department (departmentId, departmentName, departmentCode, createdBy, updatedBy)
+            INSERT IGNORE INTO department (Deptid, Deptname, Deptacronym)
             VALUES
-            (1, 'Computer Science Engineering', 'CSE', 'admin', 'admin'),
-            (2, 'Electronics and Communication Engineering', 'ECE', 'admin', 'admin'),
-            (3, 'Mechanical Engineering', 'MECH', 'admin', 'admin'),
-            (4, 'Information Technology', 'IT', 'admin', 'admin'),
-            (5, 'Electrical and Electronics Engineering', 'EEE', 'admin', 'admin'),
-            (6, 'Artificial Intelligence and Data Science', 'AIDS', 'admin', 'admin')
+            (1, 'Computer Science Engineering', 'CSE'),
+            (2, 'Electronics and Communication Engineering', 'ECE'),
+            (3, 'Mechanical Engineering', 'MECH'),
+            (4, 'Information Technology', 'IT'),
+            (5, 'Electrical and Electronics Engineering', 'EEE'),
+            (6, 'Artificial Intelligence and Data Science', 'AIDS')
         `);
 
         // Commit the transaction
         await connection.commit();
-        console.log("✅ Database initialized with updated academic schema");
+        console.log("✅ Database initialized with new academic schema");
 
     } catch (err) {
         // Rollback on error

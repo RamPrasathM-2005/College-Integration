@@ -1,13 +1,10 @@
-
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { logout } from '../../services/authService'; // Adjust path as needed
-import { getCurrentUser } from '../../services/authService';
-
-const user=getCurrentUser();
+import { logout, getCurrentUser } from '../../services/authService';
 
 const Header = () => {
   const navigate = useNavigate();
+  const user = getCurrentUser();
 
   const handleHome = () => {
     navigate('/staff/dashboard');
@@ -19,17 +16,19 @@ const Header = () => {
 
   const handleLogout = async () => {
     try {
-      await logout(); // Clear auth token
+      await logout();
       navigate('/login');
     } catch (err) {
       console.error('Logout failed:', err);
-      navigate('/login'); // Navigate to login even on error
+      navigate('/login');
     }
   };
 
+  const displayName = user?.username ? user.username.toUpperCase() : 'GUEST';
+
   return (
     <header className="bg-blue-600 text-white p-4 flex justify-between items-center shadow-md">
-      <h1 className="text-xl font-bold">HI, {user.name.toUpperCase()} 👋</h1>
+      <h1 className="text-xl font-bold">HI, {displayName} 👋</h1>
       <nav className="flex space-x-4">
         <button
           onClick={handleHome}

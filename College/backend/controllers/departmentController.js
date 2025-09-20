@@ -5,7 +5,7 @@ export const getDepartments = async (req, res) => {
   try {
     connection = await pool.getConnection();
     const [rows] = await connection.execute(
-      'SELECT departmentId, departmentName FROM Department WHERE isActive = "YES"'
+      'SELECT Deptid, Deptname, Deptacronym FROM department'
     );
     res.status(200).json({
       status: 'success',

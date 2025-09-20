@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { User, Lock, Eye, EyeOff, ArrowRight, Mail } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { User, Lock, Eye, EyeOff, ArrowRight, Mail } from "lucide-react";
 import { login } from "../../services/authService";
+import { ToastContainer, toast } from "react-toastify";
 
 const InputField = ({
   label,
@@ -48,7 +49,7 @@ const InputField = ({
 };
 
 const Login = () => {
-  const [email, setEmail] = useState(""); // Changed to email
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,9 +61,9 @@ const Login = () => {
 
   // Load saved email if "Remember Me" was checked
   useEffect(() => {
-    const savedUser = localStorage.getItem("username"); // Keep for backward compat
-    if (savedUser) {
-      setEmail(savedUser);
+    const savedEmail = localStorage.getItem("email");
+    if (savedEmail) {
+      setEmail(savedEmail);
       setRememberMe(true);
     }
   }, []);
@@ -71,14 +72,14 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
-
+    console.log('Login attempt with:', { email, password }); // Debug log
     try {
       const user = await login(email, password);
 
       if (rememberMe) {
-        localStorage.setItem("username", email);
+        localStorage.setItem("email", email);
       } else {
-        localStorage.removeItem("username");
+        localStorage.removeItem("email");
       }
 
       // Role-based redirect
@@ -86,11 +87,16 @@ const Login = () => {
         navigate("/admin/dashboard");
       } else if (user.role === "staff") {
         navigate("/staff/dashboard");
+      } else if (user.role === "student") {
+        navigate("/student/dashboard");
       } else {
         throw new Error("Unknown role");
       }
     } catch (err) {
-      setError(err.message || "Invalid credentials, please try again");
+      const errorMessage = err.response?.data?.message || "Login failed, please check your credentials";
+      setError(errorMessage);
+      toast.error(errorMessage);
+      console.error('Login error:', err.response?.data || err.message); // Debug log
     } finally {
       setIsLoading(false);
     }
@@ -98,15 +104,12 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex flex-col lg:flex-row">
-      {/* Illustration (always visible) */}
+      {/* Illustration */}
       <div className="flex w-full lg:w-1/2 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 to-indigo-600/10"></div>
-
-        {/* Floating Background Elements */}
         <div className="absolute top-20 left-20 w-32 h-32 bg-blue-200/30 rounded-full animate-pulse"></div>
         <div className="absolute bottom-32 right-20 w-24 h-24 bg-indigo-200/30 rounded-full animate-bounce"></div>
         <div className="absolute top-1/2 left-10 w-16 h-16 bg-purple-200/30 rounded-full animate-ping"></div>
-
         <div className="flex items-center justify-center w-full p-12">
           <div className="relative max-w-lg">
             <img
@@ -121,7 +124,6 @@ const Login = () => {
       {/* Login Form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
         <div className="w-full max-w-md">
-          {/* Header */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full mb-4 shadow-lg">
               <User className="w-8 h-8 text-white" />
@@ -130,10 +132,9 @@ const Login = () => {
             <p className="text-gray-600">Sign in to your workspace</p>
           </div>
 
-          {/* Login Form */}
           <form
             onSubmit={handleSubmit}
-            className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-8 border border-white/50"
+            className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl p-8 border border-white/50"
           >
             <div className="space-y-6">
               {error && (
@@ -143,7 +144,6 @@ const Login = () => {
                 </div>
               )}
 
-              {/* Email */}
               <InputField
                 label="Email"
                 type="email"
@@ -153,7 +153,6 @@ const Login = () => {
                 placeholder="Enter your email"
               />
 
-              {/* Password */}
               <InputField
                 label="Password"
                 type="password"
@@ -165,7 +164,6 @@ const Login = () => {
                 setShowPassword={setShowPassword}
               />
 
-              {/* Remember Me & Forgot Password */}
               <div className="flex items-center justify-between">
                 <label className="flex items-center space-x-3">
                   <input
@@ -185,7 +183,6 @@ const Login = () => {
                 </button>
               </div>
 
-              {/* Login Button */}
               <button
                 type="submit"
                 disabled={isLoading}
@@ -205,7 +202,6 @@ const Login = () => {
               </button>
             </div>
 
-            {/* Register Link */}
             <div className="mt-8 text-center">
               <p className="text-gray-600">
                 Don't have an account?{" "}
@@ -220,24 +216,26 @@ const Login = () => {
             </div>
           </form>
 
-          {/* Demo Credentials - Update for email-based */}
-          <div className="mt-6 bg-white/60 backdrop-blur-sm rounded-xl p-4 text-sm text-gray-600 border border-white/50">
+          <div className="mt-6 bg-white/60 backdrop-blur-lg rounded-xl p-4 text-sm text-gray-600 border border-white/50">
             <h4 className="font-semibold mb-2 flex items-center">
               <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-              Demo Credentials (Use email as username)
+              Demo Credentials
             </h4>
             <div className="space-y-1 text-xs">
               <p>
-                <strong>Admin:</strong> admin@example.com / admin123
+                <strong>Admin:</strong> admin@nec.edu.in / 123456
               </p>
               <p>
-                <strong>Staff:</strong> staff@example.com / staff123
+                <strong>Staff:</strong> staff@nec.edu.in / staff123
               </p>
-              {/* Note: You need to insert these demo users into DB manually */}
+              <p>
+                <strong>Student:</strong> student@nec.edu.in / student123
+              </p>
             </div>
           </div>
         </div>
       </div>
+      <ToastContainer />
     </div>
   );
 };

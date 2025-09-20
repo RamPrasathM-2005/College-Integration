@@ -2,49 +2,44 @@ import React, { useState, useEffect } from 'react';
 import { BookOpen, ChevronRight, Trash2, Edit } from 'lucide-react';
 import { branchMap } from './branchMap';
 import SemesterUpdateForm from './SemesterUpdateForm';
-import axios from 'axios';
+import { api } from '../../../services/authService'; // Import the api instance
 
-// Define the API base URL
 const API_BASE = 'http://localhost:4000/api/admin';
 
 const SemesterCard = ({ semester, onClick, onDelete, onEdit, index }) => {
-  // State for courses, loading, and error
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showUpdateForm, setShowUpdateForm] = useState(false);
 
-  // Fetch courses when component mounts or semester.semesterId changes
   useEffect(() => {
     const fetchCourses = async () => {
       try {
         setLoading(true);
         console.log('Fetching courses for semesterId:', semester.semesterId);
-        const response = await axios.get(`${API_BASE}/semesters/${semester.semesterId}/courses`);
+        const response = await api.get(`${API_BASE}/semesters/${semester.semesterId}/courses`);
         console.log('API response:', response.data);
 
-        // Handle response data
         const fetchedCourses = Array.isArray(response.data.data)
           ? response.data.data
           : Array.isArray(response.data)
             ? response.data
             : [];
         setCourses(fetchedCourses);
-        setError(null); // Clear any previous errors
+        setError(null);
         console.log('Courses set to:', fetchedCourses, 'Length:', fetchedCourses.length);
         setLoading(false);
       } catch (err) {
         console.error('Error fetching courses:', err.message, err.response?.status, err.response?.data);
-        // Handle 404 with "No active courses found" as a valid case
         if (
           err.response?.status === 404 &&
           err.response?.data?.message.includes('No active courses found')
         ) {
-          setCourses([]); // Treat as empty course list
-          setError(null); // Clear error
+          setCourses([]);
+          setError(null);
         } else {
           setError('Failed to load courses');
-          setCourses([]); // Ensure courses is an empty array on other errors
+          setCourses([]);
         }
         setLoading(false);
       }

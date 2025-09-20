@@ -1,5 +1,9 @@
 import React from 'react';
 import { X, UserPlus } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { api } from '../../../services/authService'; // Adjust path if needed
+
+const API_BASE = 'http://localhost:4000/api/admin';
 
 const AllocateStaffModal = ({
   selectedCourse,
@@ -11,6 +15,42 @@ const AllocateStaffModal = ({
   setShowAllocateStaffModal,
   setShowCourseDetailsModal,
 }) => {
+  const onAllocateStaff = async (staffId) => {
+    if (!selectedCourse || !selectedBatch || !staffId) {
+      toast.error('Missing course, batch, or staff information');
+      return;
+    }
+    try {
+      const sectionRes = await api.get(`${API_BASE}/courses/${selectedCourse.courseCode}/sections`);
+      const section = sectionRes.data.data.find(s => s.sectionName.replace('BatchBatch', 'Batch') === selectedBatch);
+      if (!section) {
+        toast.error(`Section ${selectedBatch} not found`);
+        return;
+      }
+      const staff = getFilteredStaff().find(s => s.id === staffId);
+      if (!staff) {
+        toast.error('Staff not found');
+        return;
+      }
+      await api.post(`${API_BASE}/courses/${selectedCourse.courseId}/staff`, {
+        staffId,
+        courseCode: selectedCourse.courseCode,
+        sectionId: section.sectionId,
+        departmentId: staff.departmentId,
+      });
+      toast.success('Staff allocated successfully');
+      handleAllocateStaff(staffId);
+      setShowAllocateStaffModal(false);
+      setShowCourseDetailsModal(true);
+    } catch (err) {
+      const message = err.response?.data?.message || 'Error allocating staff';
+      toast.error(message);
+      if (message.includes('Unknown column')) {
+        toast.warn('Database configuration issue detected. Please check server settings.');
+      }
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl max-w-md w-full">
@@ -42,7 +82,7 @@ const AllocateStaffModal = ({
               getFilteredStaff().map(staff => (
                 <div
                   key={staff.id}
-                  onClick={() => handleAllocateStaff(staff.id)}
+                  onClick={() => onAllocateStaff(staff.id)}
                   className="cursor-pointer bg-gray-50 p-2 rounded-lg mb-2 hover:bg-gray-100 flex justify-between items-center"
                 >
                   <span>{staff.name} (ID: {staff.id}, Dept: {staff.departmentName})</span>

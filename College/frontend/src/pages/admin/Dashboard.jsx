@@ -20,6 +20,7 @@ import {
   ChevronRight,
   ChevronLeft
 } from 'lucide-react';
+import { api, getCurrentUser } from '../../services/authService';
 
 const AdminDashboard = () => {
   const [scrollPosition, setScrollPosition] = useState(0);
@@ -27,13 +28,12 @@ const AdminDashboard = () => {
   const [dashboardData, setDashboardData] = useState({
     totalSemesters: 0,
     totalCourses: 0,
-    totalStaff: 23, // Mock, as no API provided
-    totalStudents: 1200, // Mock, as no full API provided
+    totalStaff: 23,
+    totalStudents: 1200,
     recentSemesters: [],
     recentCourses: []
   });
 
-  // All action options
   const allActions = [
     { name: "Create Semester", icon: <CalendarPlus className="w-4 h-4" />, action: () => navigateTo("manage-semesters") },
     { name: "View Semesters", icon: <Eye className="w-4 h-4" />, action: () => navigateTo("manage-semesters") },
@@ -51,35 +51,36 @@ const AdminDashboard = () => {
 
   const navigate = useNavigate();
 
-  // Fetch dynamic data
   useEffect(() => {
     const fetchData = async () => {
-      try {
-        // Fetch semesters
-        const semestersResponse = await fetch('http://localhost:4000/api/admin/semesters');
-        const semestersData = await semestersResponse.json();
-        const semesters = semestersData.data || [];
+      const token = localStorage.getItem('token');
+      const user = getCurrentUser();
+      console.log(token);
+      console.log(user);
+      if (!token || !user) {
+        console.log('No token or user found, redirecting to login');
+        navigate('/login');
+        return;
+      }
 
-        // Sort by startDate descending for recent
+      try {
+        const semestersResponse = await api.get('/admin/semesters');
+        const semesters = semestersResponse.data.data || [];
+
         const sortedSemesters = semesters.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
         const recentSemesters = sortedSemesters.slice(0, 3).map(sem => ({
           id: sem.semesterId,
           name: `${sem.degree} ${sem.branch} Sem ${sem.semesterNumber}`,
           batch: sem.batch
-          // Removed students count as per instructions
         }));
 
-        // Fetch courses
-        const coursesResponse = await fetch('http://localhost:4000/api/admin/courses');
-        const coursesData = await coursesResponse.json();
-        const courses = coursesData.data || [];
+        const coursesResponse = await api.get('/admin/courses');
+        const courses = coursesResponse.data.data || [];
 
-        // Assuming array order for recent, take last 3
         const recentCourses = courses.slice(-3).map(course => ({
           id: course.courseId,
           name: course.courseTitle,
           code: course.courseCode
-          // Removed staff as per instructions
         }));
 
         setDashboardData(prev => ({
@@ -90,21 +91,26 @@ const AdminDashboard = () => {
           recentCourses
         }));
       } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+        console.error('Error fetching dashboard data:', error.response?.data || error.message);
+        if (error.response?.status === 401) {
+          console.log('Unauthorized, redirecting to login');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          navigate('/login');
+        }
       }
     };
 
     fetchData();
-  }, []);
+  }, [navigate]);
 
-  // Auto-scroll effect
   useEffect(() => {
     const interval = setInterval(() => {
       if (isScrolling) {
         setScrollPosition(prev => {
-          const maxScroll = allActions.length * 116; // Each button is ~116px with gap
+          const maxScroll = allActions.length * 116;
           if (prev >= maxScroll) {
-            return 0; // Reset to start for seamless loop
+            return 0;
           }
           return prev + 1;
         });
@@ -114,7 +120,6 @@ const AdminDashboard = () => {
     return () => clearInterval(interval);
   }, [isScrolling, allActions.length]);
 
-  // Navigation function
   const navigateTo = (page) => {
     console.log(`Navigating to: ${page}`);
     navigate(`/admin/${page}`);
@@ -122,13 +127,11 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      {/* Header Section */}
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Admin Dashboard</h1>
         <p className="text-gray-600">Manage your institution efficiently</p>
       </div>
 
-      {/* Compact Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-500">
           <div className="flex items-center">
@@ -168,7 +171,6 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* Auto-Scrolling Management Options */}
       <div className="bg-white rounded-lg shadow-sm p-4 mb-8">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold text-gray-800">Management Options</h3>
@@ -187,7 +189,6 @@ const AdminDashboard = () => {
               transition: 'transform 0.1s linear'
             }}
           >
-            {/* Render items twice for seamless loop */}
             {[...allActions, ...allActions, ...allActions].map((action, index) => (
               <button
                 key={`action-${index}`}
@@ -216,7 +217,6 @@ const AdminDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Main Action Buttons - Center */}
         <div className="bg-white rounded-lg shadow-sm p-6">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 gap-3">
@@ -265,12 +265,10 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Right Column - Recent Data */}
         <div className="space-y-4">
           <div className="bg-white rounded-lg shadow-sm p-4">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-md font-semibold text-gray-800">Recent Semesters</h4>
-              {/* Removed View All */}
             </div>
             <div className="space-y-2">
               {dashboardData.recentSemesters.map((semester) => (
@@ -280,7 +278,6 @@ const AdminDashboard = () => {
                       <p className="font-medium text-gray-800 text-xs">{semester.name}</p>
                       <span className="text-xs text-gray-600">{semester.batch}</span>
                     </div>
-                    {/* Removed right side number */}
                   </div>
                 </div>
               ))}
@@ -289,7 +286,6 @@ const AdminDashboard = () => {
           <div className="bg-white rounded-lg shadow-sm p-4">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-md font-semibold text-gray-800">Recent Courses</h4>
-              {/* Removed View All */}
             </div>
             <div className="space-y-2">
               {dashboardData.recentCourses.map((course) => (
@@ -299,7 +295,6 @@ const AdminDashboard = () => {
                       <p className="font-medium text-gray-800 text-xs">{course.name}</p>
                       <span className="text-xs text-blue-600">{course.code}</span>
                     </div>
-                    {/* Removed right side text/number */}
                   </div>
                 </div>
               ))}

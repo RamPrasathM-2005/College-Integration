@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Edit, X, Save } from 'lucide-react';
 import { toast } from 'react-toastify';
-import axios from 'axios';
+import { api } from '../../../services/authService'; // Import the api instance
 import { degrees, branchMap } from './branchMap';
 
 const API_BASE = 'http://localhost:4000/api/admin';
@@ -49,7 +49,7 @@ const SemesterUpdateForm = ({ isOpen, onClose, semester, onRefresh }) => {
 
     setLoading(true);
     try {
-      await axios.put(`${API_BASE}/semesters/${semester.semesterId}`, formData);
+      await api.put(`${API_BASE}/semesters/${semester.semesterId}`, formData);
       toast.success('Semester updated successfully');
       onClose();
       onRefresh();

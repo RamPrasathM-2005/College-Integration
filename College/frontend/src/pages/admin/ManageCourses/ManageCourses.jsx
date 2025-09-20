@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, BookOpen } from 'lucide-react';
 import { toast } from 'react-toastify';
-import axios from 'axios';
-import CourseForm from '../ManageSemesters/CourseForm.jsx';
+import { api } from '../../../services/authService.js'; // Adjust path if needed
 import Filters from './Filters.jsx';
-import CourseCard from './CourseCard';
-import CourseDetailsModal from './CourseDetailsModal';
-import AddBatchModal from './AddBatchModal';
-import AllocateStaffModal from './AllocateStaffModal';
-import SelectSemesterModal from './SelectSemesterModal';
+import CourseCard from './CourseCard.jsx';
+import CourseForm from '../ManageSemesters/CourseForm.jsx';
+import CourseDetailsModal from './CourseDetailsModal.jsx';
+import AddBatchModal from './AddBatchModal.jsx';
+import AllocateStaffModal from './AllocateStaffModal.jsx';
+import SelectSemesterModal from './SelectSemesterModal.jsx';
 
 const API_BASE = 'http://localhost:4000/api/admin';
 
@@ -39,12 +39,7 @@ const ManageCourses = () => {
   const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [newBatchForm, setNewBatchForm] = useState({ numberOfBatches: 1 });
 
-  const courseTypes = ['THEORY', 'PRACTICAL', 'INTEGRATED', 'PROJECT'];
-
-  useEffect(() => {
-    console.log('Courses state:', courses);
-    console.log('Sections state:', sections);
-  }, [courses, sections]);
+  const courseTypes = ['THEORY', 'PRACTICAL', 'INTEGRATED', 'EXPERIENTIAL LEARNING'];
 
   useEffect(() => {
     fetchData();
@@ -54,18 +49,30 @@ const ManageCourses = () => {
     setLoading(true);
     try {
       // Fetch semesters
-      const semRes = await axios.get(`${API_BASE}/semesters`);
-      setSemesters(semRes.data.data || []);
+      const semRes = await api.get(`${API_BASE}/semesters`);
+      const semestersData = semRes.data.data || [];
+      setSemesters(semestersData);
 
-      // Fetch courses
-      const courseRes = await axios.get(`${API_BASE}/courses`);
-      let allCourses = courseRes.data.data || [];
-
-      // Map semester details to courses
-      allCourses = allCourses.map(course => {
-        const semester = semRes.data.data.find(s => s.semesterId === course.semesterId);
-        return { ...course, semesterDetails: semester };
-      });
+      // Fetch courses for each semester
+      let allCourses = [];
+      for (const semester of semestersData) {
+        try {
+          const courseRes = await api.get(`${API_BASE}/semesters/${semester.semesterId}/courses`);
+          if (courseRes.data.status === 'success' && Array.isArray(courseRes.data.data)) {
+            const semesterCourses = courseRes.data.data.map(course => ({
+              ...course,
+              semesterDetails: semester,
+            }));
+            allCourses = [...allCourses, ...semesterCourses];
+          }
+        } catch (err) {
+          const message = err.response?.data?.message || `Failed to fetch courses for semester ${semester.semesterId}`;
+          toast.warn(message);
+          if (message.includes('Unknown column')) {
+            toast.warn('Database configuration issue detected. Please check server settings.');
+          }
+        }
+      }
       allCourses.sort((a, b) => b.courseId - a.courseId);
       setCourses(allCourses);
 
@@ -73,8 +80,7 @@ const ManageCourses = () => {
       const sectionsData = {};
       for (const course of allCourses) {
         try {
-          const sectionRes = await axios.get(`${API_BASE}/courses/${course.courseCode}/sections`);
-          console.log(`Section API response for course ${course.courseCode}:`, sectionRes.data);
+          const sectionRes = await api.get(`${API_BASE}/courses/${course.courseCode}/sections`);
           if (sectionRes.data?.status === 'success' && Array.isArray(sectionRes.data.data)) {
             const batches = sectionRes.data.data.reduce((acc, section) => {
               if (section.sectionName) {
@@ -85,9 +91,7 @@ const ManageCourses = () => {
             }, {});
             sectionsData[String(course.courseId)] = batches;
 
-            // Fetch staff allocations for each section
-            const staffRes = await axios.get(`${API_BASE}/courses/${course.courseId}/staff`);
-            console.log(`Staff API response for course ${course.courseId}:`, staffRes.data);
+            const staffRes = await api.get(`${API_BASE}/courses/${course.courseId}/staff`);
             if (staffRes.data?.status === 'success' && Array.isArray(staffRes.data.data)) {
               staffRes.data.data.forEach(alloc => {
                 const normalizedName = alloc.sectionName.replace('BatchBatch', 'Batch');
@@ -99,7 +103,7 @@ const ManageCourses = () => {
                     sectionId: alloc.sectionId,
                     sectionName: normalizedName,
                     departmentId: alloc.departmentId,
-                    departmentName: alloc.departmentName,
+                    departmentName: alloc.departmentName || deptNameMap[alloc.departmentId] || 'Unknown',
                   });
                 }
               });
@@ -108,15 +112,14 @@ const ManageCourses = () => {
             sectionsData[String(course.courseId)] = {};
           }
         } catch (err) {
-          console.error(`Error fetching sections for course ${course.courseCode}:`, err);
           sectionsData[String(course.courseId)] = {};
+          toast.warn(`Failed to fetch sections for course ${course.courseCode}: ${err.response?.data?.message || err.message}`);
         }
       }
       setSections(sectionsData);
-      console.log('Initial sections state:', sectionsData);
 
       // Fetch staff list
-      const usersRes = await axios.get(`${API_BASE}/users`);
+      const usersRes = await api.get(`${API_BASE}/users`);
       let staffData = usersRes.data.data.filter(user => user.departmentId);
       staffData = staffData.map(user => ({
         id: user.staffId || user.userId || user.id,
@@ -130,9 +133,12 @@ const ManageCourses = () => {
       setStaffList(uniqueStaff);
       toast.success('Fetched all data successfully');
     } catch (err) {
-      setError('Failed to fetch data');
-      console.error(err);
-      toast.error('Error fetching data: ' + err.message);
+      const message = err.response?.data?.message || 'Failed to fetch data';
+      setError(message);
+      toast.error(message);
+      if (message.includes('Unknown column')) {
+        toast.warn('Database configuration issue detected. Please check server settings.');
+      }
     } finally {
       setLoading(false);
     }
@@ -140,12 +146,11 @@ const ManageCourses = () => {
 
   const getFilteredStaff = () => {
     return staffList.filter(staff =>
-      staff.name.toLowerCase().includes(staffSearch.toLowerCase()) ||
-      staff.id.toLowerCase().includes(staffSearch.toLowerCase()) ||
-      staff.departmentName.toLowerCase().includes(staffSearch.toLowerCase())
-    );
-  };
-
+      (staff.name || '').toLowerCase().includes(staffSearch.toLowerCase()) ||
+      String(staff.id || '').toLowerCase().includes(staffSearch.toLowerCase()) ||
+      (staff.departmentName || '').toLowerCase().includes(staffSearch.toLowerCase())
+      );
+    };
   const fetchCourseStaff = async (courseId) => {
     setFetchingSections(true);
     try {
@@ -155,12 +160,10 @@ const ManageCourses = () => {
         return;
       }
 
-      const sectionRes = await axios.get(`${API_BASE}/courses/${course.courseCode}/sections`);
-      console.log(`Section API response for course ${course.courseCode}:`, sectionRes.data);
+      const sectionRes = await api.get(`${API_BASE}/courses/${course.courseCode}/sections`);
       if (sectionRes.data?.status !== 'success' || !Array.isArray(sectionRes.data.data)) {
-        toast.error('Failed to fetch sections or invalid response');
-        console.error('Invalid section response:', sectionRes.data);
         setSections(prev => ({ ...prev, [String(courseId)]: {} }));
+        toast.warn('No sections found for this course');
         return;
       }
 
@@ -171,10 +174,8 @@ const ManageCourses = () => {
         }
         return acc;
       }, {});
-      console.log(`Processed batches for course ${courseId}:`, batches);
 
-      const staffRes = await axios.get(`${API_BASE}/courses/${courseId}/staff`);
-      console.log(`Staff API response for course ${courseId}:`, staffRes.data);
+      const staffRes = await api.get(`${API_BASE}/courses/${course.courseId}/staff`);
       if (staffRes.data?.status === 'success' && Array.isArray(staffRes.data.data)) {
         staffRes.data.data.forEach(alloc => {
           const normalizedName = alloc.sectionName.replace('BatchBatch', 'Batch');
@@ -186,20 +187,13 @@ const ManageCourses = () => {
               sectionId: alloc.sectionId,
               sectionName: normalizedName,
               departmentId: alloc.departmentId,
-              departmentName: alloc.departmentName,
+              departmentName: alloc.departmentName || deptNameMap[alloc.departmentId] || 'Unknown',
             });
           }
         });
-      } else {
-        toast.error('Failed to fetch staff allocations or invalid response');
-        console.error('Invalid staff response:', staffRes.data);
       }
 
-      setSections(prev => {
-        const updatedSections = { ...prev, [String(courseId)]: batches };
-        console.log('Updated sections state:', updatedSections);
-        return updatedSections;
-      });
+      setSections(prev => ({ ...prev, [String(courseId)]: batches }));
       setSelectedCourse(prev => ({
         ...prev,
         courseId,
@@ -208,8 +202,11 @@ const ManageCourses = () => {
       }));
       toast.success('Fetched course staff successfully');
     } catch (err) {
-      console.error('Error fetching course staff or sections:', err.response || err);
-      toast.error('Error fetching course staff: ' + (err.response?.data?.message || err.message));
+      const message = err.response?.data?.message || 'Error fetching course staff';
+      toast.error(message);
+      if (message.includes('Unknown column')) {
+        toast.warn('Database configuration issue detected. Please check server settings.');
+      }
       setSections(prev => ({ ...prev, [String(courseId)]: {} }));
     } finally {
       setFetchingSections(false);
@@ -217,111 +214,15 @@ const ManageCourses = () => {
   };
 
   const handleAllocateStaff = async (staffId) => {
-    if (!selectedCourse || !selectedBatch || !staffId) {
-      toast.error('Missing course, batch, or staff information');
-      console.error('Missing required inputs:', { selectedCourse, selectedBatch, staffId });
-      return;
-    }
-
-    const staff = staffList.find(s => s.id === staffId);
-    if (!staff || !staff.id || !staff.departmentId) {
-      toast.error('Staff not found or missing required fields');
-      console.error('Staff lookup failed:', { staffId, staffList });
-      return;
-    }
-
-    const currentSections = sections[String(selectedCourse.courseId)] || {};
-    const isStaffAlreadyAllocated = Object.entries(currentSections).some(([sectionName, staffs]) =>
-      sectionName !== selectedBatch && staffs.some(s => s.staffId === staffId)
-    );
-    if (isStaffAlreadyAllocated) {
-      toast.error(`Staff ${staff.name} is already allocated to another batch for course ${selectedCourse.courseCode}`);
-      return;
-    }
-
-    let sectionId = null;
-    try {
-      const sectionRes = await axios.get(`${API_BASE}/courses/${selectedCourse.courseCode}/sections`);
-      if (sectionRes.data?.status !== 'success' || !Array.isArray(sectionRes.data.data)) {
-        toast.error('Failed to fetch sections');
-        console.error('Section API response:', sectionRes.data);
-        return;
-      }
-      const matchingSection = sectionRes.data.data.find(s => s.sectionName.replace('BatchBatch', 'Batch') === selectedBatch);
-      if (!matchingSection || !matchingSection.sectionId) {
-        toast.error(`Section ${selectedBatch} not found for course ${selectedCourse.courseCode}`);
-        console.error('Section not found:', { selectedBatch, sections: sectionRes.data.data });
-        return;
-      }
-      sectionId = matchingSection.sectionId;
-    } catch (err) {
-      console.error('Error fetching sections:', err.response || err);
-      toast.error('Error fetching section ID: ' + (err.response?.data?.message || err.message));
-      return;
-    }
-
-    const payload = {
-      staffId: staff.id,
-      courseCode: selectedCourse.courseCode,
-      sectionId,
-      departmentId: staff.departmentId,
-    };
-
-    try {
-      const res = await axios.post(`${API_BASE}/courses/${selectedCourse.courseId}/staff`, payload);
-      if (res.status === 201) {
-        setShowAllocateStaffModal(false);
-        setStaffSearch('');
-        await fetchCourseStaff(selectedCourse.courseId);
-        setShowCourseDetailsModal(true);
-        toast.success('Staff allocated successfully');
-      } else {
-        toast.error('Failed to allocate staff: ' + (res.data?.message || 'Unknown error'));
-        console.error('Allocation failed:', res.data);
-      }
-    } catch (err) {
-      console.error('Error allocating staff:', err.response || err);
-      toast.error('Error allocating staff: ' + (err.response?.data?.message || err.message));
-    }
+    await fetchCourseStaff(selectedCourse.courseId);
   };
 
   const handleDeleteBatch = async (courseCode, sectionName) => {
-    if (!courseCode || !sectionName) {
-      toast.error('Missing course or section info');
-      return;
-    }
-    if (!confirm(`Delete batch ${sectionName}? This action cannot be undone.`)) return;
-
-    try {
-      const res = await axios.delete(`${API_BASE}/courses/${courseCode}/sections/${sectionName}`);
-      if (res.status === 200) {
-        console.log(`Deleted batch ${sectionName} for course ${courseCode}`);
-        await fetchCourseStaff(selectedCourse.courseId);
-        toast.success('Batch deleted successfully');
-      } else {
-        toast.error('Failed to delete batch: ' + (res.data?.message || 'Unknown error'));
-      }
-    } catch (err) {
-      console.error('Error deleting batch:', err.response || err);
-      toast.error('Error deleting batch: ' + (err.response?.data?.message || err.message));
-    }
+    await fetchCourseStaff(selectedCourse.courseId);
   };
 
   const handleDeleteStaff = async (staffCourseId) => {
-    if (!confirm('Remove this staff from the batch?')) return;
-
-    try {
-      const res = await axios.delete(`${API_BASE}/staff-courses/${staffCourseId}`);
-      if (res.status === 200) {
-        await fetchCourseStaff(selectedCourse.courseId);
-        setShowCourseDetailsModal(true);
-        toast.success('Staff removed successfully');
-      } else {
-        toast.error('Failed to remove staff');
-      }
-    } catch (err) {
-      toast.error('Error removing staff: ' + (err.response?.data?.message || err.message));
-    }
+    await fetchCourseStaff(selectedCourse.courseId);
   };
 
   const handleEditStaff = (staffCourseId) => {
@@ -341,18 +242,7 @@ const ManageCourses = () => {
   };
 
   const handleDeleteCourse = async (courseId) => {
-    if (!confirm('Delete this course?')) return;
-    try {
-      const res = await axios.delete(`${API_BASE}/courses/${courseId}`);
-      if (res.status === 200) {
-        await fetchData();
-        toast.success('Course deleted successfully');
-      } else {
-        toast.error('Failed to delete course');
-      }
-    } catch (err) {
-      toast.error('Error deleting course: ' + (err.response?.data?.message || err.message));
-    }
+    setCourses(courses.filter(course => course.courseId !== courseId));
   };
 
   const getCourseTypeColor = (type) => {
@@ -360,7 +250,7 @@ const ManageCourses = () => {
       'THEORY': 'bg-blue-100 text-blue-800',
       'PRACTICAL': 'bg-green-100 text-green-800',
       'INTEGRATED': 'bg-purple-100 text-purple-800',
-      'PROJECT': 'bg-orange-100 text-orange-800',
+      'EXPERIENTIAL LEARNING': 'bg-orange-100 text-orange-800',
     };
     return colors[type] || 'bg-gray-100 text-gray-800';
   };
@@ -379,30 +269,8 @@ const ManageCourses = () => {
     setShowCourseForm(true);
   };
 
-  const handleAddBatch = async (e) => {
-    e.preventDefault();
-    if (!selectedCourse || !newBatchForm.numberOfBatches) {
-      toast.error('Missing course or number of batches');
-      return;
-    }
-    const numberOfBatches = parseInt(newBatchForm.numberOfBatches) || 1;
-    try {
-      const res = await axios.post(`${API_BASE}/courses/${selectedCourse.courseCode}/sections`, {
-        numberOfSections: numberOfBatches,
-      });
-      if (res.status === 201) {
-        setShowAddBatchModal(false);
-        setNewBatchForm({ numberOfBatches: 1 });
-        await fetchCourseStaff(selectedCourse.courseId);
-        setShowCourseDetailsModal(true);
-        toast.success(`Added ${numberOfBatches} batch${numberOfBatches > 1 ? 'es' : ''} successfully`);
-      } else {
-        toast.error('Failed to add batches: ' + (res.data?.message || 'Unknown error'));
-      }
-    } catch (err) {
-      console.error('Error adding batches:', err.response || err);
-      toast.error('Error adding batches: ' + (err.response?.data?.message || err.message));
-    }
+  const handleAddBatch = async () => {
+    await fetchCourseStaff(selectedCourse.courseId);
   };
 
   const openEditModal = (course) => {
