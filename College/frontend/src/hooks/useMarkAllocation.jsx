@@ -17,9 +17,12 @@ import {
 } from '../services/staffService';
 import { calculateCOMarks } from '../utils/calculations';
 import Swal from 'sweetalert2';
+import withReactContent from 'sweetalert2-react-content';
+
+const MySwal = withReactContent(Swal);
 
 const useMarkAllocation = (courseId, sectionId) => {
-  const [partitions, setPartitions] = useState({ theoryCount: 0, practicalCount: 0, experientialCount: 0 });
+  const [partitions, setPartitions] = useState({ theoryCount: 0, practicalCount: 0, experientialCount: 0, partitionId: null });
   const [courseOutcomes, setCourseOutcomes] = useState([]);
   const [students, setStudents] = useState([]);
   const [selectedCO, setSelectedCO] = useState(null);
@@ -43,10 +46,12 @@ const useMarkAllocation = (courseId, sectionId) => {
       }
       try {
         setError('');
+        // Fetch partitions
         const parts = await getCoursePartitions(courseId);
         setPartitions(parts);
         setNewPartition(parts);
-        setShowPartitionModal(!parts.partitionId);
+        setShowPartitionModal(!parts.partitionId); // Show modal only if no partitions exist
+        // Fetch course outcomes
         const cos = await getCOsForCourse(courseId);
         console.log('getCOsForCourse response:', cos);
         if (!Array.isArray(cos)) {
@@ -62,9 +67,9 @@ const useMarkAllocation = (courseId, sectionId) => {
           })
         );
         setCourseOutcomes(cosWithTools);
+        // Fetch students
         const studentsData = await getStudentsForSection(courseId, sectionId);
-        console.log('getStudentsForSection response:', studentsData); // Added logging for debugging
-        // Validate that studentsData is an array
+        console.log('getStudentsForSection response:', studentsData);
         if (!Array.isArray(studentsData)) {
           console.error('Error: getStudentsForSection did not return an array:', studentsData);
           setError('No students found for this course section');
@@ -78,7 +83,7 @@ const useMarkAllocation = (courseId, sectionId) => {
               for (const tool of co.tools || []) {
                 try {
                   const marksData = await getStudentMarksForTool(tool.toolId);
-                  const studentMark = marksData.find(m => m.rollnumber === student.rollnumber);
+                  const studentMark = marksData.find((m) => m.rollnumber === student.rollnumber);
                   marks[tool.toolId] = studentMark ? studentMark.marksObtained : 0;
                 } catch (markErr) {
                   console.warn('Error fetching marks for tool:', tool.toolId, markErr);
@@ -92,7 +97,7 @@ const useMarkAllocation = (courseId, sectionId) => {
         setStudents(studentsWithMarks);
       } catch (err) {
         console.error('Error fetching data:', err);
-        setError(err.message || 'Failed to fetch data');
+        setError(err.response?.data?.message || err.message || 'Failed to fetch data');
       }
     };
     fetchData();
@@ -103,23 +108,33 @@ const useMarkAllocation = (courseId, sectionId) => {
   };
 
   const handlePartitionsConfirmation = async () => {
-    const result = await Swal.fire({
+    // Show confirmation dialog
+    const result = await MySwal.fire({
       title: 'Confirm Partitions',
-      text: 'Are you sure about the partition counts? This will create COs.',
+      text: 'Are you sure about the partition counts? This will create or update COs.',
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: 'Yes, confirm',
-      cancelButtonText: 'No, edit'
+      cancelButtonText: 'No, edit',
     });
+
     if (result.isConfirmed) {
-      const saveResult = await handleSavePartitions(partitions.partitionId);
-      if (saveResult.success) {
-        Swal.fire('Success', saveResult.message, 'success');
-      } else {
-        Swal.fire('Error', saveResult.error, 'error');
+      // Refresh partitions to check if they exist
+      try {
+        const currentPartitions = await getCoursePartitions(courseId);
+        setPartitions(currentPartitions);
+        const saveResult = await handleSavePartitions(currentPartitions.partitionId);
+        if (saveResult.success) {
+          MySwal.fire('Success', saveResult.message, 'success');
+        } else {
+          MySwal.fire('Error', saveResult.error, 'error');
+        }
+      } catch (err) {
+        console.error('Error during confirmation:', err);
+        MySwal.fire('Error', err.response?.data?.message || err.message || 'Failed to confirm partitions', 'error');
       }
     } else {
-      setShowPartitionModal(true);
+      setShowPartitionModal(true); // Reopen modal for editing
     }
   };
 
@@ -130,16 +145,34 @@ const useMarkAllocation = (courseId, sectionId) => {
       setError(errMsg);
       return { success: false, error: errMsg };
     }
+    if (
+      newPartition.theoryCount < 0 ||
+      newPartition.practicalCount < 0 ||
+      newPartition.experientialCount < 0
+    ) {
+      const errMsg = 'Partition counts cannot be negative';
+      console.error(errMsg);
+      setError(errMsg);
+      return { success: false, error: errMsg };
+    }
     try {
       setError('');
-      console.log('Saving partitions for courseId:', courseId, 'Data:', newPartition);
-      if (partitionId) {
-        await updateCoursePartitions(courseId, newPartition);
+      console.log('Saving partitions for courseId:', courseId, 'Data:', newPartition, 'partitionId:', partitionId);
+      // Double-check if partitions exist
+      const currentPartitions = await getCoursePartitions(courseId);
+      const exists = !!currentPartitions.partitionId;
+      let response;
+      if (exists) {
+        // Update existing partitions
+        response = await updateCoursePartitions(courseId, newPartition);
       } else {
-        await saveCoursePartitions(courseId, newPartition);
+        // Create new partitions
+        response = await saveCoursePartitions(courseId, newPartition);
       }
-      setPartitions(newPartition);
+      // Update partitions state with the latest data
+      setPartitions({ ...newPartition, partitionId: response.data?.partitionId || currentPartitions.partitionId });
       setShowPartitionModal(false);
+      // Refresh course outcomes
       const cos = await getCOsForCourse(courseId);
       console.log('getCOsForCourse after save partitions:', cos);
       if (!Array.isArray(cos)) {
@@ -158,6 +191,37 @@ const useMarkAllocation = (courseId, sectionId) => {
     } catch (err) {
       console.error('Error saving partitions:', err);
       const errMsg = err.response?.data?.message || err.message || 'Failed to save partitions';
+      if (err.response?.status === 409) {
+        // Handle case where partitions already exist
+        MySwal.fire({
+          title: 'Partitions Already Exist',
+          text: 'Partitions already exist for this course. Would you like to update them instead?',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Yes, update',
+          cancelButtonText: 'No, cancel',
+        }).then(async (result) => {
+          if (result.isConfirmed) {
+            try {
+              const updateResponse = await updateCoursePartitions(courseId, newPartition);
+              setPartitions({ ...newPartition, partitionId: updateResponse.data?.partitionId });
+              setShowPartitionModal(false);
+              const cos = await getCOsForCourse(courseId);
+              const cosWithTools = await Promise.all(
+                cos.map(async (co) => {
+                  const tools = await getToolsForCO(co.coId);
+                  return { ...co, tools };
+                })
+              );
+              setCourseOutcomes(cosWithTools);
+              MySwal.fire('Success', 'Partitions updated successfully', 'success');
+            } catch (updateErr) {
+              MySwal.fire('Error', updateErr.response?.data?.message || updateErr.message || 'Failed to update partitions', 'error');
+            }
+          }
+        });
+        return { success: false, error: 'Partitions already exist' };
+      }
       setError(errMsg);
       return { success: false, error: errMsg };
     }
@@ -168,7 +232,7 @@ const useMarkAllocation = (courseId, sectionId) => {
   };
 
   const handleSaveToolsForCO = async (coId) => {
-    const co = courseOutcomes.find(c => c.coId === coId);
+    const co = courseOutcomes.find((c) => c.coId === coId);
     if (!co) {
       const errMsg = 'CO not found';
       setError(errMsg);
@@ -198,10 +262,15 @@ const useMarkAllocation = (courseId, sectionId) => {
     }
   };
 
-  const handleDeleteTool = async (toolId) => {
+  const handleDeleteTool = async (tool) => {
     try {
       setError('');
-      await deleteTool(toolId);
+      if (tool.toolId) {
+        // Only call deleteTool for saved tools (with toolId)
+        await deleteTool(tool.toolId);
+      }
+      // Remove from tempTools
+      setTempTools((prev) => prev.filter((t) => t.uniqueId !== tool.uniqueId));
       const updatedTools = await getToolsForCO(selectedCO.coId);
       setCourseOutcomes((prev) =>
         prev.map((co) => (co.coId === selectedCO.coId ? { ...co, tools: updatedTools } : co))
@@ -249,7 +318,7 @@ const useMarkAllocation = (courseId, sectionId) => {
           marksObtained: s.marks?.[tool.toolId] || 0,
         }));
         console.log(`Sending marks for tool ${tool.toolId}:`, marks);
-        await saveStudentMarksForTool(tool.toolId, marks);
+        await saveStudentMarksForTool(tool.toolId, { marks });
       }
       return { success: true, message: 'Marks saved successfully' };
     } catch (err) {
@@ -261,32 +330,36 @@ const useMarkAllocation = (courseId, sectionId) => {
   };
 
   const handleImportMarks = async (file) => {
-  if (!selectedTool) return { success: false, error: 'No tool selected for import' };
-  try {
-    setError('');
-    await importMarksForTool(selectedTool.toolId, file);
-    // Re-fetch marks for the entire CO to refresh UI
-    const updatedTools = await getToolsForCO(selectedCO.coId);
-    const updatedStudents = await Promise.all(
-      students.map(async (s) => {
-        const newMarks = {};
-        for (const tool of updatedTools) {
-          const marksData = await getStudentMarksForTool(tool.toolId);
-          const studentMark = marksData.find(m => m.rollnumber === s.rollnumber);
-          newMarks[tool.toolId] = studentMark ? studentMark.marksObtained : 0;
-        }
-        return { ...s, marks: newMarks };
-      })
-    );
-    setStudents(updatedStudents);
-    return { success: true, message: 'Marks imported successfully' };
-  } catch (err) {
-    console.error('Error importing marks:', err);
-    const errMsg = err.response?.data?.message || err.message || 'Failed to import marks';
-    setError(errMsg);
-    return { success: false, error: errMsg };
-  }
-};
+    if (!selectedTool) return { success: false, error: 'No tool selected for import' };
+    try {
+      setError('');
+      await importMarksForTool(selectedTool.toolId, file);
+      // Re-fetch marks for the entire CO to refresh UI
+      const updatedTools = await getToolsForCO(selectedCO.coId);
+      const updatedStudents = await Promise.all(
+        students.map(async (s) => {
+          const newMarks = {};
+          for (const tool of updatedTools) {
+            const marksData = await getStudentMarksForTool(tool.toolId);
+            const studentMark = marksData.find((m) => m.rollnumber === s.rollnumber);
+            newMarks[tool.toolId] = studentMark ? studentMark.marksObtained : 0;
+          }
+          return { ...s, marks: newMarks };
+        })
+      );
+      setStudents(updatedStudents);
+      setCourseOutcomes((prev) =>
+        prev.map((co) => (co.coId === selectedCO.coId ? { ...co, tools: updatedTools } : co))
+      );
+      setSelectedCO({ ...selectedCO, tools: updatedTools });
+      return { success: true, message: 'Marks imported successfully' };
+    } catch (err) {
+      console.error('Error importing marks:', err);
+      const errMsg = err.response?.data?.message || err.message || 'Failed to import marks';
+      setError(errMsg);
+      return { success: false, error: errMsg };
+    }
+  };
 
   return {
     partitions,

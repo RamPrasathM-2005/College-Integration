@@ -27,30 +27,45 @@ export const saveCoursePartitions = async (req, res) => {
   const { courseCode } = req.params;
   const { theoryCount, practicalCount, experientialCount } = req.body;
   const staffId = getStaffId(req);
+
+  // Validate inputs
   if (!courseCode) {
-    return res.status(400).json({ status: 'error', message: 'courseCode is required' });
+    return res.status(400).json({ status: 'error', message: 'Course code is required' });
   }
   if (theoryCount === undefined || practicalCount === undefined || experientialCount === undefined) {
-    return res.status(400).json({ status: 'error', message: 'theoryCount, practicalCount, and experientialCount are required' });
+    return res.status(400).json({ status: 'error', message: 'Theory, practical, and experiential counts are required' });
   }
+  if (theoryCount < 0 || practicalCount < 0 || experientialCount < 0) {
+    return res.status(400).json({ status: 'error', message: 'Counts cannot be negative' });
+  }
+
   try {
+    // Check if course exists
     const [courseCheck] = await pool.query('SELECT courseCode FROM Course WHERE courseCode = ?', [courseCode]);
     if (courseCheck.length === 0) {
       return res.status(404).json({ status: 'error', message: `Course with code '${courseCode}' does not exist` });
     }
+
+    // Check if partitions already exist
     const [existing] = await pool.query('SELECT partitionId FROM CoursePartitions WHERE courseCode = ?', [courseCode]);
     if (existing.length > 0) {
-      return res.status(409).json({ status: 'error', message: 'Partitions already exist for this course. Use PUT to update.' });
+      return res.status(409).json({
+        status: 'error',
+        message: 'Partitions already exist for this course. Use PUT to update.',
+      });
     }
+
     // Save partitions
-    await pool.query(
+    const [result] = await pool.query(
       'INSERT INTO CoursePartitions (courseCode, theoryCount, practicalCount, experientialCount, createdBy) VALUES (?, ?, ?, ?, ?)',
       [courseCode, theoryCount, practicalCount, experientialCount, staffId || 'admin']
     );
+
     // Auto-create COs
     const totalCOs = theoryCount + practicalCount + experientialCount;
     let coNumber = 1;
     const coIds = [];
+
     // Theory COs
     for (let i = 0; i < theoryCount; i++) {
       const [result] = await pool.query(
@@ -65,6 +80,7 @@ export const saveCoursePartitions = async (req, res) => {
       coIds.push(coId);
       coNumber++;
     }
+
     // Practical COs
     for (let i = 0; i < practicalCount; i++) {
       const [result] = await pool.query(
@@ -79,6 +95,7 @@ export const saveCoursePartitions = async (req, res) => {
       coIds.push(coId);
       coNumber++;
     }
+
     // Experiential COs
     for (let i = 0; i < experientialCount; i++) {
       const [result] = await pool.query(
@@ -93,10 +110,15 @@ export const saveCoursePartitions = async (req, res) => {
       coIds.push(coId);
       coNumber++;
     }
-    res.json({ status: 'success', message: 'Partitions and COs saved successfully', data: { coIds } });
+
+    res.json({
+      status: 'success',
+      message: 'Partitions and COs saved successfully',
+      data: { partitionId: result.insertId, coIds },
+    });
   } catch (err) {
     console.error('Error in saveCoursePartitions:', err);
-    res.status(500).json({ status: 'error', message: err.message });
+    res.status(500).json({ status: 'error', message: `Failed to save partitions: ${err.message}` });
   }
 };
 
