@@ -36,7 +36,7 @@ const ProtectedRoute = ({ children, role }) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (role && getUserRole() !== role) {
+  if (role && getUserRole() !== role.toLowerCase()) {
     return <Navigate to="/login" replace />;
   }
 
@@ -44,16 +44,11 @@ const ProtectedRoute = ({ children, role }) => {
 };
 
 const routes = [
-  // Root redirects to login
   { path: "/", element: <Navigate to="/login" replace /> },
-
-  // Auth
   { path: "/login", element: <Login /> },
   { path: "/register", element: <Register /> },
   { path: "/forgot-password", element: <ForgotPassword /> },
   { path: "/reset-password/:token", element: <ResetPassword /> },
-
-  // Admin Routes
   {
     path: "/admin",
     element: (
@@ -69,11 +64,9 @@ const routes = [
       { path: "manage-staff", element: <ManageStaff /> },
       { path: "manage-students", element: <ManageStudents /> },
       { path: "timetable", element: <Timetable /> },
-      { path: "*", element: <NotFound /> }
-    ]
+      { path: "*", element: <NotFound /> },
+    ],
   },
-
-  // Staff Routes
   {
     path: "/staff",
     element: (
@@ -86,15 +79,13 @@ const routes = [
       { path: "dashboard", element: <StaffDashboard /> },
       { path: "marks-allocation", element: <MarksAllocation /> },
       { path: "options/:courseId", element: <Options /> },
-      { path: "marks-allocation/:courseId/:sectionId", element: <MarksAllocation /> }, // Added /:sectionId
-      { path: "attendance/", element: <Attendance /> },
+      { path: "marks-allocation/:courseId/:sectionId", element: <MarksAllocation /> },
+      { path: "attendance", element: <Attendance /> },
       { path: "internal-marks/:courseId", element: <InternalMarks /> },
-      { path: "*", element: <NotFound /> }
-    ]
+      { path: "*", element: <NotFound /> },
+    ],
   },
-
-  // Catch-all
-  { path: "*", element: <NotFound /> }
+  { path: "*", element: <NotFound /> },
 ];
 
 export default routes;

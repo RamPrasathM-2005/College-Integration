@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GraduationCap } from 'lucide-react';
 import { toast, ToastContainer } from 'react-toastify';
-import axios from 'axios';
+import { api } from '../../../services/authService'; // Import the api instance
 import SearchBar from './SearchBar';
 import SemesterList from './SemesterList';
 import CreateSemesterForm from './CreateSemesterForm';
@@ -25,7 +25,7 @@ const ManageSemesters = () => {
 
   const fetchSemesters = async () => {
     try {
-      const { data } = await axios.get(`${API_BASE}/semesters`);
+      const { data } = await api.get(`${API_BASE}/semesters`);
       setAllSemesters(data.data || []);
       setFilteredSemesters(data.data || []);
     } catch (err) {
@@ -58,7 +58,7 @@ const ManageSemesters = () => {
       cancelButtonText: 'Cancel'
     }).then((result) => {
       if (result.isConfirmed) {
-        axios.delete(`${API_BASE}/semesters/${semesterId}`)
+        api.delete(`${API_BASE}/semesters/${semesterId}`)
           .then((response) => {
             if (response.data.status === 'success') {
               setAllSemesters(prev => prev.filter(s => s.semesterId !== semesterId));

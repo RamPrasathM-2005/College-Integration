@@ -1,9 +1,29 @@
 import React from 'react';
 import { BookOpen, Calendar, Users, Settings, Trash2, Edit3 } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { api } from '../../../services/authService'; // Adjust path if needed
+
+const API_BASE = 'http://localhost:4000/api/admin';
 
 const CourseCard = ({ course, sections, getCourseTypeColor, handleCourseClick, handleDeleteCourse, openEditModal }) => {
   const sem = course.semesterDetails;
   const numBatches = sections[course.courseId] ? Object.keys(sections[course.courseId]).length : 0;
+
+  const handleDelete = async (e) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this course?')) return;
+    try {
+      await api.delete(`${API_BASE}/courses/${course.courseId}`);
+      toast.success('Course deleted successfully');
+      handleDeleteCourse(course.courseId);
+    } catch (err) {
+      const message = err.response?.data?.message || 'Error deleting course';
+      toast.error(message);
+      if (message.includes('Unknown column')) {
+        toast.warn('Database configuration issue detected. Please check server settings.');
+      }
+    }
+  };
 
   return (
     <div
@@ -40,7 +60,7 @@ const CourseCard = ({ course, sections, getCourseTypeColor, handleCourseClick, h
         </div>
         <div className="flex justify-between">
           <button
-            onClick={(e) => { e.stopPropagation(); handleDeleteCourse(course.courseId); }}
+            onClick={handleDelete}
             className="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
           >
             <Trash2 size={16} />

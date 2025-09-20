@@ -1,13 +1,14 @@
-import jwt from 'jsonwebtoken';
-import pool from '../../db.js'; // Adjusted path to match staffCourseController.js
+import pool from '../../db.js';
+import catchAsync from '../../utils/catchAsync.js';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 
 dotenv.config({ path: './.env' });
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 const EMAIL_HOST = process.env.EMAIL_HOST;
 const EMAIL_PORT = process.env.EMAIL_PORT;
@@ -19,22 +20,20 @@ const FRONTEND_URL = process.env.FRONTEND_URL;
 const transporter = nodemailer.createTransport({
   host: EMAIL_HOST,
   port: EMAIL_PORT,
-  secure: false, // true for 465, false for other ports
+  secure: false,
   auth: {
     user: EMAIL_USER,
     pass: EMAIL_PASS,
   },
 });
 
-// Helper to generate JWT token
-const generateToken = (userId, role) => {
+const generateToken = (Userid, role, email) => {
   if (!JWT_SECRET) {
     throw new Error('JWT_SECRET is not defined');
   }
-  return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  return jwt.sign({ Userid, role, email }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 };
 
-// Helper to send reset email
 const sendResetEmail = async (email, resetToken) => {
   const resetUrl = `${FRONTEND_URL}/reset-password/${resetToken}`;
   const mailOptions = {
@@ -51,85 +50,73 @@ const sendResetEmail = async (email, resetToken) => {
   await transporter.sendMail(mailOptions);
 };
 
-export const register = async (req, res) => {
-  let connection;
+export const register = catchAsync(async (req, res) => {
+  const { username, email, password, role, Deptid, staffId } = req.body;
+  const connection = await pool.getConnection();
+
   try {
-    const { name, email, password, role, departmentId, staffId } = req.body;
-
-    // Validate required fields
-    if (!name || !email || !password || !role) {
-      return res.status(400).json({ status: 'failure', message: 'Name, email, password, and role are required' });
-    }
-
-    if (role !== 'ADMIN' && role !== 'STAFF') {
-      return res.status(400).json({ status: 'failure', message: 'Role must be ADMIN or STAFF' });
-    }
-
-    if (role === 'STAFF' && !departmentId) {
-      return res.status(400).json({ status: 'failure', message: 'Department is required for STAFF role' });
-    }
-
-    connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    // Check if user exists
+    if (!username || !email || !password || !role || !Deptid) {
+      return res.status(400).json({
+        status: 'failure',
+        message: 'Username, email, password, role, and department are required',
+      });
+    }
+
+    const normalizedRole = role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+    if (!['Admin', 'Staff', 'Student'].includes(normalizedRole)) {
+      return res.status(400).json({ status: 'failure', message: 'Role must be Admin, Staff, or Student' });
+    }
+
     const [existingUser] = await connection.execute(
-      'SELECT userId FROM Users WHERE email = ?',
-      [email]
+      'SELECT Userid FROM users WHERE LOWER(email) = ? OR username = ?',
+      [email.toLowerCase(), username]
     );
     if (existingUser.length > 0) {
-      return res.status(400).json({ status: 'failure', message: 'User already exists' });
+      return res.status(400).json({ status: 'failure', message: 'Email or username already exists' });
     }
 
-    // Validate departmentId if provided
-    if (departmentId) {
-      const [dept] = await connection.execute(
-        'SELECT departmentId FROM Department WHERE departmentId = ? AND isActive = "YES"',
-        [departmentId]
-      );
-      if (dept.length === 0) {
-        return res.status(400).json({ status: 'failure', message: 'Invalid department' });
-      }
+    const [dept] = await connection.execute('SELECT Deptid FROM department WHERE Deptid = ?', [Deptid]);
+    if (dept.length === 0) {
+      return res.status(400).json({ status: 'failure', message: 'Invalid department' });
     }
 
-    // Validate staffId format if provided
-    if (staffId && !/^[A-Z]{3}[0-9]{3}$/.test(staffId)) {
-      return res.status(400).json({ status: 'failure', message: 'Staff ID must be in format ABC123' });
-    }
-
-    // Check if staffId is unique within department
-    if (staffId && departmentId) {
+    if (staffId) {
       const [existingStaff] = await connection.execute(
-        'SELECT userId FROM Users WHERE staffId = ? AND departmentId = ?',
-        [staffId, departmentId]
+        'SELECT Userid FROM users WHERE staffId = ? AND Deptid = ?',
+        [staffId, Deptid]
       );
       if (existingStaff.length > 0) {
         return res.status(400).json({ status: 'failure', message: 'Staff ID already exists in this department' });
       }
     }
 
-    // Hash password
     const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(password, saltRounds);
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Insert user
     const [result] = await connection.execute(
-      `INSERT INTO Users (staffId, name, email, passwordHash, role, departmentId, createdBy)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [staffId || null, name, email, passwordHash, role, departmentId || null, req.user?.email || email]
+      `INSERT INTO users (username, email, password, role, Deptid, staffId, status, Created_by, Updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+      [username, email.toLowerCase(), hashedPassword, normalizedRole, Deptid, staffId || null, null, null]
     );
 
-    const userId = result.insertId;
+    const Userid = result.insertId;
+
+    await connection.execute(
+      `UPDATE users SET Created_by = ?, Updated_by = ? WHERE Userid = ?`,
+      [Userid, Userid, Userid]
+    );
+
     const [userRows] = await connection.execute(
-      'SELECT userId, name, email, role, departmentId, staffId FROM Users WHERE userId = ?',
-      [userId]
+      'SELECT Userid, username, email, role, Deptid, staffId FROM users WHERE Userid = ?',
+      [Userid]
     );
     const user = userRows[0];
 
     await connection.commit();
 
-    // Generate token
-    const token = generateToken(user.userId, user.role);
+    const token = generateToken(user.Userid, user.role, user.email);
 
     res.status(201).json({
       status: 'success',
@@ -140,83 +127,93 @@ export const register = async (req, res) => {
       },
     });
   } catch (error) {
-    if (connection) await connection.rollback();
+    await connection.rollback();
     console.error('Register error:', error.message);
-    res.status(500).json({ status: 'failure', message: 'Registration failed' });
+    res.status(500).json({ status: 'failure', message: 'Registration failed: ' + error.message });
   } finally {
-    if (connection) connection.release();
+    connection.release();
   }
-};
+});
 
-export const login = async (req, res) => {
-  let connection;
+export const login = catchAsync(async (req, res) => {
+  const { email, password } = req.body;
+  const connection = await pool.getConnection();
+
   try {
-    const { email, password } = req.body;
+    await connection.beginTransaction();
 
     if (!email || !password) {
+      console.log('Login error: Email or password missing');
       return res.status(400).json({ status: 'failure', message: 'Email and password are required' });
     }
 
-    connection = await pool.getConnection();
-
-    // Find user by email
     const [users] = await connection.execute(
-      `SELECT userId, name, email, passwordHash, role, departmentId, staffId, isActive
-       FROM Users WHERE email = ? AND isActive = 'YES'`,
-      [email]
+      `SELECT Userid, username, email, password, role, Deptid, staffId, status
+       FROM users WHERE LOWER(email) = ?`,
+      [email.toLowerCase()]
     );
 
     if (users.length === 0) {
-      return res.status(401).json({ status: 'failure', message: 'Invalid credentials' });
+      console.log('Login error: No user found with email:', email);
+      return res.status(401).json({ status: 'failure', message: 'Invalid email or password' });
     }
 
     const user = users[0];
 
-    // Compare password
-    const isMatch = await bcrypt.compare(password, user.passwordHash);
-    if (!isMatch) {
-      return res.status(401).json({ status: 'failure', message: 'Invalid credentials' });
+    if (user.status !== 'active') {
+      console.log('Login error: User is inactive:', email);
+      return res.status(401).json({ status: 'failure', message: 'User account is inactive' });
     }
 
-    // Generate token
-    const token = generateToken(user.userId, user.role);
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      console.log('Login error: Invalid password for email:', email);
+      return res.status(401).json({ status: 'failure', message: 'Invalid email or password' });
+    }
+
+    const token = generateToken(user.Userid, user.role, user.email);
+    console.log('Login successful, generated token for:', user.email, token);
+
+    await connection.commit();
 
     res.status(200).json({
       status: 'success',
       message: 'Login successful',
       data: {
-        user: { 
-          userId: user.userId, 
-          name: user.name, 
-          email: user.email, 
-          role: user.role.toLowerCase(), 
-          departmentId: user.departmentId,
-          staffId: user.staffId 
+        user: {
+          Userid: user.Userid,
+          username: user.username,
+          email: user.email,
+          role: user.role.toLowerCase(),
+          Deptid: user.Deptid,
+          staffId: user.staffId,
         },
         token,
       },
     });
   } catch (error) {
+    await connection.rollback();
     console.error('Login error:', error.message);
-    res.status(500).json({ status: 'failure', message: 'Login failed' });
+    res.status(500).json({ status: 'failure', message: `Login failed: ${error.message}` });
   } finally {
-    if (connection) connection.release();
+    connection.release();
   }
-};
+});
 
-export const forgotPassword = async (req, res) => {
-  let connection;
+export const forgotPassword = catchAsync(async (req, res) => {
+  const { email } = req.body;
+  const connection = await pool.getConnection();
+
   try {
-    const { email } = req.body;
+    await connection.beginTransaction();
+
     if (!email) {
       return res.status(400).json({ status: 'failure', message: 'Email is required' });
     }
 
-    connection = await pool.getConnection();
-
     const [users] = await connection.execute(
-      'SELECT userId, email FROM Users WHERE email = ? AND isActive = "YES"',
-      [email]
+      'SELECT Userid, email FROM users WHERE LOWER(email) = ? AND status = "active"',
+      [email.toLowerCase()]
     );
 
     if (users.length === 0) {
@@ -225,48 +222,47 @@ export const forgotPassword = async (req, res) => {
 
     const user = users[0];
 
-    // Generate reset token
     const resetToken = crypto.randomBytes(32).toString('hex');
-    const expiresInMs = 10 * 60 * 1000; // 10 minutes
+    const expiresInMs = 10 * 60 * 1000;
     const resetTokenExpiry = new Date(Date.now() + expiresInMs);
 
-    // Update user with reset token
     await connection.execute(
-      'UPDATE Users SET resetToken = ?, resetTokenExpiry = ? WHERE userId = ?',
-      [resetToken, resetTokenExpiry, user.userId]
+      'UPDATE users SET resetPasswordToken = ?, resetPasswordExpires = ? WHERE Userid = ?',
+      [resetToken, resetTokenExpiry, user.Userid]
     );
 
-    // Send email
     await sendResetEmail(user.email, resetToken);
+
+    await connection.commit();
 
     res.status(200).json({
       status: 'success',
       message: 'Password reset email sent',
     });
   } catch (error) {
+    await connection.rollback();
     console.error('Forgot password error:', error.message);
-    res.status(500).json({ status: 'failure', message: 'Failed to send reset email' });
+    res.status(500).json({ status: 'failure', message: 'Failed to send reset email: ' + error.message });
   } finally {
-    if (connection) connection.release();
+    connection.release();
   }
-};
+});
 
-export const resetPassword = async (req, res) => {
-  let connection;
+export const resetPassword = catchAsync(async (req, res) => {
+  const { token } = req.params;
+  const { password } = req.body;
+  const connection = await pool.getConnection();
+
   try {
-    const { token } = req.params;
-    const { password } = req.body;
+    await connection.beginTransaction();
 
     if (!password || password.length < 6) {
       return res.status(400).json({ status: 'failure', message: 'New password is required (min 6 chars)' });
     }
 
-    connection = await pool.getConnection();
-
-    // Find user with valid reset token
     const [users] = await connection.execute(
-      `SELECT userId FROM Users 
-       WHERE resetToken = ? AND resetTokenExpiry > NOW() AND isActive = 'YES'`,
+      `SELECT Userid FROM users 
+       WHERE resetPasswordToken = ? AND resetPasswordExpires > NOW() AND status = 'active'`,
       [token]
     );
 
@@ -276,63 +272,86 @@ export const resetPassword = async (req, res) => {
 
     const user = users[0];
 
-    // Hash new password
     const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(password, saltRounds);
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Update password and clear reset token
     await connection.execute(
-      'UPDATE Users SET passwordHash = ?, resetToken = NULL, resetTokenExpiry = NULL, updatedBy = ?, updatedDate = CURRENT_TIMESTAMP WHERE userId = ?',
-      [passwordHash, 'system', user.userId]
+      'UPDATE users SET password = ?, resetPasswordToken = NULL, resetPasswordExpires = NULL, Updated_by = ? WHERE Userid = ?',
+      [hashedPassword, user.Userid, user.Userid]
     );
+
+    await connection.commit();
 
     res.status(200).json({
       status: 'success',
       message: 'Password reset successful',
     });
   } catch (error) {
+    await connection.rollback();
     console.error('Reset password error:', error.message);
-    res.status(500).json({ status: 'failure', message: 'Password reset failed' });
+    res.status(500).json({ status: 'failure', message: 'Password reset failed: ' + error.message });
   } finally {
-    if (connection) connection.release();
+    connection.release();
   }
-};
+});
 
-export const logout = async (req, res) => {
+export const logout = catchAsync(async (req, res) => {
   res.status(200).json({
     status: 'success',
     message: 'Logged out successfully',
   });
-};
+});
 
-// Middleware to protect routes
-export const protect = async (req, res, next) => {
-  let connection;
-  try {
-    let token;
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-      token = req.headers.authorization.split(' ')[1];
-    }
-
-    if (!token) {
-      return res.status(401).json({ status: 'failure', message: 'Not authorized, token required' });
-    }
-
-    const decoded = jwt.verify(token, JWT_SECRET);
-    connection = await pool.getConnection();
-    const [users] = await connection.execute(
-      'SELECT userId, name, role, email, staffId, departmentId FROM Users WHERE userId = ? AND isActive = "YES"',
-      [decoded.userId]
-    );
-    if (users.length === 0) {
-      return res.status(401).json({ status: 'failure', message: 'Invalid token or user not found' });
-    }
-    req.user = users[0];
-    next();
-  } catch (error) {
-    console.error('Token verification error:', error.message);
-    res.status(401).json({ status: 'failure', message: 'Invalid token' });
-  } finally {
-    if (connection) connection.release();
+export const protect = catchAsync(async (req, res, next) => {
+  let token;
+  const authHeader = req.headers.authorization || req.headers.Authorization; // Handle both cases
+  //console.log('Protect: Authorization Header:', authHeader); // Debug log
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+   // console.log('Protect: Extracted Token:', token); // Debug log
   }
-};
+
+  if (!token) {
+   // console.log('Protect error: No token provided');
+    return res.status(401).json({ status: 'failure', message: 'Not authorized, token required' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    //console.log('Protect: Decoded Token:', decoded); // Debug log
+
+    const connection = await pool.getConnection();
+    try {
+      const [users] = await connection.execute(
+        'SELECT Userid, username, role, email, staffId, Deptid, status FROM users WHERE Userid = ? AND status = ?',
+        [decoded.Userid, 'active']
+      );
+      //console.log('Protect: Database Query Result:', users); // Debug log
+
+      if (users.length === 0) {
+       // console.log('Protect error: No active user found for Userid:', decoded.Userid);
+        return res.status(401).json({ status: 'failure', message: 'Invalid token or user not found' });
+      }
+
+      const user = users[0];
+      //console.log('Protect: User Data:', user); // Debug log
+
+      if (!user.email) {
+        //console.log('Protect error: User email is missing for Userid:', decoded.Userid);
+        return res.status(401).json({
+          status: 'failure',
+          message: 'Authentication required: No user or email provided',
+        });
+      }
+
+      req.user = user;
+     // console.log('Protect: req.user set:', req.user); // Debug log
+      next();
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('Protect: Token verification error:', error.message);
+    return res.status(401).json({ status: 'failure', message: 'Invalid token: ' + error.message });
+  }
+});

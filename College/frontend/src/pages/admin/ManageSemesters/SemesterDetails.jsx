@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronRight, Plus, BookOpen, Trash2 } from 'lucide-react';
 import { branchMap } from './branchMap';
 import { toast } from 'react-toastify';
-import axios from 'axios';
+import { api } from '../../../services/authService'; // Import the api instance
 import CourseCard from './CourseCard';
 import CourseForm from './CourseForm';
 
@@ -21,13 +21,13 @@ const SemesterDetails = ({ semester, onBack, onDelete }) => {
   const fetchCourses = async () => {
     setLoading(true);
     try {
-      const { data } = await axios.get(`${API_BASE}/semesters/${semester.semesterId}/courses`);
+      const { data } = await api.get(`${API_BASE}/semesters/${semester.semesterId}/courses`);
       setCourses(data.data || []);
     } catch (err) {
-      if (err.response?.status !== 404) { // Only toast on non-404 errors (404 means no courses)
+      if (err.response?.status !== 404) {
         toast.error('Failed to fetch courses');
       }
-      setCourses([]); // Treat 404 as empty
+      setCourses([]);
     } finally {
       setLoading(false);
     }
@@ -37,7 +37,7 @@ const SemesterDetails = ({ semester, onBack, onDelete }) => {
   const handleDelete = async (courseId) => {
     if (window.confirm('Delete this course?')) {
       try {
-        await axios.delete(`${API_BASE}/courses/${courseId}`);
+        await api.delete(`${API_BASE}/courses/${courseId}`);
         toast.success('Course deleted');
         fetchCourses();
       } catch (err) {

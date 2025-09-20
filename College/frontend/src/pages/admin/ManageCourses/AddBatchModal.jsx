@@ -1,5 +1,9 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { api } from '../../../services/authService'; // Adjust path if needed
+
+const API_BASE = 'http://localhost:4000/api/admin';
 
 const AddBatchModal = ({
   selectedCourse,
@@ -9,6 +13,29 @@ const AddBatchModal = ({
   setShowAddBatchModal,
   setShowCourseDetailsModal,
 }) => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedCourse || !newBatchForm.numberOfBatches) {
+      toast.error('Missing course or number of batches');
+      return;
+    }
+    try {
+      await api.post(`${API_BASE}/courses/${selectedCourse.courseCode}/sections`, {
+        numberOfSections: parseInt(newBatchForm.numberOfBatches) || 1,
+      });
+      toast.success(`Added ${newBatchForm.numberOfBatches} batch${newBatchForm.numberOfBatches > 1 ? 'es' : ''} successfully`);
+      setShowAddBatchModal(false);
+      setShowCourseDetailsModal(true);
+      handleAddBatch();
+    } catch (err) {
+      const message = err.response?.data?.message || 'Error adding batches';
+      toast.error(message);
+      if (message.includes('Unknown column')) {
+        toast.warn('Database configuration issue detected. Please check server settings.');
+      }
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl max-w-md w-full">
@@ -25,7 +52,7 @@ const AddBatchModal = ({
               <X size={24} />
             </button>
           </div>
-          <form onSubmit={handleAddBatch}>
+          <form onSubmit={handleSubmit}>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">Number of Batches *</label>
               <input

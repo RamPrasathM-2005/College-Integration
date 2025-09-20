@@ -20,7 +20,14 @@ const useManageStaffData = () => {
     setLoading(true);
     try {
       const departmentsData = await manageStaffService.getDepartments();
-      setDepartments(departmentsData.filter(d => d.isActive === 'YES'));
+      // Map department response to expected format
+      const formattedDepartments = departmentsData.map(dept => ({
+        departmentId: dept.Deptid,
+        departmentName: dept.Deptname,
+        departmentAcronym: dept.Deptacronym,
+        isActive: 'YES', // Assume all departments are active
+      }));
+      setDepartments(formattedDepartments);
 
       const [semestersData, batchesData, usersData, coursesData] = await Promise.all([
         manageStaffService.getSemesters(),
@@ -33,8 +40,8 @@ const useManageStaffData = () => {
       setBatches(batchesData);
 
       const staffData = Array.isArray(usersData)
-        ? usersData.filter(user => user.staffId).map(user => {
-            const department = departmentsData.find(d => d.departmentId === user.departmentId);
+        ? usersData.map(user => {
+            const department = formattedDepartments.find(d => d.departmentId === (user.Deptid || user.departmentId));
             const allocatedCourses = Array.isArray(user.allocatedCourses)
               ? user.allocatedCourses.map(course => ({
                   id: course.staffCourseId || 0,
@@ -50,16 +57,16 @@ const useManageStaffData = () => {
               : [];
             return {
               id: user.id || 0,
-              staffId: user.staffId || 'Unknown',
+              staffId: user.staffId || `STAFF_${user.id}`, // Fallback for null staffId
               name: user.name || 'Unknown',
               email: user.email || '',
-              departmentId: user.departmentId || 0,
-              departmentName: department ? department.departmentName : user.departmentName || 'Unknown',
+              departmentId: user.Deptid || user.departmentId || 0,
+              departmentName: department ? department.departmentName : user.Deptname || user.departmentName || 'Unknown',
               allocatedCourses,
             };
           })
         : [];
-      setStaffList(staffData.filter((staff, index, self) => index === self.findIndex(s => s.staffId === staff.staffId)));
+      setStaffList(staffData.filter((staff, index, self) => index === self.findIndex(s => s.id === staff.id)));
 
       const coursesWithDetails = await Promise.all(
         Array.isArray(coursesData) ? coursesData.map(async course => {
@@ -97,7 +104,7 @@ const useManageStaffData = () => {
 
   useEffect(() => {
     if (selectedStaff && staffList.length > 0) {
-      const updatedStaff = staffList.find(s => s.staffId === selectedStaff.staffId);
+      const updatedStaff = staffList.find(s => s.id === selectedStaff.id);
       if (updatedStaff) {
         const oldCoursesMap = new Map(selectedStaff.allocatedCourses.map(c => [c.id, c]));
         const newCoursesMap = new Map(updatedStaff.allocatedCourses.map(c => [c.id, c]));

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, BookOpen, CalendarDays } from 'lucide-react';
 import { toast } from 'react-toastify';
-import axios from 'axios';
+import { api } from '../../../services/authService'; // Import the api instance
 import { degrees, branchMap } from './branchMap';
 
 const API_BASE = 'http://localhost:4000/api/admin';
@@ -39,11 +39,11 @@ const CreateSemesterForm = ({ showCreateForm, setShowCreateForm, onRefresh }) =>
       // Check existing semesters for batch/branch/degree (handle 404 as empty)
       let existing = [];
       try {
-        const { data: existingRes } = await axios.get(`${API_BASE}/semesters/by-batch-branch?batch=${formData.batch}&branch=${formData.branch}&degree=${formData.degree}`);
+        const { data: existingRes } = await api.get(`${API_BASE}/semesters/by-batch-branch?batch=${formData.batch}&branch=${formData.branch}&degree=${formData.degree}`);
         existing = existingRes.data || [];
       } catch (existingErr) {
         if (existingErr.response?.status !== 404) {
-          throw existingErr;  // Re-throw non-404 errors
+          throw existingErr; // Re-throw non-404 errors
         }
         // 404 means no existing semesters (length 0), safe to proceed
       }
@@ -55,13 +55,13 @@ const CreateSemesterForm = ({ showCreateForm, setShowCreateForm, onRefresh }) =>
       // Check if batch exists (existing code handles 404 by creating)
       let batchId;
       try {
-        const { data: batchRes } = await axios.get(`${API_BASE}/batches/find?degree=${formData.degree}&branch=${formData.branch}&batch=${formData.batch}`);
+        const { data: batchRes } = await api.get(`${API_BASE}/batches/find?degree=${formData.degree}&branch=${formData.branch}&batch=${formData.batch}`);
         batchId = batchRes.data.batchId;
       } catch (err) {
         if (err.response?.status === 404) {
           // Create batch
           const batchYears = `${formData.batch}-${parseInt(formData.batch) + 4}`;
-          const batchRes = await axios.post(`${API_BASE}/batches`, {
+          const batchRes = await api.post(`${API_BASE}/batches`, {
             degree: formData.degree,
             branch: formData.branch,
             batch: formData.batch,
@@ -76,7 +76,7 @@ const CreateSemesterForm = ({ showCreateForm, setShowCreateForm, onRefresh }) =>
       }
 
       // Create semester
-      const semesterRes = await axios.post(`${API_BASE}/semesters`, {
+      const semesterRes = await api.post(`${API_BASE}/semesters`, {
         ...formData,
         semesterNumber: parseInt(formData.semesterNumber)
       });

@@ -1,5 +1,9 @@
 import React from 'react';
 import { X, Edit3, Plus, UserPlus, Trash2 } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { api } from '../../../services/authService'; // Adjust path if needed
+
+const API_BASE = 'http://localhost:4000/api/admin';
 
 const CourseDetailsModal = ({
   selectedCourse,
@@ -15,6 +19,36 @@ const CourseDetailsModal = ({
   setSelectedBatch,
   setShowAllocateStaffModal,
 }) => {
+  const onDeleteBatch = async (courseCode, sectionName) => {
+    if (!confirm(`Delete batch ${sectionName}? This action cannot be undone.`)) return;
+    try {
+      await api.delete(`${API_BASE}/courses/${courseCode}/sections/${sectionName}`);
+      toast.success('Batch deleted successfully');
+      handleDeleteBatch(courseCode, sectionName);
+    } catch (err) {
+      const message = err.response?.data?.message || 'Error deleting batch';
+      toast.error(message);
+      if (message.includes('Unknown column')) {
+        toast.warn('Database configuration issue detected. Please check server settings.');
+      }
+    }
+  };
+
+  const onDeleteStaff = async (staffCourseId) => {
+    if (!confirm('Remove this staff from the batch?')) return;
+    try {
+      await api.delete(`${API_BASE}/staff-courses/${staffCourseId}`);
+      toast.success('Staff removed successfully');
+      handleDeleteStaff(staffCourseId);
+    } catch (err) {
+      const message = err.response?.data?.message || 'Error removing staff';
+      toast.error(message);
+      if (message.includes('Unknown column')) {
+        toast.warn('Database configuration issue detected. Please check server settings.');
+      }
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
@@ -97,7 +131,7 @@ const CourseDetailsModal = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteStaff(staffs[0].staffCourseId);
+                            onDeleteStaff(staffs[0].staffCourseId);
                           }}
                           className="bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
                         >
@@ -121,7 +155,7 @@ const CourseDetailsModal = ({
                       </button>
                     )}
                     <button
-                      onClick={() => handleDeleteBatch(selectedCourse.courseCode, sectionName)}
+                      onClick={() => onDeleteBatch(selectedCourse.courseCode, sectionName)}
                       className="ml-2 text-red-500 hover:text-red-700"
                     >
                       Delete Batch

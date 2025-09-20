@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Save, X } from 'lucide-react';
 import { toast } from 'react-toastify';
-import axios from 'axios';
+import { api } from '../../../services/authService'; // Adjust path to your api.js file
 import { courseTypes, categories } from './branchMap';
 
 const API_BASE = 'http://localhost:4000/api/admin';
@@ -21,7 +21,7 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
     totalContactPeriods: 4,
     credits: 4,
     isActive: 'YES',
-    createdBy: 'admin' // or updatedBy for edit
+    createdBy: 'admin', // or updatedBy for edit
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({}); // For validation styling
@@ -30,7 +30,7 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
     if (course) {
       setFormData({
         ...course,
-        updatedBy: 'admin'
+        updatedBy: 'admin',
       });
     } else {
       setFormData({
@@ -47,7 +47,7 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
         totalContactPeriods: 4,
         credits: 4,
         isActive: 'YES',
-        createdBy: 'admin'
+        createdBy: 'admin',
       });
     }
     setErrors({});
@@ -57,8 +57,13 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
     const newErrors = {};
     if (!formData.courseTitle) newErrors.courseTitle = 'Title is required';
     if (formData.minMark > formData.maxMark) newErrors.minMark = 'Min mark must be <= max mark';
-    const totalHours = parseInt(formData.lectureHours) + parseInt(formData.tutorialHours) + parseInt(formData.practicalHours) + parseInt(formData.experientialHours);
-    if (formData.totalContactPeriods !== totalHours) newErrors.totalContactPeriods = 'Must equal sum of hours';
+    const totalHours =
+      parseInt(formData.lectureHours) +
+      parseInt(formData.tutorialHours) +
+      parseInt(formData.practicalHours) +
+      parseInt(formData.experientialHours);
+    if (formData.totalContactPeriods !== totalHours)
+      newErrors.totalContactPeriods = 'Must equal sum of hours';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -74,13 +79,13 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
     try {
       if (course) {
         // Update
-        await axios.put(`${API_BASE}/courses/${course.courseId}`, formData);
+        await api.put(`${API_BASE}/courses/${course.courseId}`, formData);
         toast.success('Course updated successfully');
       } else {
         // Add
-        const response = await axios.post(`${API_BASE}/semesters/${semesterId}/courses`, {
+        const response = await api.post(`${API_BASE}/semesters/${semesterId}/courses`, {
           ...formData,
-          semesterId
+          semesterId,
         });
         if (response.data && response.data.error) {
           if (response.data.error.includes('Duplicate entry')) {
@@ -95,7 +100,7 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
       onClose();
       onRefresh();
     } catch (err) {
-      const msg = err.response?.data?.error || err.response?.data?.message || 'Failed to save course';
+      const msg = err.response?.data?.message || 'Failed to save course';
       if (msg.includes('Duplicate entry')) {
         toast.error('Unique key violated');
       } else {
@@ -113,14 +118,14 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-auto border border-gray-100">
         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
           <h3 className="text-2xl font-bold text-gray-800">{course ? 'Edit Course' : 'Add Course'}</h3>
-          <button 
-            onClick={onClose} 
+          <button
+            onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-full transition-all duration-200 hover:scale-110"
           >
             <X className="w-6 h-6 text-gray-500" />
           </button>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-1">
             <label className="block text-sm font-semibold text-gray-700 mb-2">Course Code</label>
@@ -135,7 +140,7 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
               required
             />
           </div>
-          
+
           <div className="space-y-1">
             <label className="block text-sm font-semibold text-gray-700 mb-2">Course Title</label>
             <input
@@ -148,9 +153,11 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
               }`}
               required
             />
-            {errors.courseTitle && <p className="text-sm text-red-500 mt-2 flex items-center gap-1">{errors.courseTitle}</p>}
+            {errors.courseTitle && (
+              <p className="text-sm text-red-500 mt-2 flex items-center gap-1">{errors.courseTitle}</p>
+            )}
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="block text-sm font-semibold text-gray-700 mb-2">Type</label>
@@ -159,7 +166,11 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
                 onChange={(e) => setFormData({ ...formData, type: e.target.value })}
                 className="w-full p-3 border-2 border-gray-200 rounded-lg transition-all duration-200 focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300 bg-white"
               >
-                {courseTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+                {courseTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="space-y-1">
@@ -169,11 +180,27 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 className="w-full p-3 border-2 border-gray-200 rounded-lg transition-all duration-200 focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300 bg-white"
               >
-                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
-          
+
+          <div className="space-y-1">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Active Status</label>
+            <select
+              value={formData.isActive}
+              onChange={(e) => setFormData({ ...formData, isActive: e.target.value })}
+              className="w-full p-3 border-2 border-gray-200 rounded-lg transition-all duration-200 focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300 bg-white"
+            >
+              <option value="YES">YES</option>
+              <option value="NO">NO</option>
+            </select>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="block text-sm font-semibold text-gray-700 mb-2">Min Mark</label>
@@ -201,57 +228,57 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
               />
             </div>
           </div>
-          
+
           <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
             <h4 className="text-sm font-semibold text-gray-700 mb-3">Contact Hours</h4>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="space-y-1">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Lecture Hrs</label>
-                <input 
-                  type="number" 
-                  placeholder="0" 
-                  value={formData.lectureHours} 
-                  onChange={(e) => setFormData({ ...formData, lectureHours: parseInt(e.target.value) || 0 })} 
-                  className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300" 
-                  min="0" 
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={formData.lectureHours}
+                  onChange={(e) => setFormData({ ...formData, lectureHours: parseInt(e.target.value) || 0 })}
+                  className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300"
+                  min="0"
                 />
               </div>
               <div className="space-y-1">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Tutorial Hrs</label>
-                <input 
-                  type="number" 
-                  placeholder="0" 
-                  value={formData.tutorialHours} 
-                  onChange={(e) => setFormData({ ...formData, tutorialHours: parseInt(e.target.value) || 0 })} 
-                  className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300" 
-                  min="0" 
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={formData.tutorialHours}
+                  onChange={(e) => setFormData({ ...formData, tutorialHours: parseInt(e.target.value) || 0 })}
+                  className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300"
+                  min="0"
                 />
               </div>
               <div className="space-y-1">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Practical Hrs</label>
-                <input 
-                  type="number" 
-                  placeholder="0" 
-                  value={formData.practicalHours} 
-                  onChange={(e) => setFormData({ ...formData, practicalHours: parseInt(e.target.value) || 0 })} 
-                  className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300" 
-                  min="0" 
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={formData.practicalHours}
+                  onChange={(e) => setFormData({ ...formData, practicalHours: parseInt(e.target.value) || 0 })}
+                  className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300"
+                  min="0"
                 />
               </div>
               <div className="space-y-1">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Experiential Hrs</label>
-                <input 
-                  type="number" 
-                  placeholder="0" 
-                  value={formData.experientialHours} 
-                  onChange={(e) => setFormData({ ...formData, experientialHours: parseInt(e.target.value) || 0 })} 
-                  className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300" 
-                  min="0" 
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={formData.experientialHours}
+                  onChange={(e) => setFormData({ ...formData, experientialHours: parseInt(e.target.value) || 0 })}
+                  className="w-full p-2 border-2 border-gray-200 rounded-lg text-sm transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300"
+                  min="0"
                 />
               </div>
             </div>
           </div>
-          
+
           <div className="space-y-1">
             <label className="block text-sm font-semibold text-gray-700 mb-2">Total Contact Periods</label>
             <input
@@ -264,9 +291,11 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
               }`}
               min="0"
             />
-            {errors.totalContactPeriods && <p className="text-sm text-red-500 mt-2">{errors.totalContactPeriods}</p>}
+            {errors.totalContactPeriods && (
+              <p className="text-sm text-red-500 mt-2">{errors.totalContactPeriods}</p>
+            )}
           </div>
-          
+
           <div className="space-y-1">
             <label className="block text-sm font-semibold text-gray-700 mb-2">Credits</label>
             <input
@@ -278,11 +307,11 @@ const CourseForm = ({ isOpen, onClose, semesterId, course = null, onRefresh }) =
               min="0"
             />
           </div>
-          
+
           <div className="pt-4 border-t border-gray-200">
-            <button 
-              type="submit" 
-              disabled={loading} 
+            <button
+              type="submit"
+              disabled={loading}
               className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 rounded-xl hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-lg transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg"
             >
               <Save className="w-5 h-5" />
