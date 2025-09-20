@@ -61,14 +61,27 @@ const MarksAllocation = () => {
     return tools.reduce((sum, tool) => sum + (tool.weightage || 0), 0);
   };
 
+  // const handleSavePartitionsClick = async () => {
+  //   const result = await handleSavePartitions(partitions.partitionId);
+  //   if (result.success) {
+  //     await handlePartitionsConfirmation();
+  //   } else {
+  //     MySwal.fire('Error', result.error, 'error');
+  //   }
+  // };
+
   const handleSavePartitionsClick = async () => {
-    const result = await handleSavePartitions(partitions.partitionId);
-    if (result.success) {
-      await handlePartitionsConfirmation();
-    } else {
-      MySwal.fire('Error', result.error, 'error');
-    }
-  };
+  if (
+    newPartition.theoryCount < 0 ||
+    newPartition.practicalCount < 0 ||
+    newPartition.experientialCount < 0
+  ) {
+    MySwal.fire('Error', 'Partition counts cannot be negative', 'error');
+    return;
+  }
+  // Trigger confirmation dialog
+  await handlePartitionsConfirmation();
+};
 
   const handleAddTempToolClick = () => {
     if (!newTool.toolName || newTool.weightage <= 0 || newTool.maxMarks <= 0) {
