@@ -17,6 +17,7 @@ export const searchStudents = catchAsync(async (req, res) => {
         b.batchId,
         b.degree,
         b.branch,
+        d.Deptacronym,
         sc.courseCode,
         sc.sectionId,
         s.sectionName,
@@ -24,6 +25,7 @@ export const searchStudents = catchAsync(async (req, res) => {
         us.username AS staffName
       FROM student_details sd
       JOIN users u ON sd.Userid = u.Userid
+      JOIN department d ON sd.Deptid = d.Deptid
       JOIN Batch b ON sd.batch = b.batch
       LEFT JOIN StudentCourse sc ON sd.regno = sc.regno
       LEFT JOIN Section s ON sc.sectionId = s.sectionId AND sc.courseCode = s.courseCode
@@ -38,7 +40,7 @@ export const searchStudents = catchAsync(async (req, res) => {
       queryParams.push(degree);
     }
     if (branch) {
-      query += ' AND b.branch = ?';
+      query += ' AND d.Deptacronym = ?';
       queryParams.push(branch);
     }
     if (batch) {
@@ -234,7 +236,10 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
 
     // Validate student using student_details table
     const [studentRows] = await connection.execute(
-      `SELECT batch, Semester AS semesterNumber FROM student_details WHERE regno = ?`,
+      `SELECT sd.batch, sd.Semester AS semesterNumber, sd.Deptid, d.Deptacronym
+       FROM student_details sd
+       JOIN department d ON sd.Deptid = d.Deptid
+       WHERE sd.regno = ?`,
       [rollnumber]
     );
     if (studentRows.length === 0) {
@@ -243,34 +248,35 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
         message: `No student found with rollnumber ${rollnumber}`,
       });
     }
-    const { batch, semesterNumber } = studentRows[0];
+    const { batch, semesterNumber, Deptid, Deptacronym } = studentRows[0];
 
-    console.log('Student Data:', { batch, semesterNumber }); // Debugging log
+    console.log('Student Data:', { batch, semesterNumber, Deptid, Deptacronym }); // Debugging log
 
-    // Get batchId from Batch table
+    // Get batchId from Batch table, ensuring branch matches department
     const [batchRows] = await connection.execute(
-      `SELECT batchId FROM Batch WHERE batch = ? AND isActive = 'YES'`,
-      [batch]
+      `SELECT batchId FROM Batch WHERE batch = ? AND branch = ? AND isActive = 'YES'`,
+      [batch, Deptacronym]
     );
     if (batchRows.length === 0) {
       return res.status(404).json({
         status: "failure",
-        message: `No active batch found with batch ${batch}`,
+        message: `No active batch found for batch ${batch} and branch ${Deptacronym}`,
       });
     }
     const { batchId } = batchRows[0];
 
     // Validate course and semester
     const [courseRows] = await connection.execute(
-      `SELECT courseId FROM Course c
+      `SELECT c.courseId FROM Course c
        JOIN Semester s ON c.semesterId = s.semesterId
-       WHERE c.courseCode = ? AND s.batchId = ? AND s.semesterNumber = ? AND c.isActive = 'YES'`,
-      [courseCode, batchId, semesterNumber]
+       JOIN Batch b ON s.batchId = b.batchId
+       WHERE c.courseCode = ? AND s.batchId = ? AND s.semesterNumber = ? AND c.isActive = 'YES' AND b.branch = ?`,
+      [courseCode, batchId, semesterNumber, Deptacronym]
     );
     if (courseRows.length === 0) {
       return res.status(404).json({
         status: "failure",
-        message: `No active course ${courseCode} found for semester ${semesterNumber}`,
+        message: `No active course ${courseCode} found for semester ${semesterNumber} and branch ${Deptacronym}`,
       });
     }
 
@@ -317,7 +323,7 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
               message: `No active staff found with Userid ${Userid}`,
             });
           }
-          const { Deptid } = staffRows[0];
+          const { Deptid: staffDeptid } = staffRows[0];
           const [staffCourse] = await connection.execute(
             `SELECT staffCourseId FROM StaffCourse WHERE courseCode = ? AND sectionId = ? AND staffId = ?`,
             [courseCode, sectionId, Userid]
@@ -326,7 +332,7 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
             await connection.execute(
               `INSERT INTO StaffCourse (staffId, courseCode, sectionId, Deptid, createdBy, updatedBy)
                VALUES (?, ?, ?, ?, ?, ?)`,
-              [Userid, courseCode, sectionId, Deptid, userEmail, userEmail]
+              [Userid, courseCode, sectionId, staffDeptid, userEmail, userEmail]
             );
           }
         }
@@ -362,7 +368,7 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
           message: `No active staff found with Userid ${Userid}`,
         });
       }
-      const { Deptid } = staffRows[0];
+      const { Deptid: staffDeptid } = staffRows[0];
       const [staffCourse] = await connection.execute(
         `SELECT staffCourseId FROM StaffCourse WHERE courseCode = ? AND sectionId = ? AND staffId = ?`,
         [courseCode, sectionId, Userid]
@@ -371,7 +377,7 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
         await connection.execute(
           `INSERT INTO StaffCourse (staffId, courseCode, sectionId, Deptid, createdBy, updatedBy)
            VALUES (?, ?, ?, ?, ?, ?)`,
-          [Userid, courseCode, sectionId, Deptid, userEmail, userEmail]
+          [Userid, courseCode, sectionId, staffDeptid, userEmail, userEmail]
         );
       }
     }
