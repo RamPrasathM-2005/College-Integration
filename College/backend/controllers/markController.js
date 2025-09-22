@@ -826,8 +826,9 @@ export const getStudentsForSection = async (req, res) => {
   const staffId = getStaffId(req);
   try {
     const [rows] = await pool.query(
-      `SELECT sd.regno, sd.first_name AS name
+      `SELECT sd.regno, u.username AS name
        FROM student_details sd
+       JOIN users u ON sd.Userid = u.Userid
        JOIN StudentCourse sc ON sd.regno = sc.regno
        JOIN StaffCourse stc ON sc.courseCode = stc.courseCode AND sc.sectionId = stc.sectionId
        WHERE sc.courseCode = ? AND sc.sectionId = ? AND stc.staffId = ?`,

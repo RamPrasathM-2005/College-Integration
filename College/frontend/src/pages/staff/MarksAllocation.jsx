@@ -511,15 +511,15 @@ const MarksAllocation = () => {
                   </thead>
                   <tbody>
                     {students.map(student => (
-                      <tr key={student.rollnumber}>
+                      <tr key={student.regno}>
                         <td className="border p-2">{student.name}</td>
-                        <td className="border p-2">{student.rollnumber}</td>
+                        <td className="border p-2">{student.regno}</td>
                         {selectedCO.tools?.map(tool => (
                           <td key={tool.toolId} className="border p-2">
                             <input
                               type="number"
                               value={student.marks?.[tool.toolId] || ''}
-                              onChange={(e) => updateStudentMark(tool.toolId, student.rollnumber, parseInt(e.target.value) || 0)}
+                              onChange={(e) => updateStudentMark(tool.toolId, student.regno, parseInt(e.target.value) || 0)}
                               className="w-full p-1 border rounded-lg"
                               min="0"
                               max={tool.maxMarks}
