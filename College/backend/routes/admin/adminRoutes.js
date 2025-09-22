@@ -144,12 +144,12 @@ router.route("/batches/:batchId").get(getBatchById).put(updateBatch).delete(dele
 /* =========================
    📌 Timetable Routes
    ========================= */
-router.get('/timetable/batches', getAllTimetableBatches);
-router.get('/timetable/departments', getAllTimetableDepartments);
-router.get('/timetable/by-filters', getTimetableByFilters);
-router.get('/timetable/semester/:semesterId', getTimetable);
-router.post('/timetable/entry', createTimetableEntry);
-router.put('/timetable/entry/:timetableId', updateTimetableEntry);
-router.delete('/timetable/entry/:timetableId', deleteTimetableEntry);
+router.get('/timetable/batches', protect,getAllTimetableBatches);
+router.get('/timetable/departments',protect, getAllTimetableDepartments);
+router.get('/timetable/by-filters', protect, getTimetableByFilters);
+router.get('/timetable/semester/:semesterId',protect, getTimetable);
+router.post('/timetable/entry',protect, createTimetableEntry);
+router.put('/timetable/entry/:timetableId',protect, updateTimetableEntry);
+router.delete('/timetable/entry/:timetableId',protect, deleteTimetableEntry);
 
 export default router;
