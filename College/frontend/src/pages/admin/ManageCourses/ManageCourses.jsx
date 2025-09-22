@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, BookOpen } from 'lucide-react';
+import { Plus, BookOpen, Upload } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { api } from '../../../services/authService.js'; // Adjust path if needed
+import { api } from '../../../services/authService.js';
+import * as XLSX from 'xlsx';
 import Filters from './Filters.jsx';
 import CourseCard from './CourseCard.jsx';
 import CourseForm from '../ManageSemesters/CourseForm.jsx';
@@ -9,6 +10,7 @@ import CourseDetailsModal from './CourseDetailsModal.jsx';
 import AddBatchModal from './AddBatchModal.jsx';
 import AllocateStaffModal from './AllocateStaffModal.jsx';
 import SelectSemesterModal from './SelectSemesterModal.jsx';
+import ImportModal from './ImportModal.jsx';
 
 const API_BASE = 'http://localhost:4000/api/admin';
 
@@ -34,6 +36,7 @@ const ManageCourses = () => {
   const [showAllocateStaffModal, setShowAllocateStaffModal] = useState(false);
   const [showCourseDetailsModal, setShowCourseDetailsModal] = useState(false);
   const [showCourseForm, setShowCourseForm] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [selectedSemesterId, setSelectedSemesterId] = useState('');
@@ -48,12 +51,10 @@ const ManageCourses = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch semesters
       const semRes = await api.get(`${API_BASE}/semesters`);
       const semestersData = semRes.data.data || [];
       setSemesters(semestersData);
 
-      // Fetch courses for each semester
       let allCourses = [];
       for (const semester of semestersData) {
         try {
@@ -76,7 +77,6 @@ const ManageCourses = () => {
       allCourses.sort((a, b) => b.courseId - a.courseId);
       setCourses(allCourses);
 
-      // Fetch sections for all courses
       const sectionsData = {};
       for (const course of allCourses) {
         try {
@@ -118,7 +118,6 @@ const ManageCourses = () => {
       }
       setSections(sectionsData);
 
-      // Fetch staff list
       const usersRes = await api.get(`${API_BASE}/users`);
       let staffData = usersRes.data.data.filter(user => user.departmentId);
       staffData = staffData.map(user => ({
@@ -149,8 +148,9 @@ const ManageCourses = () => {
       (staff.name || '').toLowerCase().includes(staffSearch.toLowerCase()) ||
       String(staff.id || '').toLowerCase().includes(staffSearch.toLowerCase()) ||
       (staff.departmentName || '').toLowerCase().includes(staffSearch.toLowerCase())
-      );
-    };
+    );
+  };
+
   const fetchCourseStaff = async (courseId) => {
     setFetchingSections(true);
     try {
@@ -278,6 +278,140 @@ const ManageCourses = () => {
     setShowEditModal(true);
   };
 
+  const handleImport = async (file, semesterId) => {
+    console.log('Import started with file:', file.name, 'semesterId:', semesterId);
+
+    if (!file) {
+      toast.error('No file selected');
+      return;
+    }
+
+    const validTypes = [
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ];
+    if (!validTypes.includes(file.type)) {
+      toast.error('Please upload a valid Excel file (.xls or .xlsx)');
+      return;
+    }
+
+    toast.info('Processing Excel file...');
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+          console.log('Excel data loaded:', jsonData.length, 'rows');
+
+          const expectedHeaders = [
+            'S. No',
+            'Course Code',
+            'Course Title',
+            'Category',
+            'L',
+            'T',
+            'P',
+            'E',
+            'Total Contact Periods',
+            'Credits',
+            'Min Marks',
+            'Max Marks',
+          ];
+          const headers = jsonData[0] ? jsonData[0].map(h => h.toString().trim()) : [];
+          console.log('Headers:', headers);
+
+          if (!headers.every((header, index) => header === expectedHeaders[index])) {
+            console.error('Header mismatch. Expected:', expectedHeaders, 'Got:', headers);
+            toast.error('Invalid Excel format. Please use the correct column headers.');
+            return;
+          }
+
+          const coursesData = jsonData.slice(1).filter(row => row && row.length >= 12).map((row, index) => {
+            const rawCategory = row[3]?.toString() || '';
+            console.log(`Row ${index + 1}: Raw Excel category for ${row[1]}: "${rawCategory}"`);
+            const category = rawCategory.trim().toUpperCase();
+
+            return {
+              courseCode: row[1]?.toString().trim(),
+              courseTitle: row[2]?.toString().trim(),
+              category: category,
+              lectureHours: parseInt(row[4]) || 0,
+              tutorialHours: parseInt(row[5]) || 0,
+              practicalHours: parseInt(row[6]) || 0,
+              experientialHours: parseInt(row[7]) || 0,
+              totalContactPeriods: parseInt(row[8]),
+              credits: parseInt(row[9]),
+              minMark: parseInt(row[10]),
+              maxMark: parseInt(row[11]),
+              semesterId: semesterId,
+              isActive: 'YES',
+              type: determineCourseType(parseInt(row[4]) || 0, parseInt(row[5]) || 0, parseInt(row[6]) || 0, parseInt(row[7]) || 0),
+            };
+          });
+
+          console.log('Processed courses data:', coursesData);
+
+          const validTypes = ['THEORY', 'PRACTICAL', 'INTEGRATED', 'EXPERIENTIAL LEARNING'];
+          const validCategories = ['HSMC', 'BSC', 'ESC', 'PEC', 'OEC', 'EEC', 'PCC'];
+
+          for (const course of coursesData) {
+            if (
+              !course.courseCode ||
+              !course.courseTitle ||
+              !course.category ||
+              !validCategories.includes(course.category) ||
+              !validTypes.includes(course.type) ||
+              isNaN(course.minMark) ||
+              isNaN(course.maxMark) ||
+              isNaN(course.lectureHours) ||
+              isNaN(course.tutorialHours) ||
+              isNaN(course.practicalHours) ||
+              isNaN(course.experientialHours) ||
+              isNaN(course.totalContactPeriods) ||
+              isNaN(course.credits) ||
+              course.minMark > course.maxMark ||
+              course.minMark < 0 ||
+              course.maxMark < 0
+            ) {
+              console.error('Validation failed for course:', course);
+              toast.error(`Invalid data in row for course ${course.courseCode || 'unknown'}`);
+              return;
+            }
+          }
+
+          toast.info(`Sending ${coursesData.length} courses to backend...`);
+
+          const response = await api.post(`${API_BASE}/courses`, { courses: coursesData });
+          console.log('Import response:', response.data);
+          toast.success(`Imported ${response.data.importedCount} courses successfully`);
+          fetchData();
+        } catch (readerError) {
+          console.error('Error processing Excel:', readerError);
+          toast.error('Error processing Excel file: ' + readerError.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } catch (err) {
+      console.error('FileReader error:', err);
+      toast.error('Error reading Excel file: ' + err.message);
+    }
+  };
+
+  const determineCourseType = (lectureHours, tutorialHours, practicalHours, experientialHours) => {
+    if (experientialHours > 0) return 'EXPERIENTIAL LEARNING';
+    if (practicalHours > 0) {
+      if (lectureHours > 0 || tutorialHours > 0) return 'INTEGRATED';
+      return 'PRACTICAL';
+    }
+    return 'THEORY';
+  };
+
   if (loading) return <div className="p-6">Loading...</div>;
   if (error) return <div className="p-6 text-red-500">{error}</div>;
 
@@ -302,13 +436,25 @@ const ManageCourses = () => {
             <h1 className="text-3xl font-bold text-gray-900">Manage Courses</h1>
             <p className="text-gray-600 mt-1">Create, edit, and manage academic courses with batches and staff</p>
           </div>
-          <button
-            onClick={openCreateModal}
-            className="mt-4 sm:mt-0 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg font-semibold"
-          >
-            <Plus size={20} />
-            Add Course
-          </button>
+          <div className="flex gap-4 mt-4 sm:mt-0">
+            <button
+              onClick={openCreateModal}
+              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg font-semibold"
+            >
+              <Plus size={20} />
+              Add Course
+            </button>
+            <button
+              onClick={() => {
+                console.log('Import button clicked, semesters:', semesters);
+                setShowImportModal(true);
+              }}
+              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg font-semibold"
+            >
+              <Upload size={20} />
+              Import
+            </button>
+          </div>
         </div>
         <Filters
           filters={filters}
@@ -406,6 +552,13 @@ const ManageCourses = () => {
           handleAllocateStaff={handleAllocateStaff}
           setShowAllocateStaffModal={setShowAllocateStaffModal}
           setShowCourseDetailsModal={setShowCourseDetailsModal}
+        />
+      )}
+      {showImportModal && (
+        <ImportModal
+          semesters={semesters}
+          setShowImportModal={setShowImportModal}
+          onImport={handleImport}
         />
       )}
     </div>
