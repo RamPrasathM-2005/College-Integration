@@ -171,7 +171,7 @@ const initDatabase = async () => {
                 courseCode VARCHAR(20) NOT NULL UNIQUE,
                 semesterId INT NOT NULL,
                 courseTitle VARCHAR(255) NOT NULL,
-                category ENUM('HSMC','BSC','ESC','PEC','OEC','EEC') NOT NULL,
+                category ENUM('HSMC','BSC','ESC','PEC','OEC','EEC','PCC') NOT NULL,
                 type ENUM('THEORY','INTEGRATED','PRACTICAL','EXPERIENTIAL LEARNING') NOT NULL,
                 lectureHours INT DEFAULT 0,
                 tutorialHours INT DEFAULT 0,

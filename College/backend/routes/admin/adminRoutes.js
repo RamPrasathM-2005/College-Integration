@@ -13,6 +13,7 @@ import {
   getCourseBySemester,
   updateCourse,
   deleteCourse,
+  importCourses
 } from "../../controllers/subjectController.js";
 import {
   allocateStaffToCourse,
@@ -87,9 +88,17 @@ router.route("/semesters/:semesterId").put(updateSemester).delete(deleteSemester
 /* =========================
    📌 Course Routes
    ========================= */
-router.route("/semesters/:semesterId/courses").post(addCourse).get(getCourseBySemester);
-router.route("/courses").get(protect,getAllCourse);
-router.route("/courses/:courseId").put(protect,updateCourse).delete(protect,deleteCourse);
+router.route("/semesters/:semesterId/courses")
+  .post(protect, addCourse)
+  .get(protect, getCourseBySemester);
+
+router.route("/courses")
+  .get(protect, getAllCourse)
+  .post(protect, importCourses); // Add new import endpoint
+
+router.route("/courses/:courseId")
+  .put(protect, updateCourse)
+  .delete(protect, deleteCourse);
 
 /* =========================
    📌 Staff-Course Allocation Routes
