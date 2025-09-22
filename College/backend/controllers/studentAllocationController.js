@@ -1,115 +1,158 @@
 import pool from "../db.js";
 import catchAsync from "../utils/catchAsync.js";
 
+
 export const searchStudents = catchAsync(async (req, res) => {
-  const { degree, branch, batch, semesterNumber } = req.query;
-  const userEmail = req.user?.email || 'admin';
-  const connection = await pool.getConnection();
+  const { degree, branch, batch, semesterNumber } = req.query; // Use req.query for GET request
 
   try {
-    // Validate required query parameters
-    if (!degree || !branch || !batch || !semesterNumber) {
-      return res.status(400).json({
-        status: "failure",
-        message: "degree, branch, batch, and semesterNumber are required",
-      });
-    }
-
-    // Validate user
-    const [userCheck] = await connection.execute(
-      'SELECT Userid FROM users WHERE Email = ? AND IsActive = "YES"',
-      [userEmail]
-    );
-    if (userCheck.length === 0) {
-      return res.status(400).json({
-        status: 'failure',
-        message: `No active user found with email ${userEmail}`,
-      });
-    }
-
-    // Increase GROUP_CONCAT length to prevent truncation
-    await connection.execute(`SET SESSION group_concat_max_len = 1000000`);
-
-    // Fetch students with their enrolled courses and staff assignments
-    const [students] = await connection.execute(
-      `
+    const connection = await pool.getConnection();
+    let query = `
       SELECT 
-        s.rollnumber, 
-        s.name, 
-        s.batchId, 
-        s.semesterNumber, 
-        s.IsActive,
-        GROUP_CONCAT(
-          JSON_OBJECT(
-            'courseId', c.courseId,
-            'courseCode', COALESCE(c.courseCode, ''),
-            'courseTitle', COALESCE(c.courseTitle, ''),
-            'sectionId', sc.sectionId,
-            'sectionName', COALESCE(sec.sectionName, ''),
-            'Userid', COALESCE(u.Userid, ''),
-            'staffName', COALESCE(u.name, 'Not Assigned')
-          )
-          ORDER BY c.courseCode
-        ) as enrolledCourses
-      FROM Student s
-      JOIN Batch b ON s.batchId = b.batchId
-      LEFT JOIN StudentCourse sc ON s.rollnumber = sc.rollnumber
-      LEFT JOIN Course c ON sc.courseCode = c.courseCode
-      LEFT JOIN Semester sem ON c.semesterId = sem.semesterId
-      LEFT JOIN Section sec ON sc.sectionId = sec.sectionId
-      LEFT JOIN StaffCourse stc 
-        ON sc.courseCode = stc.courseCode 
-        AND sc.sectionId = stc.sectionId
-      LEFT JOIN users u 
-        ON stc.Userid = u.Userid 
-        AND stc.Deptid = u.Deptid
-      WHERE 
-        b.degree = ? 
-        AND b.branch = ? 
-        AND b.batch = ? 
-        AND s.semesterNumber = ? 
-        AND s.IsActive = 'YES'
-        AND (sem.semesterNumber = ? OR sem.semesterNumber IS NULL)
-      GROUP BY s.rollnumber, s.name, s.batchId, s.semesterNumber, s.IsActive
-      ORDER BY s.rollnumber
-      `,
-      [degree, branch, batch, semesterNumber, semesterNumber]
-    );
+        u.Userid, 
+        u.username AS name, 
+        sd.regno AS rollnumber,
+        sd.batch AS studentBatch,
+        sd.Semester AS semesterNumber,
+        b.batchId,
+        b.degree,
+        b.branch,
+        sc.courseCode,
+        sc.sectionId,
+        s.sectionName,
+        scf.staffId,
+        us.username AS staffName
+      FROM student_details sd
+      JOIN users u ON sd.Userid = u.Userid
+      JOIN Batch b ON sd.batch = b.batch
+      LEFT JOIN StudentCourse sc ON sd.regno = sc.regno
+      LEFT JOIN Section s ON sc.sectionId = s.sectionId AND sc.courseCode = s.courseCode
+      LEFT JOIN StaffCourse scf ON sc.courseCode = scf.courseCode AND sc.sectionId = scf.sectionId
+      LEFT JOIN users us ON scf.staffId = us.Userid AND us.role = 'Staff' AND us.status = 'active'
+      WHERE u.status = 'active'
+    `;
+    const queryParams = [];
 
-    // Parse enrolledCourses JSON strings
-    const parsedStudents = students.map((student) => {
-      try {
-        return {
-          ...student,
-          enrolledCourses: student.enrolledCourses
-            ? JSON.parse(`[${student.enrolledCourses}]`)
-            : [],
-        };
-      } catch (err) {
-        console.error(
-          `Failed to parse enrolledCourses for student ${student.rollnumber}:`,
-          err.message
+    if (degree) {
+      query += ' AND b.degree = ?';
+      queryParams.push(degree);
+    }
+    if (branch) {
+      query += ' AND b.branch = ?';
+      queryParams.push(branch);
+    }
+    if (batch) {
+      query += ' AND b.batch = ?';
+      queryParams.push(batch);
+    }
+    if (semesterNumber) {
+      query += ' AND sd.Semester = ?';
+      queryParams.push(semesterNumber);
+    }
+
+    query += ' ORDER BY sd.regno, sc.courseCode';
+
+    const [rows] = await connection.execute(query, queryParams);
+
+    // Aggregate student data with deduplication
+    const studentsMap = new Map();
+    rows.forEach(row => {
+      const studentKey = row.rollnumber;
+      if (!studentsMap.has(studentKey)) {
+        studentsMap.set(studentKey, {
+          rollnumber: row.rollnumber,
+          name: row.name,
+          batch: row.studentBatch,
+          semester: `Semester ${row.semesterNumber}`,
+          enrolledCourses: []
+        });
+      }
+      if (row.courseCode) {
+        const existingCourse = studentsMap.get(studentKey).enrolledCourses.find(
+          c => c.courseCode === row.courseCode && c.sectionId === row.sectionId
         );
-        return {
-          ...student,
-          enrolledCourses: [],
-        };
+        if (!existingCourse) {
+          studentsMap.get(studentKey).enrolledCourses.push({
+            courseCode: row.courseCode,
+            sectionId: row.sectionId,
+            sectionName: row.sectionName || 'Unknown',
+            staffId: row.staffId ? String(row.staffId) : null,
+            staffName: row.staffName || 'Not Assigned'
+          });
+        }
       }
     });
 
-    return res.status(200).json({
-      status: "success",
-      results: parsedStudents.length,
-      data: parsedStudents,
+    const students = Array.from(studentsMap.values());
+
+    // Fetch available courses and their sections/staff
+    const coursesQuery = `
+      SELECT 
+        c.courseId,
+        c.courseCode,
+        c.courseTitle,
+        s.sectionId,
+        s.sectionName,
+        scf.staffId,
+        us.username AS staffName
+      FROM Course c
+      JOIN Semester sem ON c.semesterId = sem.semesterId
+      JOIN Batch b ON sem.batchId = b.batchId
+      LEFT JOIN Section s ON c.courseCode = s.courseCode
+      LEFT JOIN StaffCourse scf ON c.courseCode = scf.courseCode AND s.sectionId = scf.sectionId
+      LEFT JOIN users us ON scf.staffId = us.Userid AND us.role = 'Staff' AND us.status = 'active'
+      WHERE c.isActive = 'YES'
+        AND sem.isActive = 'YES'
+        ${degree ? 'AND b.degree = ?' : ''}
+        ${branch ? 'AND b.branch = ?' : ''}
+        ${batch ? 'AND b.batch = ?' : ''}
+        ${semesterNumber ? 'AND sem.semesterNumber = ?' : ''}
+      ORDER BY c.courseCode, s.sectionName
+    `;
+    const coursesParams = [degree, branch, batch, semesterNumber].filter(Boolean);
+    const [courseRows] = await connection.execute(coursesQuery, coursesParams);
+
+    // Aggregate course data with deduplication
+    const coursesMap = new Map();
+    courseRows.forEach(row => {
+      if (!coursesMap.has(row.courseCode)) {
+        coursesMap.set(row.courseCode, {
+          courseId: row.courseId,
+          courseCode: row.courseCode,
+          courseTitle: row.courseTitle,
+          batches: []
+        });
+      }
+      if (row.sectionId) {
+        const existingBatch = coursesMap.get(row.courseCode).batches.find(
+          b => b.sectionId === row.sectionId
+        );
+        if (!existingBatch) {
+          coursesMap.get(row.courseCode).batches.push({
+            sectionId: row.sectionId,
+            sectionName: row.sectionName || 'Unknown',
+            staffId: row.staffId ? String(row.staffId) : null,
+            staffName: row.staffName || 'Not Assigned'
+          });
+        }
+      }
+    });
+
+    const availableCourses = Array.from(coursesMap.values());
+
+    connection.release();
+
+    res.status(200).json({
+      status: 'success',
+      studentsData: students,
+      coursesData: availableCourses
     });
   } catch (err) {
-    console.error('Error searching students:', err);
-    return res.status(500).json({
+    console.error('Error in searchStudents:', err);
+    res.status(500).json({
       status: 'failure',
-      message: 'Server error: ' + err.message,
+      message: 'Server error: ' + err.message
     });
-  } finally {
-    connection.release();
   }
 });
 
@@ -176,8 +219,10 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
       });
     }
 
+    console.log('Enroll Request:', { rollnumber, courseCode, sectionName, Userid, userEmail }); // Debugging log
+
     const [userCheck] = await connection.execute(
-      'SELECT Userid FROM users WHERE Email = ? AND IsActive = "YES"',
+      'SELECT Userid FROM users WHERE email = ? AND status = "active"',
       [userEmail]
     );
     if (userCheck.length === 0) {
@@ -187,18 +232,33 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
       });
     }
 
-    // Validate student
+    // Validate student using student_details table
     const [studentRows] = await connection.execute(
-      `SELECT batchId, semesterNumber FROM Student WHERE rollnumber = ? AND IsActive = 'YES'`,
+      `SELECT batch, Semester AS semesterNumber FROM student_details WHERE regno = ?`,
       [rollnumber]
     );
     if (studentRows.length === 0) {
       return res.status(404).json({
         status: "failure",
-        message: `No active student found with rollnumber ${rollnumber}`,
+        message: `No student found with rollnumber ${rollnumber}`,
       });
     }
-    const { batchId, semesterNumber } = studentRows[0];
+    const { batch, semesterNumber } = studentRows[0];
+
+    console.log('Student Data:', { batch, semesterNumber }); // Debugging log
+
+    // Get batchId from Batch table
+    const [batchRows] = await connection.execute(
+      `SELECT batchId FROM Batch WHERE batch = ? AND isActive = 'YES'`,
+      [batch]
+    );
+    if (batchRows.length === 0) {
+      return res.status(404).json({
+        status: "failure",
+        message: `No active batch found with batch ${batch}`,
+      });
+    }
+    const { batchId } = batchRows[0];
 
     // Validate course and semester
     const [courseRows] = await connection.execute(
@@ -216,7 +276,7 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
 
     // Get sectionId
     const [sectionRows] = await connection.execute(
-      `SELECT sectionId FROM Section WHERE courseCode = ? AND sectionName = ? AND IsActive = 'YES'`,
+      `SELECT sectionId FROM Section WHERE courseCode = ? AND sectionName = ? AND isActive = 'YES'`,
       [courseCode, sectionName]
     );
     if (sectionRows.length === 0) {
@@ -227,11 +287,14 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
     }
     const { sectionId } = sectionRows[0];
 
+    console.log('Section Data:', { sectionId, sectionName }); // Debugging log
+
     // Check for existing enrollment
     const [existingEnrollment] = await connection.execute(
-      `SELECT studentCourseId, sectionId FROM StudentCourse WHERE rollnumber = ? AND courseCode = ? AND IsActive = 'YES'`,
+      `SELECT studentCourseId, sectionId FROM StudentCourse WHERE regno = ? AND courseCode = ?`,
       [rollnumber, courseCode]
     );
+    console.log('Existing Enrollment:', existingEnrollment); // Debugging log
 
     if (existingEnrollment.length > 0) {
       // Update existing enrollment if section is different
@@ -244,7 +307,7 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
         // Update StaffCourse if Userid is provided
         if (Userid) {
           const [staffRows] = await connection.execute(
-            `SELECT Userid, Deptid FROM users WHERE Userid = ? AND Role = 'STAFF' AND IsActive = 'YES'`,
+            `SELECT Userid, Deptid FROM users WHERE Userid = ? AND role = 'Staff' AND status = 'active'`,
             [Userid]
           );
           if (staffRows.length === 0) {
@@ -256,13 +319,13 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
           }
           const { Deptid } = staffRows[0];
           const [staffCourse] = await connection.execute(
-            `SELECT staffCourseId FROM StaffCourse WHERE courseCode = ? AND sectionId = ? AND Userid = ? AND IsActive = 'YES'`,
+            `SELECT staffCourseId FROM StaffCourse WHERE courseCode = ? AND sectionId = ? AND staffId = ?`,
             [courseCode, sectionId, Userid]
           );
           if (staffCourse.length === 0) {
             await connection.execute(
-              `INSERT INTO StaffCourse (Userid, courseCode, sectionId, Deptid, IsActive, createdBy, updatedBy)
-               VALUES (?, ?, ?, ?, 'YES', ?, ?)`,
+              `INSERT INTO StaffCourse (staffId, courseCode, sectionId, Deptid, createdBy, updatedBy)
+               VALUES (?, ?, ?, ?, ?, ?)`,
               [Userid, courseCode, sectionId, Deptid, userEmail, userEmail]
             );
           }
@@ -281,15 +344,15 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
 
     // New enrollment
     const [result] = await connection.execute(
-      `INSERT INTO StudentCourse (rollnumber, courseCode, sectionId, IsActive, createdBy, updatedBy)
-       VALUES (?, ?, ?, 'YES', ?, ?)`,
+      `INSERT INTO StudentCourse (regno, courseCode, sectionId, createdBy, updatedBy)
+       VALUES (?, ?, ?, ?, ?)`,
       [rollnumber, courseCode, sectionId, userEmail, userEmail]
     );
 
     // Allocate staff if provided
     if (Userid) {
       const [staffRows] = await connection.execute(
-        `SELECT Userid, Deptid FROM users WHERE Userid = ? AND Role = 'STAFF' AND IsActive = 'YES'`,
+        `SELECT Userid, Deptid FROM users WHERE Userid = ? AND role = 'Staff' AND status = 'active'`,
         [Userid]
       );
       if (staffRows.length === 0) {
@@ -301,13 +364,13 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
       }
       const { Deptid } = staffRows[0];
       const [staffCourse] = await connection.execute(
-        `SELECT staffCourseId FROM StaffCourse WHERE courseCode = ? AND sectionId = ? AND Userid = ? AND IsActive = 'YES'`,
+        `SELECT staffCourseId FROM StaffCourse WHERE courseCode = ? AND sectionId = ? AND staffId = ?`,
         [courseCode, sectionId, Userid]
       );
       if (staffCourse.length === 0) {
         await connection.execute(
-          `INSERT INTO StaffCourse (Userid, courseCode, sectionId, Deptid, IsActive, createdBy, updatedBy)
-           VALUES (?, ?, ?, ?, 'YES', ?, ?)`,
+          `INSERT INTO StaffCourse (staffId, courseCode, sectionId, Deptid, createdBy, updatedBy)
+           VALUES (?, ?, ?, ?, ?, ?)`,
           [Userid, courseCode, sectionId, Deptid, userEmail, userEmail]
         );
       }
@@ -333,22 +396,22 @@ export const enrollStudentInCourse = catchAsync(async (req, res) => {
 
 export const updateStudentBatch = catchAsync(async (req, res) => {
   const { rollnumber } = req.params;
-  const { batchId, semesterNumber } = req.body;
+  const { batch, semesterNumber } = req.body;
   const userEmail = req.user?.email || 'admin';
   const connection = await pool.getConnection();
 
   try {
     await connection.beginTransaction();
 
-    if (!batchId || !semesterNumber || isNaN(semesterNumber) || semesterNumber < 1 || semesterNumber > 8) {
+    if (!batch || !semesterNumber || isNaN(semesterNumber) || semesterNumber < 1 || semesterNumber > 8) {
       return res.status(400).json({
         status: "failure",
-        message: "batchId and valid semesterNumber (1-8) are required",
+        message: "batch and valid semesterNumber (1-8) are required",
       });
     }
 
     const [userCheck] = await connection.execute(
-      'SELECT Userid FROM users WHERE Email = ? AND IsActive = "YES"',
+      'SELECT Userid FROM users WHERE email = ? AND status = "active"',
       [userEmail]
     );
     if (userCheck.length === 0) {
@@ -360,34 +423,34 @@ export const updateStudentBatch = catchAsync(async (req, res) => {
 
     // Validate student
     const [studentRows] = await connection.execute(
-      `SELECT rollnumber FROM Student WHERE rollnumber = ? AND IsActive = 'YES'`,
+      `SELECT regno FROM student_details WHERE regno = ? AND pending = FALSE`,
       [rollnumber]
     );
     if (studentRows.length === 0) {
       return res.status(404).json({
         status: "failure",
-        message: `No active student found with rollnumber ${rollnumber}`,
+        message: `No approved student found with rollnumber ${rollnumber}`,
       });
     }
 
     // Validate batch
     const [batchRows] = await connection.execute(
-      `SELECT batchId FROM Batch WHERE batchId = ? AND IsActive = 'YES'`,
-      [batchId]
+      `SELECT batchId FROM Batch WHERE batch = ? AND isActive = 'YES'`,
+      [batch]
     );
     if (batchRows.length === 0) {
       return res.status(404).json({
         status: "failure",
-        message: `No active batch found with batchId ${batchId}`,
+        message: `No active batch found with batch ${batch}`,
       });
     }
 
     // Update student batch and semester
     const [result] = await connection.execute(
-      `UPDATE Student
-       SET batchId = ?, semesterNumber = ?, updatedBy = ?, updatedDate = CURRENT_TIMESTAMP
-       WHERE rollnumber = ?`,
-      [batchId, semesterNumber, userEmail, rollnumber]
+      `UPDATE student_details
+       SET batch = ?, Semester = ?, updatedBy = ?, updatedDate = CURRENT_TIMESTAMP
+       WHERE regno = ?`,
+      [batch, semesterNumber, userEmail, rollnumber]
     );
 
     if (result.affectedRows === 0) {
@@ -428,8 +491,9 @@ export const getAvailableCoursesForBatch = catchAsync(async (req, res) => {
       });
     }
 
+    // Validate user
     const [userCheck] = await connection.execute(
-      'SELECT Userid FROM users WHERE Email = ? AND IsActive = "YES"',
+      'SELECT Userid FROM users WHERE email = ? AND status = "active"',
       [userEmail]
     );
     if (userCheck.length === 0) {
@@ -439,23 +503,36 @@ export const getAvailableCoursesForBatch = catchAsync(async (req, res) => {
       });
     }
 
+    // Fetch available courses
     const [rows] = await connection.execute(
-      `SELECT 
-        c.courseId, c.courseCode, c.courseTitle,
+      `
+      SELECT 
+        c.courseId, 
+        c.courseCode, 
+        c.courseTitle AS courseName,
         sem.semesterNumber,
-        sec.sectionId, sec.sectionName,
-        u.Userid, u.name as staffName,
-        b.branch as department,
-        (SELECT COUNT(DISTINCT sc2.rollnumber) 
+        sec.sectionId, 
+        sec.sectionName AS batchId,
+        u.Userid, 
+        u.username AS staff,
+        b.branch AS department,
+        (SELECT COUNT(DISTINCT sc2.regno) 
          FROM StudentCourse sc2 
-         WHERE sc2.courseCode = c.courseCode AND sc2.sectionId = sec.sectionId AND sc2.IsActive = 'YES') as enrolled
-       FROM Course c
-       JOIN Semester sem ON c.semesterId = sem.semesterId
-       JOIN Batch b ON sem.batchId = b.batchId
-       JOIN Section sec ON c.courseCode = sec.courseCode
-       LEFT JOIN StaffCourse sc ON sc.courseCode = c.courseCode AND sc.sectionId = sec.sectionId
-       LEFT JOIN users u ON sc.Userid = u.Userid AND sc.Deptid = u.Deptid
-       WHERE sem.batchId = ? AND sem.semesterNumber = ? AND c.isActive = 'YES' AND sec.IsActive = 'YES'`,
+         WHERE sc2.courseCode = c.courseCode 
+         AND sc2.sectionId = sec.sectionId) AS enrolled
+      FROM Course c
+      JOIN Semester sem ON c.semesterId = sem.semesterId
+      JOIN Batch b ON sem.batchId = b.batchId
+      JOIN Section sec ON c.courseCode = sec.courseCode
+      LEFT JOIN StaffCourse sc ON sc.courseCode = c.courseCode 
+        AND sc.sectionId = sec.sectionId
+      LEFT JOIN users u ON sc.staffId = u.staffId 
+        AND sc.Deptid = u.Deptid
+      WHERE sem.batchId = ? 
+        AND sem.semesterNumber = ? 
+        AND c.isActive = 'YES' 
+        AND sec.isActive = 'YES'
+      `,
       [batchId, semesterNumber]
     );
 
@@ -465,16 +542,17 @@ export const getAvailableCoursesForBatch = catchAsync(async (req, res) => {
         acc[row.courseCode] = {
           courseId: row.courseId,
           courseCode: row.courseCode,
-          courseName: row.courseTitle,
+          courseName: row.courseName,
           semester: `S${row.semesterNumber}`,
           department: row.department,
           batches: [],
         };
       }
       acc[row.courseCode].batches.push({
-        batchId: row.sectionName,
+        batchId: row.batchId,
+        sectionId: row.sectionId,
         Userid: row.Userid,
-        staff: row.staffName || "Not Assigned",
+        staff: row.staff || "Not Assigned",
         enrolled: parseInt(row.enrolled) || 0,
         capacity: 40, // Consider making this configurable
       });
@@ -512,7 +590,7 @@ export const unenrollStudentFromCourse = catchAsync(async (req, res) => {
     }
 
     const [userCheck] = await connection.execute(
-      'SELECT Userid FROM users WHERE Email = ? AND IsActive = "YES"',
+      'SELECT Userid FROM users WHERE email = ? AND status = "active"',
       [userEmail]
     );
     if (userCheck.length === 0) {
@@ -524,19 +602,19 @@ export const unenrollStudentFromCourse = catchAsync(async (req, res) => {
 
     // Validate student
     const [studentRows] = await connection.execute(
-      `SELECT rollnumber FROM Student WHERE rollnumber = ? AND IsActive = 'YES'`,
+      `SELECT regno FROM student_details WHERE regno = ?`,
       [rollnumber]
     );
     if (studentRows.length === 0) {
       return res.status(404).json({
         status: "failure",
-        message: `No active student found with rollnumber ${rollnumber}`,
+        message: `No student found with rollnumber ${rollnumber}`,
       });
     }
 
     // Validate enrollment
     const [enrollmentRows] = await connection.execute(
-      `SELECT studentCourseId FROM StudentCourse WHERE rollnumber = ? AND courseCode = ? AND IsActive = 'YES'`,
+      `SELECT studentCourseId FROM StudentCourse WHERE regno = ? AND courseCode = ?`,
       [rollnumber, courseCode]
     );
     if (enrollmentRows.length === 0) {
@@ -546,11 +624,10 @@ export const unenrollStudentFromCourse = catchAsync(async (req, res) => {
       });
     }
 
-    // Soft delete enrollment
+    // Delete enrollment (since no isActive column exists)
     const [result] = await connection.execute(
-      `UPDATE StudentCourse SET IsActive = 'NO', updatedBy = ?, updatedDate = CURRENT_TIMESTAMP
-       WHERE rollnumber = ? AND courseCode = ?`,
-      [userEmail, rollnumber, courseCode]
+      `DELETE FROM StudentCourse WHERE regno = ? AND courseCode = ?`,
+      [rollnumber, courseCode]
     );
 
     if (result.affectedRows === 0) {

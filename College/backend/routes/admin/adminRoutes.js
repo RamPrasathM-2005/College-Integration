@@ -107,12 +107,13 @@ router.get("/staff/:Userid/courses-enhanced", getCourseAllocationsByStaffEnhance
 /* =========================
    📌 Student Allocation Routes
    ========================= */
-router.get("/students/search", searchStudents);
+router.get("/students/search", protect, searchStudents);
 router.get("/courses/available/:semesterNumber", getAvailableCourses);
-router.post("/students/enroll", enrollStudentInCourse);
+router.post("/students/enroll", protect, enrollStudentInCourse);
 router.put("/students/:rollNumber/batch", updateStudentBatch);
-router.get("/courses/available/:batchId/:semesterNumber", getAvailableCoursesForBatch);
-router.delete("/students/unenroll", unenrollStudentFromCourse);
+router.get("/courses/available/:batchId/:semesterNumber", protect, getAvailableCoursesForBatch);
+router.delete("/students/unenroll", protect,unenrollStudentFromCourse);
+
 
 /* =========================
    📌 Section Routes

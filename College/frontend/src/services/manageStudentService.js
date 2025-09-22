@@ -1,4 +1,5 @@
 import { showErrorToast } from '../utils/swalConfig';
+import { api } from '../services/authService';
 
 const API_BASE = 'http://localhost:4000/api/admin';
 
@@ -6,92 +7,162 @@ const manageStudentsService = {
   fetchFilterOptions: async (branch) => {
     try {
       const [branchesRes, semestersRes, batchesRes] = await Promise.all([
-        fetch(`${API_BASE}/students/branches`),
-        fetch(`${API_BASE}/students/semesters`),
-        fetch(`${API_BASE}/students/batches${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`),
+        api.get(`${API_BASE}/students/branches`),
+        api.get(`${API_BASE}/students/semesters`),
+        api.get(`${API_BASE}/students/batches${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`),
       ]);
 
-      if (!branchesRes.ok) throw new Error('Failed to load branches.');
-      if (!semestersRes.ok) throw new Error('Failed to load semesters.');
-      if (!batchesRes.ok) throw new Error('Failed to load batches.');
+      if (branchesRes.status !== 200) throw new Error('Failed to load branches.');
+      if (semestersRes.status !== 200) throw new Error('Failed to load semesters.');
+      if (batchesRes.status !== 200) throw new Error('Failed to load batches.');
 
-      const branchesData = await branchesRes.json();
-      const semestersData = await semestersRes.json();
-      const batchesData = await batchesRes.json();
+      console.log('Fetched filter options:', { branches: branchesRes.data.data, semesters: semestersRes.data.data, batches: batchesRes.data.data });
 
       return {
-        branches: branchesData.data,
-        semesters: semestersData.data,
-        batches: batchesData.data,
+        branches: branchesRes.data.data || [],
+        semesters: semestersRes.data.data || [],
+        batches: batchesRes.data.data || [],
       };
     } catch (err) {
+      console.error('Error in fetchFilterOptions:', err);
       throw new Error(err.message);
     }
   },
 
   fetchStudentsAndCourses: async (filters, batches) => {
     try {
-      const studentsRes = await fetch(
-        `${API_BASE}/students/search?degree=${filters.degree}&branch=${filters.branch}&batch=${filters.batch}&semesterNumber=${filters.semester.slice(9)}`
-      );
-      if (!studentsRes.ok) {
-        const errorData = await studentsRes.json();
-        throw new Error(errorData.message || 'Failed to fetch students');
-      }
-      const studentsData = await studentsRes.json();
-      const cleanedStudents = studentsData.data.map((student) => ({
-        ...student,
-        enrolledCourses: student.enrolledCourses.map((course) => ({
-          ...course,
-          staffId: course.staffId.replace(/"/g, ''),
-          staffName: course.staffName.replace(/"/g, ''),
-          courseCode: course.courseCode.replace(/"/g, ''),
-          sectionName: course.sectionName.replace(/"/g, ''),
-        })),
-      }));
+      const { degree, branch, batch, semester } = filters;
+      const semesterNumber = semester && typeof semester === 'string' && semester.startsWith('Semester ')
+        ? semester.replace('Semester ', '')
+        : '';
 
-      const batchId = batches.find((b) => b.batch === filters.batch)?.batchId;
+      console.log('fetchStudentsAndCourses - Filters:', { degree, branch, batch, semester, semesterNumber });
+
+      const studentsRes = await api.get(`${API_BASE}/students/search`, {
+        params: {
+          degree,
+          branch,
+          batch,
+          semesterNumber,
+        },
+      });
+
+      if (studentsRes.status !== 200 || studentsRes.data.status !== 'success') {
+        throw new Error(studentsRes.data.message || 'Failed to fetch students');
+      }
+
+      let studentsData = [];
       let coursesData = [];
-      if (batchId) {
-        const coursesRes = await fetch(
-          `${API_BASE}/courses/available/${batchId}/${filters.semester.slice(9)}`
-        );
-        if (!coursesRes.ok) {
-          const errorData = await coursesRes.json();
-          throw new Error(errorData.message || 'Failed to fetch courses');
-        }
-        const rawCoursesData = await coursesRes.json();
-        coursesData = rawCoursesData.data.map((course) => ({
-          ...course,
+
+      // Handle different response formats
+      if (studentsRes.data.studentsData || studentsRes.data.coursesData) {
+        studentsData = studentsRes.data.studentsData || [];
+        coursesData = studentsRes.data.coursesData || [];
+      } else if (Array.isArray(studentsRes.data.data)) {
+        // Handle provided response format (only courses)
+        coursesData = studentsRes.data.data.map((course) => ({
+          courseId: course.courseId,
+          courseCode: course.courseCode,
           courseTitle: course.courseName,
           batches: course.batches.map((batch) => ({
-            ...batch,
-            sectionId: batch.batchId,
+            sectionId: batch.sectionId,
             sectionName: batch.batchId,
-            staffName: batch.staff,
+            staffId: String(batch.Userid || ''),
+            staffName: batch.staff || 'Not Assigned',
+            enrolled: batch.enrolled || 0,
+            capacity: batch.capacity || 'N/A',
           })),
         }));
+      } else {
+        throw new Error('Unexpected response format');
       }
+
+      console.log('Raw studentsData:', studentsData);
+      console.log('Raw coursesData:', coursesData);
+
+      const cleanedStudents = Array.isArray(studentsData)
+        ? studentsData.map((student) => ({
+            ...student,
+            enrolledCourses: Array.isArray(student.enrolledCourses)
+              ? student.enrolledCourses.map((course) => ({
+                  ...course,
+                  staffId: course.staffId ? String(course.staffId).replace(/"/g, '') : '',
+                  staffName: course.staffName && typeof course.staffName === 'string' ? course.staffName.replace(/"/g, '') : 'Not Assigned',
+                  courseCode: course.courseCode && typeof course.courseCode === 'string' ? course.courseCode.replace(/"/g, '') : '',
+                  sectionName: course.sectionName && typeof course.sectionName === 'string' ? course.sectionName.replace(/"/g, '') : '',
+                }))
+              : [],
+          }))
+        : [];
+
+      coursesData = Array.isArray(coursesData)
+        ? coursesData.map((course) => ({
+            ...course,
+            courseTitle: course.courseTitle || course.courseName || 'Unknown Course',
+            batches: Array.isArray(course.batches)
+              ? course.batches.map((batch, index) => ({
+                  ...batch,
+                  sectionId: batch.sectionId || batch.batchId || index + 1,
+                  sectionName: batch.sectionName || `Batch ${index + 1}`,
+                  staffId: batch.staffId ? String(batch.staffId) : '',
+                  staffName: batch.staffName || batch.staff || 'Not Assigned',
+                  enrolled: batch.enrolled || 0,
+                  capacity: batch.capacity || 'N/A',
+                }))
+              : [],
+          }))
+        : [];
+
+      const batchId = batches.find((b) => String(b.batch) === String(filters.batch))?.batchId;
+      if (batchId && semesterNumber) {
+        try {
+          const coursesRes = await api.get(`${API_BASE}/courses/available/${batchId}/${semesterNumber}`);
+          if (coursesRes.status === 200 && coursesRes.data.status === 'success') {
+            const rawCoursesData = coursesRes.data.data || coursesRes.data;
+            coursesData = Array.isArray(rawCoursesData)
+              ? rawCoursesData.map((course) => ({
+                  ...course,
+                  courseTitle: course.courseName || course.courseTitle || 'Unknown Course',
+                  batches: Array.isArray(course.batches)
+                    ? course.batches.map((batch, index) => ({
+                        ...batch,
+                        sectionId: batch.batchId || batch.sectionId || index + 1,
+                        sectionName: batch.sectionName || `Batch ${index + 1}`,
+                        staffId: batch.Userid ? String(batch.Userid) : String(batch.staffId || ''),
+                        staffName: batch.staff || batch.staffName || 'Not Assigned',
+                        enrolled: batch.enrolled || 0,
+                        capacity: batch.capacity || 'N/A',
+                      }))
+                    : [],
+                }))
+              : coursesData;
+          }
+        } catch (courseError) {
+          console.warn('Error fetching additional courses:', courseError.message);
+        }
+      }
+
+      console.log('Cleaned Students Data:', cleanedStudents);
+      console.log('Courses Data:', coursesData);
 
       return { studentsData: cleanedStudents, coursesData };
     } catch (err) {
+      console.error('Error in fetchStudentsAndCourses:', err);
       throw new Error(err.message);
     }
   },
 
   unenroll: async (rollnumber, courseCode) => {
     try {
-      const res = await fetch(`${API_BASE}/students/unenroll`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rollnumber, courseCode }),
+      const res = await api.delete(`${API_BASE}/students/unenroll`, {
+        data: { rollnumber, courseCode },
       });
-      const result = await res.json();
-      if (result.status !== 'success') {
-        throw new Error(result.message || 'Failed to unenroll.');
+      if (res.status !== 200 || res.data.status !== 'success') {
+        throw new Error(res.data.message || 'Failed to unenroll.');
       }
       return true;
     } catch (err) {
+      console.error('Error in unenroll:', err);
       throw new Error(err.message);
     }
   },
@@ -100,17 +171,14 @@ const manageStudentsService = {
     try {
       const responses = await Promise.all(
         assignments.map((assignment) =>
-          fetch(`${API_BASE}/students/enroll`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(assignment),
-          }).then((res) =>
-            res.json().then((data) => ({
-              status: res.status,
-              data,
-              assignment,
-            }))
-          )
+          api.post(`${API_BASE}/students/enroll`, {
+            ...assignment,
+            staffId: String(assignment.staffId),
+          }).then((res) => ({
+            status: res.status,
+            data: res.data,
+            assignment,
+          }))
         )
       );
 
@@ -126,6 +194,7 @@ const manageStudentsService = {
       }
       return true;
     } catch (err) {
+      console.error('Error in saveAssignments:', err);
       throw new Error(err.message);
     }
   },
