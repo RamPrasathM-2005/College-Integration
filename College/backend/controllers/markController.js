@@ -431,9 +431,10 @@ export const getStudentMarksForTool = async (req, res) => {
   const staffId = getStaffId(req);
   try {
     const [marks] = await pool.query(
-      `SELECT sd.regno, sd.first_name AS name, sc.marksObtained 
+      `SELECT sd.regno, u.username AS name, sc.marksObtained 
        FROM StudentCOTool sc 
        JOIN student_details sd ON sc.regno = sd.regno 
+       JOIN users u ON sd.Userid = u.Userid
        JOIN StudentCourse studentc ON sd.regno = studentc.regno
        JOIN StaffCourse stc ON studentc.sectionId = stc.sectionId AND studentc.courseCode = stc.courseCode
        JOIN COTool t ON sc.toolId = t.toolId
@@ -444,7 +445,7 @@ export const getStudentMarksForTool = async (req, res) => {
     res.json({ status: 'success', data: marks });
   } catch (err) {
     console.error('Error in getStudentMarksForTool:', err);
-    res.status(500).json({ status: 'error', message: err.message });
+    res.status(500).json({ status: 'error', message: 'Failed to fetch marks for tool' });
   }
 };
 
@@ -686,8 +687,9 @@ export const exportCoWiseCsv = async (req, res) => {
     const courseCode = courseInfo[0].courseCode;
 
     const [students] = await pool.query(
-      `SELECT DISTINCT sd.regno, sd.first_name AS name 
+      `SELECT DISTINCT sd.regno, u.username AS name 
        FROM student_details sd
+       JOIN users u ON sd.Userid = u.Userid
        JOIN StudentCourse sc ON sd.regno = sc.regno
        JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseCode = stc.courseCode
        JOIN CourseOutcome co ON sc.courseCode = co.courseCode
@@ -760,7 +762,8 @@ export const getStudentsForCourse = async (req, res) => {
   const staffId = getStaffId(req);
   try {
     const [students] = await pool.query(
-      `SELECT sd.regno, sd.first_name AS name FROM student_details sd
+      `SELECT sd.regno, u.username AS name FROM student_details sd
+       JOIN users u ON sd.Userid = u.Userid
        JOIN StudentCourse sc ON sd.regno = sc.regno
        JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseCode = stc.courseCode
        WHERE sc.courseCode = ? AND stc.staffId = ?`,
@@ -862,8 +865,9 @@ export const exportCourseWiseCsv = async (req, res) => {
 
     // Fetch students
     const [students] = await pool.query(
-      `SELECT DISTINCT sd.regno, sd.first_name AS name 
+      `SELECT DISTINCT sd.regno, u.username AS name 
        FROM student_details sd
+       JOIN users u ON sd.Userid = u.Userid
        JOIN StudentCourse sc ON sd.regno = sc.regno
        JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseCode = stc.courseCode
        WHERE sc.courseCode = ? AND stc.staffId = ?`,
@@ -921,11 +925,9 @@ export const exportCourseWiseCsv = async (req, res) => {
         ].filter(p => p.count > 0);
         let final = 0;
         if (activePartitions.length > 0) {
-          // Sum weights of COs in active partitions
           const totalWeight = cos
             .filter(co => activePartitions.some(p => p.type === co.coType))
             .reduce((sum, co) => sum + 1, 0); // Equal weight per CO
-          // Calculate weighted average
           final = cos
             .filter(co => activePartitions.some(p => p.type === co.coType))
             .reduce((sum, co) => sum + (parseFloat(row[co.coNumber]) / totalWeight), 0);

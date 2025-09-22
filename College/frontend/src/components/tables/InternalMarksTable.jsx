@@ -46,7 +46,7 @@ const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 sticky left-0 bg-gray-50 z-20 min-w-[140px] border-r border-gray-200">
                 <div className="flex items-center">
                   <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                  Registration No.
+                  Register No.
                 </div>
               </th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 sticky left-[140px] bg-gray-50 z-20 min-w-[220px] border-r border-gray-200">

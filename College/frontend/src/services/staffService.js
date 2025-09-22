@@ -82,8 +82,14 @@ export const getStudentMarksForTool = async (toolId) => {
 };
 
 export const saveStudentMarksForTool = async (toolId, marks) => {
-  const response = await api.post(`/marks/${toolId}`, { marks });
-  return response.data;
+  try {
+    console.log('Sending payload to backend:', marks); // Log to verify payload
+    const response = await api.post(`/marks/${toolId}`, marks);
+    return response.data;
+  } catch (error) {
+    console.error('Error in saveStudentMarksForTool:', error);
+    throw error;
+  }
 };
 
 export const importMarksForTool = async (toolId, file) => {

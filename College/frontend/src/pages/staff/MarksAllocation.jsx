@@ -1,11 +1,4 @@
-// Fixed React Component: MarksAllocation.jsx
-// Changes:
-// - Added sectionId to useParams assuming route is now /marks/:courseId/:sectionId
-// - Passed sectionId to useMarkAllocation hook
-// - Fixed import handling to use state and button click (not direct onChange import)
-// - Removed conflicting handleImportClick definitions; used the version with importFile state
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Upload, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import useMarkAllocation from '../../hooks/useMarkAllocation';
@@ -15,9 +8,13 @@ import withReactContent from 'sweetalert2-react-content';
 const MySwal = withReactContent(Swal);
 
 const MarksAllocation = () => {
-  const { courseId, sectionId } = useParams(); // Added sectionId assuming updated route
+  const { courseId, sectionId } = useParams();
   const navigate = useNavigate();
-  console.log('courseId from useParams:', courseId, 'sectionId:', sectionId);
+
+  useEffect(() => {
+    console.log('courseId from useParams:', courseId, 'sectionId:', sectionId);
+  }, [courseId, sectionId]);
+
   const {
     partitions,
     setNewPartition,
@@ -53,7 +50,7 @@ const MarksAllocation = () => {
     exportCoWiseCsv,
     error,
     setError,
-  } = useMarkAllocation(courseId, sectionId); // Passed sectionId to hook
+  } = useMarkAllocation(courseId, sectionId);
 
   const [importFile, setImportFile] = useState(null);
 
@@ -61,27 +58,17 @@ const MarksAllocation = () => {
     return tools.reduce((sum, tool) => sum + (tool.weightage || 0), 0);
   };
 
-  // const handleSavePartitionsClick = async () => {
-  //   const result = await handleSavePartitions(partitions.partitionId);
-  //   if (result.success) {
-  //     await handlePartitionsConfirmation();
-  //   } else {
-  //     MySwal.fire('Error', result.error, 'error');
-  //   }
-  // };
-
   const handleSavePartitionsClick = async () => {
-  if (
-    newPartition.theoryCount < 0 ||
-    newPartition.practicalCount < 0 ||
-    newPartition.experientialCount < 0
-  ) {
-    MySwal.fire('Error', 'Partition counts cannot be negative', 'error');
-    return;
-  }
-  // Trigger confirmation dialog
-  await handlePartitionsConfirmation();
-};
+    if (
+      newPartition.theoryCount < 0 ||
+      newPartition.practicalCount < 0 ||
+      newPartition.experientialCount < 0
+    ) {
+      MySwal.fire('Error', 'Partition counts cannot be negative', 'error');
+      return;
+    }
+    await handlePartitionsConfirmation();
+  };
 
   const handleAddTempToolClick = () => {
     if (!newTool.toolName || newTool.weightage <= 0 || newTool.maxMarks <= 0) {
@@ -90,7 +77,6 @@ const MarksAllocation = () => {
     }
     const isEdit = !!editingTool;
     const selfUniqueId = isEdit ? editingTool.uniqueId : null;
-    // Check for duplicate tool name, excluding self if editing
     const duplicate = tempTools.some(
       (t) =>
         t.toolName.toLowerCase() === newTool.toolName.toLowerCase() &&
@@ -101,14 +87,12 @@ const MarksAllocation = () => {
       return;
     }
     if (isEdit) {
-      // Update existing/temp tool in tempTools
       setTempTools((prev) =>
         prev.map((t) =>
           t.uniqueId === selfUniqueId ? { ...newTool, uniqueId: t.uniqueId } : t
         )
       );
     } else {
-      // Add new tool to tempTools
       addTempTool(newTool);
     }
     setNewTool({ toolName: '', weightage: 0, maxMarks: 100 });
@@ -126,7 +110,6 @@ const MarksAllocation = () => {
   };
 
   const handleDeleteToolClick = async (tool) => {
-    // Remove from tempTools (no backend call needed, as save will handle deletions)
     setTempTools((prev) => prev.filter((t) => t.uniqueId !== tool.uniqueId));
     MySwal.fire('Success', 'Tool removed from draft', 'success');
   };
@@ -155,10 +138,6 @@ const MarksAllocation = () => {
     setShowImportModal(false);
   };
 
-
-
-
-  
   const handleFileChange = (e) => {
     setImportFile(e.target.files[0]);
   };
@@ -167,7 +146,6 @@ const MarksAllocation = () => {
     const co = courseOutcomes.find(co => co.coId === parseInt(e.target.value)) || null;
     setSelectedCO(co);
     setSelectedTool(null);
-    // Load existing tools into tempTools for drafting/editing
     setTempTools(co?.tools ? co.tools.map((t) => ({ ...t, uniqueId: t.toolId })) : []);
   };
 
@@ -446,7 +424,6 @@ const MarksAllocation = () => {
                     </button>
                   </div>
                 </div>
-                {/* Display draft tools from tempTools */}
                 {tempTools.map((tool) => (
                   <div key={tool.uniqueId} className="ml-4 mb-2">
                     <div className="flex justify-between items-center">
@@ -459,8 +436,8 @@ const MarksAllocation = () => {
                               toolName: tool.toolName,
                               weightage: tool.weightage,
                               maxMarks: tool.maxMarks,
-                              toolId: tool.toolId, // Preserve if existing
-                              uniqueId: tool.uniqueId, // Preserve for draft identification
+                              toolId: tool.toolId,
+                              uniqueId: tool.uniqueId,
                             });
                             setShowToolModal(true);
                           }}
@@ -470,11 +447,11 @@ const MarksAllocation = () => {
                         </button>
                         <button
                           onClick={() => handleDeleteToolClick(tool)}
-                          className="px-3 py-1 bg-red-600 text-white rounded-lg" // Fixed typo 'lue-600' to 'red-600'
+                          className="px-3 py-1 bg-red-600 text-white rounded-lg"
                         >
                           Delete
                         </button>
-                        {tool.toolId && ( // Only show import for existing (saved) tools
+                        {tool.toolId && (
                           <button
                             onClick={() => {
                               setSelectedTool(tool);
@@ -519,21 +496,26 @@ const MarksAllocation = () => {
                             <input
                               type="number"
                               value={student.marks?.[tool.toolId] || ''}
-                              onChange={(e) => updateStudentMark(tool.toolId, student.regno, parseInt(e.target.value) || 0)}
+                              onChange={(e) => {
+                                const value = parseInt(e.target.value);
+                                if (isNaN(value) || value < 0 || value > tool.maxMarks) return;
+                                updateStudentMark(tool.toolId, student.regno, value);
+                              }}
                               className="w-full p-1 border rounded-lg"
                               min="0"
                               max={tool.maxMarks}
+                              placeholder="0"
                             />
                           </td>
                         ))}
                         <td className="border p-2">
-                        {(
-                          selectedCO.tools?.reduce((sum, tool) => {
-                            const mark = student.marks?.[tool.toolId] || 0;
-                            return sum + (mark / tool.maxMarks) * (tool.weightage / 100);
-                          }, 0) * 100
-                        ).toFixed(2)}
-                      </td>
+                          {(
+                            selectedCO.tools?.reduce((sum, tool) => {
+                              const mark = student.marks?.[tool.toolId] || 0;
+                              return sum + (mark / tool.maxMarks) * (tool.weightage / 100);
+                            }, 0) * 100
+                          ).toFixed(2)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
