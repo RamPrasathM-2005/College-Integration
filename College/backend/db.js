@@ -1,3 +1,4 @@
+// Modified initDatabase in the db.js file (added new tables for ElectiveBucket and ElectiveBucketCourse)
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
@@ -404,6 +405,35 @@ const initDatabase = async () => {
                 updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 CONSTRAINT fk_tooldetail_tool FOREIGN KEY (toolId) REFERENCES COTool(toolId)
                     ON UPDATE CASCADE ON DELETE CASCADE
+            )
+        `);
+
+        // New table for ElectiveBucket
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS ElectiveBucket (
+                bucketId INT PRIMARY KEY AUTO_INCREMENT,
+                semesterId INT NOT NULL,
+                bucketNumber INT NOT NULL,
+                bucketName VARCHAR(100) NOT NULL,
+                createdBy INT,
+                createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE (semesterId, bucketNumber),
+                CONSTRAINT fk_bucket_sem FOREIGN KEY (semesterId) REFERENCES Semester(semesterId) ON DELETE CASCADE,
+                CONSTRAINT fk_bucket_created FOREIGN KEY (createdBy) REFERENCES users(Userid) ON DELETE SET NULL
+            )
+        `);
+
+        // New table for ElectiveBucketCourse
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS ElectiveBucketCourse (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                bucketId INT NOT NULL,
+                courseCode VARCHAR(20) NOT NULL,
+                createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (bucketId, courseCode),
+                CONSTRAINT fk_ebc_bucket FOREIGN KEY (bucketId) REFERENCES ElectiveBucket(bucketId) ON DELETE CASCADE,
+                CONSTRAINT fk_ebc_course FOREIGN KEY (courseCode) REFERENCES Course(courseCode) ON DELETE CASCADE
             )
         `);
 

@@ -19,6 +19,7 @@ import ManageCourses from "./pages/admin/ManageCourses/ManageCourses";
 import ManageStaff from "./pages/admin/ManageStaffs/ManageStaff";
 import ManageStudents from "./pages/admin/ManageStudents/ManageStudents";
 import Timetable from "./pages/admin/Timetable";
+import CourseRecommendation from './pages/admin/CourseRecommendation'
 
 // Staff Pages
 import StaffDashboard from "./pages/staff/Dashboard";
@@ -64,6 +65,7 @@ const routes = [
       { path: "manage-staff", element: <ManageStaff /> },
       { path: "manage-students", element: <ManageStudents /> },
       { path: "timetable", element: <Timetable /> },
+      {path: "course-recommendation", element: <CourseRecommendation/>},
       { path: "*", element: <NotFound /> },
     ],
   },
