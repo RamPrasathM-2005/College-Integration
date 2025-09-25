@@ -1,3 +1,4 @@
+// Modified routes/admin/adminRoutes.js (added imports and routes for elective buckets at the end)
 import express from "express";
 import {
   addSemester,
@@ -77,6 +78,7 @@ import {
   getDepartments
 }from "../../controllers/departmentController.js";
 import { protect } from "../../controllers/auth/authController.js";
+import { getElectiveBuckets, createElectiveBucket, addCoursesToBucket, deleteElectiveBucket, removeCourseFromBucket, updateElectiveBucketName } from "../../controllers/electiveBucketController.js";
 
 const router = express.Router();
 
@@ -166,6 +168,16 @@ router.get('/timetable/semester/:semesterId',protect, getTimetable);
 router.post('/timetable/entry',protect, createTimetableEntry);
 router.put('/timetable/entry/:timetableId',protect, updateTimetableEntry);
 router.delete('/timetable/entry/:timetableId',protect, deleteTimetableEntry);
+
+/* =========================
+   📌 Elective Bucket Routes
+   ========================= */
+router.get("/semesters/:semesterId/buckets", protect, getElectiveBuckets);
+router.post("/semesters/:semesterId/buckets", protect, createElectiveBucket);
+router.put("/buckets/:bucketId", protect, updateElectiveBucketName);
+router.post("/buckets/:bucketId/courses", protect, addCoursesToBucket);
+router.delete("/buckets/:bucketId", protect, deleteElectiveBucket);
+router.delete("/buckets/:bucketId/courses/:courseCode", protect, removeCourseFromBucket);
 
 router.get('/consolidated-marks', protect, getConsolidatedMarks);
 
