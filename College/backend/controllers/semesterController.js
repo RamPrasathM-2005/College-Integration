@@ -7,7 +7,15 @@ function formatDate(dateStr) {
   return dateStr.length > 10 ? dateStr.substring(0, 10) : dateStr;
 }
 
-// ✅ Add new Semester
+
+// Helper function to calculate difference in days between two dates
+const calculateDaysDifference = (startDate, endDate) => {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const diffTime = end - start;
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // Convert milliseconds to days
+};
+
 export const addSemester = catchAsync(async (req, res) => {
   const {
     degree,
@@ -29,6 +37,15 @@ export const addSemester = catchAsync(async (req, res) => {
 
   if (formattedStartDate >= formattedEndDate) {
     return res.status(400).json({ status: "failure", message: "startDate must be before endDate" });
+  }
+
+  // Validate that endDate is exactly 90 days after startDate
+  const daysDifference = calculateDaysDifference(formattedStartDate, formattedEndDate);
+  if (daysDifference !== 90) {
+    return res.status(400).json({ 
+      status: "failure", 
+      message: `The duration between startDate and endDate must be exactly 90 days, but got ${daysDifference} days` 
+    });
   }
 
   // 🔍 Get batchId
@@ -80,7 +97,6 @@ export const addSemester = catchAsync(async (req, res) => {
     semesterId: rows.insertId,
   });
 });
-
 // ✅ Get a single Semester
 export const getSemester = catchAsync(async (req, res) => {
   const { batch, branch, degree, semesterNumber } = req.query;
