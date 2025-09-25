@@ -179,6 +179,9 @@ router.post("/buckets/:bucketId/courses", protect, addCoursesToBucket);
 router.delete("/buckets/:bucketId", protect, deleteElectiveBucket);
 router.delete("/buckets/:bucketId/courses/:courseCode", protect, removeCourseFromBucket);
 
+/* =========================
+   📌 Consolidated Marks Routes
+   ========================= */
 router.get('/consolidated-marks', protect, getConsolidatedMarks);
 
 /* =========================
