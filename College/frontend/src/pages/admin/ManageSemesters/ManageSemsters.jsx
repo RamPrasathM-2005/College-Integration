@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GraduationCap } from 'lucide-react';
 import { toast, ToastContainer } from 'react-toastify';
-import { api } from '../../../services/authService'; // Import the api instance
+import { api } from '../../../services/authService';
 import SearchBar from './SearchBar';
 import SemesterList from './SemesterList';
 import CreateSemesterForm from './CreateSemesterForm';
@@ -24,12 +24,17 @@ const ManageSemesters = () => {
   }, []);
 
   const fetchSemesters = async () => {
+    setLoading(true);
     try {
       const { data } = await api.get(`${API_BASE}/semesters`);
+      console.log('ManageSemesters: Fetched semesters:', data.data);
       setAllSemesters(data.data || []);
       setFilteredSemesters(data.data || []);
     } catch (err) {
+      console.error('ManageSemesters: Error fetching semesters:', err.response?.data || err);
       toast.error('Failed to fetch semesters');
+      setAllSemesters([]);
+      setFilteredSemesters([]);
     } finally {
       setLoading(false);
     }
@@ -82,6 +87,7 @@ const ManageSemesters = () => {
             }
           })
           .catch((err) => {
+            console.error('ManageSemesters: Error deleting semester:', err.response?.data || err);
             const errorMsg = err.response?.data?.message || err.message;
             if (errorMsg.includes('foreign key constraint fails')) {
               Swal.fire({
@@ -103,7 +109,8 @@ const ManageSemesters = () => {
     });
   };
 
-  const handleEditSemester = () => {
+  const handleRefresh = (semesterId, isCourseDeletion) => {
+    console.log(`ManageSemesters: Refresh triggered for semester ${semesterId}, isCourseDeletion: ${isCourseDeletion}`);
     fetchSemesters();
   };
 
@@ -128,7 +135,7 @@ const ManageSemesters = () => {
               semesters={filteredSemesters} 
               onSemesterClick={setSelectedSemester} 
               onDelete={handleDeleteSemester} 
-              onEdit={handleEditSemester} 
+              onRefresh={handleRefresh} // Renamed from onEdit
             />
             <CreateSemesterForm
               showCreateForm={showCreateForm}
@@ -141,7 +148,8 @@ const ManageSemesters = () => {
           <SemesterDetails 
             semester={selectedSemester} 
             onBack={() => setSelectedSemester(null)} 
-            onDelete={handleDeleteSemester} 
+            onDelete={handleDeleteSemester}
+            onRefresh={handleRefresh}
           />
         )}
       </div>

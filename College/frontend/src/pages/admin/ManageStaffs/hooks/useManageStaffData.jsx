@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import manageStaffService from '../../../../services/manageStaffService';
 
+// Simple in-memory cache for sections
+const sectionCache = new Map();
+
 const useManageStaffData = () => {
   const [staffList, setStaffList] = useState([]);
   const [courses, setCourses] = useState([]);
@@ -20,12 +23,11 @@ const useManageStaffData = () => {
     setLoading(true);
     try {
       const departmentsData = await manageStaffService.getDepartments();
-      // Map department response to expected format
       const formattedDepartments = departmentsData.map(dept => ({
         departmentId: dept.Deptid,
         departmentName: dept.Deptname,
         departmentAcronym: dept.Deptacronym,
-        isActive: 'YES', // Assume all departments are active
+        isActive: 'YES',
       }));
       setDepartments(formattedDepartments);
 
@@ -57,7 +59,7 @@ const useManageStaffData = () => {
               : [];
             return {
               id: user.id || 0,
-              staffId: user.staffId || `STAFF_${user.id}`, // Fallback for null staffId
+              staffId: user.staffId || `STAFF_${user.id}`,
               name: user.name || 'Unknown',
               email: user.email || '',
               departmentId: user.Deptid || user.departmentId || 0,
@@ -70,9 +72,15 @@ const useManageStaffData = () => {
 
       const coursesWithDetails = await Promise.all(
         Array.isArray(coursesData) ? coursesData.map(async course => {
+          const cacheKey = `sections_${course.courseId}`;
+          let sections = sectionCache.get(cacheKey);
+          if (!sections) {
+            sections = await manageStaffService.getCourseSections(course.courseId);
+            sectionCache.set(cacheKey, sections);
+          }
+          console.log(`Fetched sections for course ${course.courseId} (${course.courseCode}):`, sections);
           const semester = semestersData.find(s => s.semesterId === course.semesterId) || {};
           const batch = batchesData.find(b => b.batchId === semester.batchId) || {};
-          const sections = await manageStaffService.getCourseSections(course.courseCode);
           return {
             ...course,
             courseId: course.courseId || 0,
@@ -89,10 +97,11 @@ const useManageStaffData = () => {
           };
         }) : []
       );
+      console.log('Updated courses with sections:', coursesWithDetails);
       setCourses(coursesWithDetails);
     } catch (err) {
       setError(`Failed to fetch data: ${err.message}`);
-      console.error('Fetch error:', err.message);
+      console.error('Fetch error:', err.response?.data || err.message);
     } finally {
       setLoading(false);
     }

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { BookOpen, ChevronRight, Trash2, Edit } from 'lucide-react';
 import { branchMap } from './branchMap';
+import { toast } from 'react-toastify';
+import { api } from '../../../services/authService';
 import SemesterUpdateForm from './SemesterUpdateForm';
-import { api } from '../../../services/authService'; // Import the api instance
 
 const API_BASE = 'http://localhost:4000/api/admin';
 
@@ -13,47 +14,40 @@ const SemesterCard = ({ semester, onClick, onDelete, onEdit, index }) => {
   const [showUpdateForm, setShowUpdateForm] = useState(false);
 
   useEffect(() => {
-    const fetchCourses = async () => {
-      try {
-        setLoading(true);
-        console.log('Fetching courses for semesterId:', semester.semesterId);
-        const response = await api.get(`${API_BASE}/semesters/${semester.semesterId}/courses`);
-        console.log('API response:', response.data);
+    fetchCourses();
+  }, [semester.semesterId]);
 
-        const fetchedCourses = Array.isArray(response.data.data)
-          ? response.data.data
-          : Array.isArray(response.data)
-            ? response.data
-            : [];
-        setCourses(fetchedCourses);
+  const fetchCourses = async () => {
+    try {
+      setLoading(true);
+      console.log('SemesterCard: Fetching courses for semesterId:', semester.semesterId); // Debug log
+      const response = await api.get(`${API_BASE}/semesters/${semester.semesterId}/courses`);
+      console.log('SemesterCard: API response:', response.data); // Debug log
+
+      const fetchedCourses = Array.isArray(response.data.data)
+        ? response.data.data
+        : Array.isArray(response.data)
+        ? response.data
+        : [];
+      setCourses(fetchedCourses);
+      setError(null);
+      console.log('SemesterCard: Courses set to:', fetchedCourses, 'Length:', fetchedCourses.length); // Debug log
+      setLoading(false);
+    } catch (err) {
+      console.error('SemesterCard: Error fetching courses:', err.response?.data || err);
+      if (
+        err.response?.status === 404 &&
+        err.response?.data?.message.includes('No active courses found')
+      ) {
+        setCourses([]);
         setError(null);
-        console.log('Courses set to:', fetchedCourses, 'Length:', fetchedCourses.length);
-        setLoading(false);
-      } catch (err) {
-        console.error('Error fetching courses:', err.message, err.response?.status, err.response?.data);
-        if (
-          err.response?.status === 404 &&
-          err.response?.data?.message.includes('No active courses found')
-        ) {
-          setCourses([]);
-          setError(null);
-        } else {
-          setError('Failed to load courses');
-          setCourses([]);
-        }
-        setLoading(false);
+      } else {
+        setError('Failed to load courses');
+        setCourses([]);
       }
-    };
-
-    if (semester.semesterId) {
-      fetchCourses();
-    } else {
-      console.warn('Invalid semesterId:', semester.semesterId);
-      setError('Invalid semester ID');
-      setCourses([]);
       setLoading(false);
     }
-  }, [semester.semesterId]);
+  };
 
   const handleDelete = (e) => {
     e.stopPropagation();
@@ -63,6 +57,11 @@ const SemesterCard = ({ semester, onClick, onDelete, onEdit, index }) => {
   const handleEditClick = (e) => {
     e.stopPropagation();
     setShowUpdateForm(true);
+  };
+
+  const handleRefresh = () => {
+    fetchCourses(); // Refetch courses to update count
+    onEdit(); // Notify parent to refetch semesters
   };
 
   const displayBranch = branchMap[semester.branch] || semester.branch;
@@ -124,7 +123,7 @@ const SemesterCard = ({ semester, onClick, onDelete, onEdit, index }) => {
           isOpen={showUpdateForm}
           onClose={() => setShowUpdateForm(false)}
           semester={semester}
-          onRefresh={onEdit}
+          onRefresh={handleRefresh}
         />
       )}
     </>

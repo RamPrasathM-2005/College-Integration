@@ -2,7 +2,7 @@ import pool from "../db.js";
 import catchAsync from "../utils/catchAsync.js";
 
 // Valid enum values
-const validTypes = ['THEORY', 'PRACTICAL', 'INTEGRATED', 'EXPERIENTIAL LEARNING'];
+const validTypes = ['THEORY', 'INTEGRATED', 'PRACTICAL', 'EXPERIENTIAL LEARNING'];
 const validCategories = ['HSMC', 'BSC', 'ESC', 'PEC', 'OEC', 'EEC', 'PCC'];
 const validIsActive = ['YES', 'NO'];
 
@@ -101,10 +101,10 @@ export const addCourse = catchAsync(async (req, res) => {
       });
     }
 
-    // Check for existing courseCode (active or inactive)
+    // Check for existing courseCode in the same semester
     const [existingCourse] = await connection.execute(
-      `SELECT courseId, isActive FROM Course WHERE courseCode = ?`,
-      [courseCode]
+      `SELECT courseId, isActive FROM Course WHERE courseCode = ? AND semesterId = ?`,
+      [courseCode, semesterId]
     );
 
     let courseId;
@@ -112,18 +112,18 @@ export const addCourse = catchAsync(async (req, res) => {
       if (existingCourse[0].isActive === 'YES') {
         return res.status(400).json({
           status: 'failure',
-          message: `Course code ${courseCode} already exists`,
+          message: `Course code ${courseCode} already exists for semesterId ${semesterId}`,
         });
       } else {
+        // Update existing inactive course
         const [updateResult] = await connection.execute(
           `UPDATE Course 
-           SET semesterId = ?, courseTitle = ?, type = ?, category = ?, 
+           SET courseTitle = ?, type = ?, category = ?, 
                minMark = ?, maxMark = ?, isActive = 'YES', updatedBy = ?, 
                lectureHours = ?, tutorialHours = ?, practicalHours = ?, 
                experientialHours = ?, totalContactPeriods = ?, credits = ?
            WHERE courseId = ?`,
           [
-            semesterId,
             courseTitle,
             type,
             category,
@@ -149,6 +149,7 @@ export const addCourse = catchAsync(async (req, res) => {
         courseId = existingCourse[0].courseId;
       }
     } else {
+      // Insert new course
       const [insertResult] = await connection.execute(
         `INSERT INTO Course 
           (courseCode, semesterId, courseTitle, type, category, 
@@ -204,12 +205,9 @@ export const importCourses = catchAsync(async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    // Log the entire payload
-    console.log('Received payload:', JSON.stringify(courses, null, 2));
-
     // Validate user
     const [userCheck] = await connection.execute(
-      'SELECT Userid FROM users WHERE Email = ? AND status = "active"',
+      'SELECT Userid FROM users WHERE email = ? AND status = "active"',
       [userEmail]
     );
     if (userCheck.length === 0) {
@@ -267,38 +265,93 @@ export const importCourses = catchAsync(async (req, res) => {
         continue;
       }
 
-      // Normalize and validate category
+      // Validate enum fields
+      if (!validTypes.includes(type)) {
+        errors.push(`Invalid type for course ${courseCode}: Must be one of ${validTypes.join(', ')}`);
+        continue;
+      }
       const normalizedCategory = typeof category === 'string' ? category.trim().toUpperCase() : '';
-      console.log(
-        `Processing course: ${courseCode}, raw category: "${category}", normalized category: "${normalizedCategory}", length: ${category.length}, bytes: [${Buffer.from(category || '').toString('hex')}]`
+      if (!validCategories.includes(normalizedCategory)) {
+        errors.push(`Invalid category for course ${courseCode}: "${normalizedCategory}" (raw: "${category}"). Must be one of ${validCategories.join(', ')}`);
+        continue;
+      }
+      if (!validIsActive.includes(isActive)) {
+        errors.push(`Invalid isActive for course ${courseCode}: Must be one of ${validIsActive.join(', ')}`);
+        continue;
+      }
+
+      // Validate numeric fields
+      const numericFields = { minMark, maxMark, lectureHours, tutorialHours, practicalHours, experientialHours, totalContactPeriods, credits };
+      let valid = true;
+      for (const [field, value] of Object.entries(numericFields)) {
+        if (!Number.isInteger(value) || value < 0) {
+          errors.push(`${field} must be a non-negative integer for course ${courseCode}`);
+          valid = false;
+        }
+      }
+      if (minMark > maxMark) {
+        errors.push(`minMark must be less than or equal to maxMark for course ${courseCode}`);
+        valid = false;
+      }
+      if (!valid) continue;
+
+      // Validate semesterId
+      const [semesterRows] = await connection.execute(
+        `SELECT semesterId FROM Semester WHERE semesterId = ? AND isActive = 'YES'`,
+        [semesterId]
+      );
+      if (semesterRows.length === 0) {
+        errors.push(`No active semester found with semesterId ${semesterId} for course ${courseCode}`);
+        continue;
+      }
+
+      // Check for existing courseCode in the same semester
+      const [existingCourse] = await connection.execute(
+        `SELECT courseId, isActive FROM Course WHERE courseCode = ? AND semesterId = ?`,
+        [courseCode, semesterId]
       );
 
-      // Check for invalid category
-      if (typeof category !== 'string' || category.trim() === '') {
-        errors.push(`Category for ${courseCode} is not a valid string: "${category}"`);
-        continue;
-      }
-      if (normalizedCategory !== category.trim()) {
-        errors.push(`Category for ${courseCode} contains unexpected spaces or case: "${category}"`);
-        continue;
-      }
-      if (!validCategories.includes(normalizedCategory)) {
-        errors.push(`Invalid category for ${courseCode}: "${normalizedCategory}" (raw: "${category}"). Must be one of ${validCategories.join(', ')}`);
-        continue;
-      }
-      if (category.length > 4) {
-        errors.push(`Category for ${courseCode} is too long: "${category}" (length: ${category.length})`);
-        continue;
-      }
-
-      // Test category insertion
-      try {
-        console.log(`Testing category for ${courseCode}: "${normalizedCategory}"`);
-        await connection.execute(
-          `INSERT INTO Course (courseCode, semesterId, courseTitle, type, category, minMark, maxMark, isActive, createdBy, updatedBy, lectureHours, tutorialHours, practicalHours, experientialHours, totalContactPeriods, credits)
+      if (existingCourse.length > 0) {
+        if (existingCourse[0].isActive === 'YES') {
+          errors.push(`Course code ${courseCode} already exists for semesterId ${semesterId}`);
+          continue;
+        } else {
+          // Update existing inactive course
+          const [updateResult] = await connection.execute(
+            `UPDATE Course 
+             SET courseTitle = ?, type = ?, category = ?, 
+                 minMark = ?, maxMark = ?, isActive = 'YES', updatedBy = ?, 
+                 lectureHours = ?, tutorialHours = ?, practicalHours = ?, 
+                 experientialHours = ?, totalContactPeriods = ?, credits = ?
+             WHERE courseId = ?`,
+            [
+              courseTitle,
+              type,
+              normalizedCategory,
+              minMark,
+              maxMark,
+              userEmail,
+              lectureHours,
+              tutorialHours,
+              practicalHours,
+              experientialHours,
+              totalContactPeriods,
+              credits,
+              existingCourse[0].courseId
+            ]
+          );
+          if (updateResult.affectedRows > 0) importedCount++;
+        }
+      } else {
+        // Insert new course
+        const [insertResult] = await connection.execute(
+          `INSERT INTO Course 
+            (courseCode, semesterId, courseTitle, type, category, 
+             minMark, maxMark, isActive, createdBy, updatedBy, lectureHours, 
+             tutorialHours, practicalHours, experientialHours, totalContactPeriods, credits)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            `${courseCode}-test`,
+            courseCode,
             semesterId,
             courseTitle,
             type,
@@ -316,186 +369,22 @@ export const importCourses = catchAsync(async (req, res) => {
             credits,
           ]
         );
-        await connection.execute(`DELETE FROM Course WHERE courseCode = ?`, [`${courseCode}-test`]);
-      } catch (testErr) {
-        errors.push(`Test insertion failed for ${courseCode} with category "${normalizedCategory}": ${testErr.message} (SQL: ${testErr.sqlMessage || 'No SQL message'})`);
-        continue; // Skip this course
+        if (insertResult.affectedRows > 0) importedCount++;
       }
-
-      // Validate enum fields
-      if (!validTypes.includes(type)) {
-        errors.push(`Invalid type for ${courseCode}: Must be one of ${validTypes.join(', ')}`);
-        continue;
-      }
-      if (!validIsActive.includes(isActive)) {
-        errors.push(`Invalid isActive for ${courseCode}: Must be one of ${validIsActive.join(', ')}`);
-        continue;
-      }
-
-      // Validate numeric fields
-      const numericFields = { minMark, maxMark, lectureHours, tutorialHours, practicalHours, experientialHours, totalContactPeriods, credits };
-      for (const [field, value] of Object.entries(numericFields)) {
-        if (!Number.isInteger(value) || value < 0) {
-          errors.push(`${field} must be a non-negative integer for ${courseCode}`);
-          continue;
-        }
-      }
-      if (minMark > maxMark) {
-        errors.push(`minMark must be less than or equal to maxMark for ${courseCode}`);
-        continue;
-      }
-
-      // Validate semesterId
-      const [semesterRows] = await connection.execute(
-        `SELECT semesterId FROM Semester WHERE semesterId = ? AND isActive = 'YES'`,
-        [semesterId]
-      );
-      if (semesterRows.length === 0) {
-        errors.push(`No active semester found with semesterId ${semesterId} for ${courseCode}`);
-        continue;
-      }
-
-      // Check for existing courseCode
-      const [existingCourse] = await connection.execute(
-        `SELECT courseId, isActive FROM Course WHERE courseCode = ?`,
-        [courseCode]
-      );
-
-      if (existingCourse.length > 0) {
-        if (existingCourse[0].isActive === 'YES') {
-          errors.push(`Course code ${courseCode} already exists`);
-          continue;
-        } else {
-          // Update existing inactive course
-          console.log(`Executing UPDATE for ${courseCode} with category: ${normalizedCategory}`);
-          const updateQuery = `
-            UPDATE Course 
-            SET semesterId = ?, courseTitle = ?, type = ?, category = ?, 
-                minMark = ?, maxMark = ?, isActive = ?, updatedBy = ?, 
-                lectureHours = ?, tutorialHours = ?, practicalHours = ?, 
-                experientialHours = ?, totalContactPeriods = ?, credits = ?
-            WHERE courseId = ?
-          `;
-          console.log('Update query:', updateQuery);
-          console.log('Update params:', [
-            semesterId,
-            courseTitle,
-            type,
-            normalizedCategory,
-            minMark,
-            maxMark,
-            isActive,
-            userEmail,
-            lectureHours,
-            tutorialHours,
-            practicalHours,
-            experientialHours,
-            totalContactPeriods,
-            credits,
-            existingCourse[0].courseId
-          ]);
-          const [updateResult] = await connection.execute(updateQuery, [
-            semesterId,
-            courseTitle,
-            type,
-            normalizedCategory,
-            minMark,
-            maxMark,
-            isActive,
-            userEmail,
-            lectureHours,
-            tutorialHours,
-            practicalHours,
-            experientialHours,
-            totalContactPeriods,
-            credits,
-            existingCourse[0].courseId
-          ]);
-
-          if (updateResult.affectedRows === 0) {
-            errors.push(`Failed to update course ${courseCode}`);
-            continue;
-          }
-          importedCount++;
-        }
-      } else {
-        // Insert new course
-        console.log(`Executing INSERT for ${courseCode} with category: ${normalizedCategory}`);
-        const insertQuery = `
-          INSERT INTO Course 
-            (courseCode, semesterId, courseTitle, type, category, 
-             minMark, maxMark, isActive, createdBy, updatedBy, lectureHours, 
-             tutorialHours, practicalHours, experientialHours, totalContactPeriods, credits)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-        console.log('Insert query:', insertQuery);
-        console.log('Insert params:', [
-          courseCode,
-          semesterId,
-          courseTitle,
-          type,
-          normalizedCategory,
-          minMark,
-          maxMark,
-          isActive,
-          userEmail,
-          userEmail,
-          lectureHours,
-          tutorialHours,
-          practicalHours,
-          experientialHours,
-          totalContactPeriods,
-          credits,
-        ]);
-        const [insertResult] = await connection.execute(insertQuery, [
-          courseCode,
-          semesterId,
-          courseTitle,
-          type,
-          normalizedCategory,
-          minMark,
-          maxMark,
-          isActive,
-          userEmail,
-          userEmail,
-          lectureHours,
-          tutorialHours,
-          practicalHours,
-          experientialHours,
-          totalContactPeriods,
-          credits,
-        ]);
-
-        if (insertResult.affectedRows === 0) {
-          errors.push(`Failed to insert course ${courseCode}`);
-          continue;
-        }
-        importedCount++;
-      }
-    }
-
-    if (errors.length > 0) {
-      await connection.rollback();
-      return res.status(400).json({
-        status: 'failure',
-        message: 'Errors occurred during import',
-        errors,
-      });
     }
 
     await connection.commit();
-    res.status(201).json({
+    res.status(200).json({
       status: 'success',
-      message: 'Courses imported successfully',
-      importedCount,
+      message: `Imported ${importedCount} courses successfully`,
+      errors: errors.length > 0 ? errors : undefined,
     });
   } catch (err) {
     await connection.rollback();
     console.error('Error importing courses:', err);
     res.status(500).json({
       status: 'failure',
-      message: `Server error: ${err.message}`,
-      sqlMessage: err.sqlMessage || 'No SQL message available',
+      message: 'Server error: ' + err.message,
     });
   } finally {
     connection.release();
@@ -523,7 +412,11 @@ export const getAllCourse = catchAsync(async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const [courses] = await connection.execute(
-      `SELECT * FROM Course WHERE isActive = 'YES'`
+      `SELECT c.*, b.branch 
+       FROM Course c 
+       JOIN Semester s ON c.semesterId = s.semesterId 
+       JOIN Batch b ON s.batchId = b.batchId 
+       WHERE c.isActive = 'YES'`
     );
 
     res.status(200).json({
@@ -561,7 +454,11 @@ export const getCourseBySemester = catchAsync(async (req, res) => {
     }
 
     const [rows] = await connection.execute(
-      `SELECT * FROM Course WHERE semesterId = ? AND isActive = 'YES'`,
+      `SELECT c.*, b.branch 
+       FROM Course c 
+       JOIN Semester s ON c.semesterId = s.semesterId 
+       JOIN Batch b ON s.batchId = b.batchId 
+       WHERE c.semesterId = ? AND c.isActive = 'YES'`,
       [semesterId]
     );
 
@@ -612,8 +509,9 @@ export const updateCourse = catchAsync(async (req, res) => {
   try {
     await connection.beginTransaction();
 
+    // Validate user
     const [userCheck] = await connection.execute(
-      'SELECT Userid FROM users WHERE Email = ? AND status = "active"',
+      'SELECT Userid FROM users WHERE email = ? AND status = "active"',
       [userEmail]
     );
     if (userCheck.length === 0) {
@@ -623,6 +521,7 @@ export const updateCourse = catchAsync(async (req, res) => {
       });
     }
 
+    // Validate course exists
     const [courseRows] = await connection.execute(
       `SELECT courseId FROM Course WHERE courseId = ? AND isActive = 'YES'`,
       [courseId]
@@ -634,19 +533,26 @@ export const updateCourse = catchAsync(async (req, res) => {
       });
     }
 
+    // Validate inputs
     if (
-      !courseTitle ||
-      (minMark !== undefined && maxMark === undefined) ||
-      (maxMark !== undefined && minMark === undefined) ||
-      (lectureHours !== undefined &&
-        (tutorialHours === undefined || practicalHours === undefined || experientialHours === undefined)) ||
-      totalContactPeriods === undefined ||
+      !courseTitle &&
+      !courseCode &&
+      !semesterId &&
+      !type &&
+      !category &&
+      minMark === undefined &&
+      maxMark === undefined &&
+      !isActive &&
+      lectureHours === undefined &&
+      tutorialHours === undefined &&
+      practicalHours === undefined &&
+      experientialHours === undefined &&
+      totalContactPeriods === undefined &&
       credits === undefined
     ) {
       return res.status(400).json({
         status: 'failure',
-        message:
-          'Invalid input: courseTitle is required, and minMark/maxMark/lectureHours must be provided together if updated',
+        message: 'At least one field must be provided for update',
       });
     }
 
@@ -693,15 +599,16 @@ export const updateCourse = catchAsync(async (req, res) => {
       }
     }
 
-    if (courseCode) {
+    // Check for courseCode conflicts in the same semester
+    if (courseCode && semesterId) {
       const [existingCourse] = await connection.execute(
-        `SELECT courseId FROM Course WHERE courseCode = ? AND courseId != ? AND isActive = 'YES'`,
-        [courseCode, courseId]
+        `SELECT courseId FROM Course WHERE courseCode = ? AND semesterId = ? AND courseId != ? AND isActive = 'YES'`,
+        [courseCode, semesterId, courseId]
       );
       if (existingCourse.length > 0) {
         return res.status(400).json({
           status: 'failure',
-          message: `Course code ${courseCode} already exists`,
+          message: `Course code ${courseCode} already exists for semesterId ${semesterId}`,
         });
       }
     }
@@ -720,8 +627,8 @@ export const updateCourse = catchAsync(async (req, res) => {
     if (tutorialHours !== undefined) updateFields.push('tutorialHours = ?'), values.push(tutorialHours);
     if (practicalHours !== undefined) updateFields.push('practicalHours = ?'), values.push(practicalHours);
     if (experientialHours !== undefined) updateFields.push('experientialHours = ?'), values.push(experientialHours);
-    if (totalContactPeriods) updateFields.push('totalContactPeriods = ?'), values.push(totalContactPeriods);
-    if (credits) updateFields.push('credits = ?'), values.push(credits);
+    if (totalContactPeriods !== undefined) updateFields.push('totalContactPeriods = ?'), values.push(totalContactPeriods);
+    if (credits !== undefined) updateFields.push('credits = ?'), values.push(credits);
     updateFields.push('updatedBy = ?'), values.push(userEmail);
     updateFields.push('updatedAt = CURRENT_TIMESTAMP');
 
@@ -771,7 +678,7 @@ export const deleteCourse = catchAsync(async (req, res) => {
     await connection.beginTransaction();
 
     const [userCheck] = await connection.execute(
-      'SELECT Userid FROM users WHERE Email = ? AND status = "active"',
+      'SELECT Userid FROM users WHERE email = ? AND status = "active"',
       [userEmail]
     );
     if (userCheck.length === 0) {

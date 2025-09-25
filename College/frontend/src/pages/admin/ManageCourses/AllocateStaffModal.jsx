@@ -16,12 +16,12 @@ const AllocateStaffModal = ({
   setShowCourseDetailsModal,
 }) => {
   const onAllocateStaff = async (staffId) => {
-    if (!selectedCourse || !selectedBatch || !staffId) {
+    if (!selectedCourse?.courseId || !selectedBatch || !staffId) {
       toast.error('Missing course, batch, or staff information');
       return;
     }
     try {
-      const sectionRes = await api.get(`${API_BASE}/courses/${selectedCourse.courseCode}/sections`);
+      const sectionRes = await api.get(`${API_BASE}/courses/${selectedCourse.courseId}/sections`);
       const section = sectionRes.data.data.find(s => s.sectionName.replace('BatchBatch', 'Batch') === selectedBatch);
       if (!section) {
         toast.error(`Section ${selectedBatch} not found`);
@@ -33,8 +33,8 @@ const AllocateStaffModal = ({
         return;
       }
       await api.post(`${API_BASE}/courses/${selectedCourse.courseId}/staff`, {
-        staffId,
-        courseCode: selectedCourse.courseCode,
+        Userid: staffId,
+        courseId: selectedCourse.courseId,
         sectionId: section.sectionId,
         departmentId: staff.departmentId,
       });
@@ -45,7 +45,17 @@ const AllocateStaffModal = ({
     } catch (err) {
       const message = err.response?.data?.message || 'Error allocating staff';
       toast.error(message);
-      if (message.includes('Unknown column')) {
+      if (err.response?.status === 404) {
+        toast.error(`Course with ID ${selectedCourse.courseId} or section ${selectedBatch} not found`);
+      } else if (err.response?.status === 400) {
+        if (message.includes('already allocated')) {
+          toast.error(message);
+        } else {
+          toast.error('Invalid allocation data');
+        }
+      } else if (err.response?.status === 401) {
+        toast.error('Authentication failed. Please log in again.');
+      } else if (message.includes('Unknown column')) {
         toast.warn('Database configuration issue detected. Please check server settings.');
       }
     }

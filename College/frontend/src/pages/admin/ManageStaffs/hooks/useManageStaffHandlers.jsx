@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { showErrorToast, showSuccessToast, showConfirmToast } from '../../../../utils/swalConfig';
 import manageStaffService from '../../../../services/manageStaffService';
 
+// Simple in-memory cache for sections (shared with useManageStaffData.js)
+const sectionCache = new Map();
+
 const useManageStaffHandlers = ({
   selectedStaff,
   setSelectedStaff,
@@ -41,13 +44,20 @@ const useManageStaffHandlers = ({
     setOperationLoading(true);
     try {
       const numberOfBatches = parseInt(newBatchForm.numberOfBatches) || 1;
-      console.log('Adding sections:', { courseCode: selectedCourse.code, numberOfBatches });
-      const res = await manageStaffService.addSections(selectedCourse.code, numberOfBatches);
+      console.log('Adding sections:', { courseId: selectedCourse.courseId, numberOfBatches });
+      const res = await manageStaffService.addSections(selectedCourse.courseId, numberOfBatches);
       console.log('Add sections response:', res);
       if (res.status === 201) {
+        sectionCache.delete(`sections_${selectedCourse.courseId}`);
+        console.log(`Cleared cache for course ${selectedCourse.courseId}`);
         setShowAddBatchModal(false);
         setNewBatchForm({ numberOfBatches: 1 });
         await fetchData();
+        const updatedCourse = courses.find(c => c.courseId === selectedCourse.courseId);
+        if (updatedCourse) {
+          setSelectedCourse(updatedCourse);
+          console.log('Updated selectedCourse:', updatedCourse);
+        }
         setShowAllocateCourseModal(true);
         showSuccessToast(`Added ${numberOfBatches} batch${numberOfBatches > 1 ? 'es' : ''} successfully`);
       } else {
@@ -71,8 +81,8 @@ const useManageStaffHandlers = ({
       return;
     }
     setOperationLoading(true);
+    const isUpdate = selectedCourse?.isAllocated ?? false;
     try {
-      const isUpdate = selectedCourse?.isAllocated ?? false;
       const staffCourseId = isUpdate && selectedStaff?.allocatedCourses
         ? selectedStaff.allocatedCourses.find(c => c.courseCode === selectedCourse.code)?.id
         : Date.now();
@@ -102,18 +112,28 @@ const useManageStaffHandlers = ({
       let res;
       if (isUpdate) {
         const payload = { sectionId: selectedSectionId };
+        console.log('Updating course allocation:', { staffCourseId, payload });
         res = await manageStaffService.updateCourseAllocation(staffCourseId, payload);
+        console.log('Update course allocation response:', res);
       } else {
         const staffId = parseInt(selectedStaff.staffId, 10);
         if (isNaN(staffId)) {
           throw new Error('Invalid Staff ID');
         }
+        const payload = {
+          Userid: staffId,
+          courseId: selectedCourse.courseId,
+          sectionId: selectedSectionId,
+          departmentId: selectedStaff.departmentId,
+        };
+        console.log('Allocating course with payload:', payload);
         res = await manageStaffService.allocateCourse(
           staffId,
-          selectedCourse.code,
+          selectedCourse.courseId,
           selectedSectionId,
           selectedStaff.departmentId
         );
+        console.log('Allocate course response:', res);
       }
 
       if (res.status === 201 || res.status === 200) {
@@ -132,9 +152,10 @@ const useManageStaffHandlers = ({
               : prev.allocatedCourses.filter(c => c.courseCode !== selectedCourse.code),
           };
         });
-        showErrorToast('Error', `Failed to ${isUpdate ? 'update' : 'allocate'} course`);
+        showErrorToast('Error', `Failed to ${isUpdate ? 'update' : 'allocate'} course: ${res.data?.message || 'Unknown error'}`);
       }
     } catch (err) {
+      console.error('Allocate course error:', err.response || err.message);
       setSelectedStaff(prev => {
         if (!prev) return prev;
         return {

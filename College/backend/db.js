@@ -1,4 +1,3 @@
-// Modified initDatabase in the db.js file (added new tables for ElectiveBucket and ElectiveBucketCourse)
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
@@ -167,11 +166,11 @@ const initDatabase = async () => {
             )
         `);
 
-        // 6) Course - Stores course details for each semester
+        // 6) Course - Stores course details for each semester (MODIFIED)
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Course (
                 courseId INT PRIMARY KEY AUTO_INCREMENT,
-                courseCode VARCHAR(20) NOT NULL UNIQUE,
+                courseCode VARCHAR(20) NOT NULL,
                 semesterId INT NOT NULL,
                 courseTitle VARCHAR(255) NOT NULL,
                 category ENUM('HSMC','BSC','ESC','PEC','OEC','EEC','PCC') NOT NULL,
@@ -190,80 +189,81 @@ const initDatabase = async () => {
                 createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 CONSTRAINT fk_course_sem FOREIGN KEY (semesterId) REFERENCES Semester(semesterId)
-                    ON UPDATE CASCADE ON DELETE CASCADE
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                UNIQUE (courseCode, semesterId)
             )
         `);
 
-        // 7) Section - Stores sections for each course
+        // 7) Section - Stores sections for each course (MODIFIED)
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Section (
                 sectionId INT PRIMARY KEY AUTO_INCREMENT,
-                courseCode VARCHAR(20) NOT NULL,
+                courseId INT NOT NULL,
                 sectionName VARCHAR(10) NOT NULL,
                 isActive ENUM('YES','NO') DEFAULT 'YES',
                 createdBy VARCHAR(150),
                 updatedBy VARCHAR(150),
                 createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                CONSTRAINT fk_section_course FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
+                CONSTRAINT fk_section_course FOREIGN KEY (courseId) REFERENCES Course(courseId)
                     ON UPDATE CASCADE ON DELETE RESTRICT,
-                UNIQUE (courseCode, sectionName)
+                UNIQUE (courseId, sectionName)
             )
         `);
 
-        // 8) StudentCourse - Enrolls students in courses with sections
+        // 8) StudentCourse - Enrolls students in courses with sections (MODIFIED)
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS StudentCourse (
                 studentCourseId INT PRIMARY KEY AUTO_INCREMENT,
                 regno VARCHAR(50) NOT NULL,
-                courseCode VARCHAR(20) NOT NULL,
+                courseId INT NOT NULL,
                 sectionId INT NOT NULL,
                 createdBy VARCHAR(150),
                 updatedBy VARCHAR(150),
                 createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE (regno, courseCode, sectionId),
+                UNIQUE (regno, courseId, sectionId),
                 CONSTRAINT fk_sc_student FOREIGN KEY (regno) REFERENCES student_details(regno)
                     ON UPDATE CASCADE ON DELETE CASCADE,
-                CONSTRAINT fk_sc_course FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
+                CONSTRAINT fk_sc_course FOREIGN KEY (courseId) REFERENCES Course(courseId)
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 CONSTRAINT fk_sc_section FOREIGN KEY (sectionId) REFERENCES Section(sectionId)
                     ON UPDATE CASCADE ON DELETE CASCADE
             )
         `);
 
-        // 9) StaffCourse - Assigns staff to courses and sections
+        // 9) StaffCourse - Assigns staff to courses and sections (MODIFIED)
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS StaffCourse (
                 staffCourseId INT PRIMARY KEY AUTO_INCREMENT,
-                staffId INT NOT NULL,
-                courseCode VARCHAR(20) NOT NULL,
+                Userid INT NOT NULL,
+                courseId INT NOT NULL,
                 sectionId INT NOT NULL,
                 Deptid INT NOT NULL,
                 createdBy VARCHAR(150),
                 updatedBy VARCHAR(150),
                 createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE (staffId, courseCode, sectionId, Deptid),
-                CONSTRAINT fk_stc_staff FOREIGN KEY (staffId) REFERENCES users(staffId)
+                UNIQUE (Userid, courseId, sectionId, Deptid),
+                CONSTRAINT fk_stc_staff FOREIGN KEY (Userid) REFERENCES users(Userid)
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 CONSTRAINT fk_stc_dept FOREIGN KEY (Deptid) REFERENCES department(Deptid)
-                    ON UPDATE CASCADE ON DELETE CASCADE,
-                CONSTRAINT fk_stc_course FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
+                    ON UPDATE CASCADE ON DELETE RESTRICT,
+                CONSTRAINT fk_stc_course FOREIGN KEY (courseId) REFERENCES Course(courseId)
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 CONSTRAINT fk_stc_section FOREIGN KEY (sectionId) REFERENCES Section(sectionId)
                     ON UPDATE CASCADE ON DELETE CASCADE
             )
         `);
 
-        // 10) CourseOutcome - Stores course outcomes
+        // 10) CourseOutcome - Stores course outcomes (MODIFIED)
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS CourseOutcome (
                 coId INT PRIMARY KEY AUTO_INCREMENT,
-                courseCode VARCHAR(20) NOT NULL,
+                courseId INT NOT NULL,
                 coNumber VARCHAR(10) NOT NULL,
-                UNIQUE (courseCode, coNumber),
-                CONSTRAINT fk_co_course FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
+                UNIQUE (courseId, coNumber),
+                CONSTRAINT fk_co_course FOREIGN KEY (courseId) REFERENCES Course(courseId)
                     ON UPDATE CASCADE ON DELETE CASCADE
             )
         `);
@@ -296,11 +296,11 @@ const initDatabase = async () => {
             )
         `);
 
-        // 13) Timetable - Stores class schedules
+        // 13) Timetable - Stores class schedules (MODIFIED)
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Timetable (
                 timetableId INT PRIMARY KEY AUTO_INCREMENT,
-                courseCode VARCHAR(20) NOT NULL,
+                courseId INT NOT NULL,
                 sectionId INT NULL,
                 dayOfWeek ENUM('MON','TUE','WED','THU','FRI','SAT') NOT NULL,
                 periodNumber INT NOT NULL CHECK (periodNumber BETWEEN 1 AND 8),
@@ -314,6 +314,8 @@ const initDatabase = async () => {
                 CONSTRAINT fk_tt_dept FOREIGN KEY (Deptid) REFERENCES department(Deptid)
                     ON UPDATE CASCADE ON DELETE RESTRICT,
                 CONSTRAINT fk_tt_sem FOREIGN KEY (semesterId) REFERENCES Semester(semesterId)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_tt_course FOREIGN KEY (courseId) REFERENCES Course(courseId)
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 CONSTRAINT fk_tt_section FOREIGN KEY (sectionId) REFERENCES Section(sectionId)
                     ON UPDATE CASCADE ON DELETE SET NULL,
@@ -335,13 +337,13 @@ const initDatabase = async () => {
             )
         `);
 
-        // 15) PeriodAttendance - Stores period-wise attendance
+        // 15) PeriodAttendance - Stores period-wise attendance (MODIFIED)
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS PeriodAttendance (
                 periodAttendanceId INT PRIMARY KEY AUTO_INCREMENT,
                 regno VARCHAR(50) NOT NULL,
                 staffId INT NOT NULL,
-                courseCode VARCHAR(20) NOT NULL,
+                courseId INT NOT NULL,
                 sectionId INT NOT NULL,
                 semesterNumber INT NOT NULL CHECK (semesterNumber BETWEEN 1 AND 8),
                 dayOfWeek ENUM('MON','TUE','WED','THU','FRI','SAT') NOT NULL,
@@ -349,25 +351,25 @@ const initDatabase = async () => {
                 attendanceDate DATE NOT NULL,
                 status ENUM('P','A') NOT NULL,
                 Deptid INT NOT NULL,
-                UNIQUE (regno, courseCode, sectionId, attendanceDate, periodNumber),
+                UNIQUE (regno, courseId, sectionId, attendanceDate, periodNumber),
                 CONSTRAINT fk_pa_student FOREIGN KEY (regno) REFERENCES student_details(regno)
                     ON UPDATE CASCADE ON DELETE CASCADE,
-                CONSTRAINT fk_pa_staff FOREIGN KEY (staffId) REFERENCES users(staffId)
+                CONSTRAINT fk_pa_staff FOREIGN KEY (staffId) REFERENCES users(Userid)
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 CONSTRAINT fk_pa_dept FOREIGN KEY (Deptid) REFERENCES department(Deptid)
-                    ON UPDATE CASCADE ON DELETE CASCADE,
-                CONSTRAINT fk_pa_course FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
+                    ON UPDATE CASCADE ON DELETE RESTRICT,
+                CONSTRAINT fk_pa_course FOREIGN KEY (courseId) REFERENCES Course(courseId)
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 CONSTRAINT fk_pa_section FOREIGN KEY (sectionId) REFERENCES Section(sectionId)
                     ON UPDATE CASCADE ON DELETE CASCADE
             )
         `);
 
-        // 16) CoursePartitions - Stores CO counts per partition for each course
+        // 16) CoursePartitions - Stores CO counts per partition for each course (MODIFIED)
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS CoursePartitions (
                 partitionId INT PRIMARY KEY AUTO_INCREMENT,
-                courseCode VARCHAR(20) NOT NULL UNIQUE,
+                courseId INT NOT NULL UNIQUE,
                 theoryCount INT DEFAULT 0,
                 practicalCount INT DEFAULT 0,
                 experientialCount INT DEFAULT 0,
@@ -375,7 +377,7 @@ const initDatabase = async () => {
                 updatedBy VARCHAR(150),
                 createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                CONSTRAINT fk_partition_course FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
+                CONSTRAINT fk_partition_course FOREIGN KEY (courseId) REFERENCES Course(courseId)
                     ON UPDATE CASCADE ON DELETE CASCADE
             )
         `);
@@ -410,7 +412,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // New table for ElectiveBucket
+        // 19) ElectiveBucket - Stores elective buckets
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS ElectiveBucket (
                 bucketId INT PRIMARY KEY AUTO_INCREMENT,
@@ -426,16 +428,16 @@ const initDatabase = async () => {
             )
         `);
 
-        // New table for ElectiveBucketCourse
+        // 20) ElectiveBucketCourse - Maps courses to elective buckets (MODIFIED)
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS ElectiveBucketCourse (
                 id INT PRIMARY KEY AUTO_INCREMENT,
                 bucketId INT NOT NULL,
-                courseCode VARCHAR(20) NOT NULL,
+                courseId INT NOT NULL,
                 createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE (bucketId, courseCode),
+                UNIQUE (bucketId, courseId),
                 CONSTRAINT fk_ebc_bucket FOREIGN KEY (bucketId) REFERENCES ElectiveBucket(bucketId) ON DELETE CASCADE,
-                CONSTRAINT fk_ebc_course FOREIGN KEY (courseCode) REFERENCES Course(courseCode) ON DELETE CASCADE
+                CONSTRAINT fk_ebc_course FOREIGN KEY (courseId) REFERENCES Course(courseId) ON DELETE CASCADE
             )
         `);
 

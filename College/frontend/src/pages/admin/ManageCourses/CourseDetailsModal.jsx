@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { X, Edit3, Plus, UserPlus, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { api } from '../../../services/authService'; // Adjust path if needed
+import { api } from '../../../services/authService';
 
 const API_BASE = 'http://localhost:4000/api/admin';
 
@@ -19,18 +19,61 @@ const CourseDetailsModal = ({
   setSelectedBatch,
   setShowAllocateStaffModal,
 }) => {
-  const onDeleteBatch = async (courseCode, sectionName) => {
+  const [deletingBatches, setDeletingBatches] = useState(new Set());
+
+  const onDeleteBatch = async (courseId, sectionName) => {
     if (!confirm(`Delete batch ${sectionName}? This action cannot be undone.`)) return;
+
+    const normalizedName = sectionName.replace('BatchBatch', 'Batch');
+    setDeletingBatches(prev => new Set([...prev, normalizedName]));
+
+    // Optimistic update
+    setSections(prev => {
+      const updatedBatches = { ...prev[String(courseId)] };
+      delete updatedBatches[normalizedName];
+      const newState = { ...prev, [String(courseId)]: updatedBatches };
+      console.log(`CourseDetailsModal: Optimistically updated sections for course ${courseId}:`, newState);
+      return newState;
+    });
+
     try {
-      await api.delete(`${API_BASE}/courses/${courseCode}/sections/${sectionName}`);
+      await Promise.race([
+        api.delete(`${API_BASE}/courses/${courseId}/sections/${sectionName}`),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), 5000))
+      ]);
       toast.success('Batch deleted successfully');
-      handleDeleteBatch(courseCode, sectionName);
+      await handleDeleteBatch(courseId, sectionName); // Trigger refetch
     } catch (err) {
-      const message = err.response?.data?.message || 'Error deleting batch';
+      const message = err.response?.data?.message || err.message || 'Error deleting batch';
+      console.error(`CourseDetailsModal: Error deleting batch ${sectionName}:`, err.response?.data || err);
       toast.error(message);
-      if (message.includes('Unknown column')) {
+      if (err.response?.status === 404) {
+        toast.error(`Course with ID ${courseId} or section ${sectionName} not found`);
+      } else if (err.response?.status === 401) {
+        toast.error('Authentication failed. Please log in again.');
+      } else if (message.includes('foreign key constraint')) {
+        toast.error('Cannot delete batch because it has allocated staff. Remove staff first.');
+      } else if (message.includes('Unknown column')) {
         toast.warn('Database configuration issue detected. Please check server settings.');
       }
+      // Revert optimistic update
+      setSections(prev => {
+        const newState = {
+          ...prev,
+          [String(courseId)]: {
+            ...(prev[String(courseId)] || {}),
+            [normalizedName]: [],
+          },
+        };
+        console.log(`CourseDetailsModal: Reverted sections state for course ${courseId}:`, newState);
+        return newState;
+      });
+    } finally {
+      setDeletingBatches(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(normalizedName);
+        return newSet;
+      });
     }
   };
 
@@ -39,11 +82,15 @@ const CourseDetailsModal = ({
     try {
       await api.delete(`${API_BASE}/staff-courses/${staffCourseId}`);
       toast.success('Staff removed successfully');
-      handleDeleteStaff(staffCourseId);
+      await handleDeleteStaff(staffCourseId);
     } catch (err) {
       const message = err.response?.data?.message || 'Error removing staff';
       toast.error(message);
-      if (message.includes('Unknown column')) {
+      if (err.response?.status === 404) {
+        toast.error(`Allocation with ID ${staffCourseId} not found`);
+      } else if (err.response?.status === 401) {
+        toast.error('Authentication failed. Please log in again.');
+      } else if (message.includes('Unknown column')) {
         toast.warn('Database configuration issue detected. Please check server settings.');
       }
     }
@@ -58,7 +105,6 @@ const CourseDetailsModal = ({
             <button
               onClick={() => {
                 setShowCourseDetailsModal(false);
-                setSections(prev => ({ ...prev, [selectedCourse.courseId]: {} }));
               }}
               className="text-gray-400 hover:text-gray-600"
             >
@@ -100,7 +146,7 @@ const CourseDetailsModal = ({
                 <div key={sectionName} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 flex justify-between items-center">
                   <div className="flex-1">
                     <div className="flex justify-between items-center">
-                      <h4 className="font-medium text-gray-900">{sectionName}</h4>
+                      <h4 className="font-medium text-gray-900">{sectionName.replace('BatchBatch', 'Batch')}</h4>
                       <span className="text-sm text-gray-500">{staffs ? staffs.length : 0} Staff Assigned</span>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2">
@@ -124,6 +170,7 @@ const CourseDetailsModal = ({
                             handleEditStaff(staffs[0].staffCourseId);
                           }}
                           className="bg-yellow-50 hover:bg-yellow-100 text-yellow-600 px-2 py-1 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                          disabled={deletingBatches.has(sectionName.replace('BatchBatch', 'Batch'))}
                         >
                           <Edit3 size={14} />
                           Edit
@@ -134,6 +181,7 @@ const CourseDetailsModal = ({
                             onDeleteStaff(staffs[0].staffCourseId);
                           }}
                           className="bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                          disabled={deletingBatches.has(sectionName.replace('BatchBatch', 'Batch'))}
                         >
                           <Trash2 size={14} />
                           Remove
@@ -144,21 +192,23 @@ const CourseDetailsModal = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedBatch(sectionName);
+                          setSelectedBatch(sectionName.replace('BatchBatch', 'Batch'));
                           setShowAllocateStaffModal(true);
                           setShowCourseDetailsModal(false);
                         }}
                         className="bg-green-50 hover:bg-green-100 text-green-600 px-2 py-1 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                        disabled={deletingBatches.has(sectionName.replace('BatchBatch', 'Batch'))}
                       >
                         <UserPlus size={14} />
                         Allocate Staff
                       </button>
                     )}
                     <button
-                      onClick={() => onDeleteBatch(selectedCourse.courseCode, sectionName)}
+                      onClick={() => onDeleteBatch(selectedCourse.courseId, sectionName)}
                       className="ml-2 text-red-500 hover:text-red-700"
+                      disabled={deletingBatches.has(sectionName.replace('BatchBatch', 'Batch'))}
                     >
-                      Delete Batch
+                      {deletingBatches.has(sectionName.replace('BatchBatch', 'Batch')) ? 'Deleting...' : 'Delete Batch'}
                     </button>
                   </div>
                 </div>

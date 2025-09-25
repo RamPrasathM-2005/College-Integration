@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, BookOpen, Upload } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { api } from '../../../services/authService.js';
+import { api } from '../../../services/authService';
 import * as XLSX from 'xlsx';
 import Filters from './Filters.jsx';
 import CourseCard from './CourseCard.jsx';
@@ -41,6 +41,7 @@ const ManageCourses = () => {
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [newBatchForm, setNewBatchForm] = useState({ numberOfBatches: 1 });
+  const [updateKey, setUpdateKey] = useState(0); // Force re-render
 
   const courseTypes = ['THEORY', 'PRACTICAL', 'INTEGRATED', 'EXPERIENTIAL LEARNING'];
 
@@ -80,7 +81,8 @@ const ManageCourses = () => {
       const sectionsData = {};
       for (const course of allCourses) {
         try {
-          const sectionRes = await api.get(`${API_BASE}/courses/${course.courseCode}/sections`);
+          const sectionRes = await api.get(`${API_BASE}/courses/${course.courseId}/sections`);
+          console.log(`ManageCourses: Sections API response for course ${course.courseId}:`, sectionRes.data);
           if (sectionRes.data?.status === 'success' && Array.isArray(sectionRes.data.data)) {
             const batches = sectionRes.data.data.reduce((acc, section) => {
               if (section.sectionName) {
@@ -92,12 +94,13 @@ const ManageCourses = () => {
             sectionsData[String(course.courseId)] = batches;
 
             const staffRes = await api.get(`${API_BASE}/courses/${course.courseId}/staff`);
+            console.log(`ManageCourses: Staff API response for course ${course.courseId}:`, staffRes.data);
             if (staffRes.data?.status === 'success' && Array.isArray(staffRes.data.data)) {
               staffRes.data.data.forEach(alloc => {
                 const normalizedName = alloc.sectionName.replace('BatchBatch', 'Batch');
                 if (batches[normalizedName]) {
                   batches[normalizedName].push({
-                    staffId: alloc.staffId,
+                    staffId: alloc.Userid,
                     staffName: alloc.staffName,
                     staffCourseId: alloc.staffCourseId,
                     sectionId: alloc.sectionId,
@@ -108,23 +111,27 @@ const ManageCourses = () => {
                 }
               });
             }
+            sectionsData[String(course.courseId)] = batches;
           } else {
             sectionsData[String(course.courseId)] = {};
+            console.warn(`ManageCourses: No sections found for course ${course.courseId}`);
           }
         } catch (err) {
           sectionsData[String(course.courseId)] = {};
+          console.error(`ManageCourses: Error fetching sections for course ${course.courseId}:`, err.response?.data || err);
           toast.warn(`Failed to fetch sections for course ${course.courseCode}: ${err.response?.data?.message || err.message}`);
         }
       }
       setSections(sectionsData);
+      console.log('ManageCourses: Initial sections state:', sectionsData);
 
       const usersRes = await api.get(`${API_BASE}/users`);
       let staffData = usersRes.data.data.filter(user => user.departmentId);
       staffData = staffData.map(user => ({
-        id: user.staffId || user.userId || user.id,
-        name: user.name || user.fullName,
+        id: user.id || user.Userid,
+        name: user.name || 'Unknown',
         departmentId: user.departmentId,
-        departmentName: deptNameMap[user.departmentId] || user.departmentName || 'Unknown',
+        departmentName: user.departmentName || deptNameMap[user.departmentId] || 'Unknown',
       }));
       const uniqueStaff = staffData.filter((staff, index, self) =>
         index === self.findIndex(s => s.id === staff.id)
@@ -135,7 +142,9 @@ const ManageCourses = () => {
       const message = err.response?.data?.message || 'Failed to fetch data';
       setError(message);
       toast.error(message);
-      if (message.includes('Unknown column')) {
+      if (err.response?.status === 401) {
+        toast.error('Authentication failed. Please log in again.');
+      } else if (message.includes('Unknown column')) {
         toast.warn('Database configuration issue detected. Please check server settings.');
       }
     } finally {
@@ -160,9 +169,17 @@ const ManageCourses = () => {
         return;
       }
 
-      const sectionRes = await api.get(`${API_BASE}/courses/${course.courseCode}/sections`);
+      const sectionRes = await Promise.race([
+        api.get(`${API_BASE}/courses/${course.courseId}/sections`),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), 5000))
+      ]);
+      console.log(`fetchCourseStaff: Sections API response for course ${course.courseId}:`, sectionRes.data);
       if (sectionRes.data?.status !== 'success' || !Array.isArray(sectionRes.data.data)) {
-        setSections(prev => ({ ...prev, [String(courseId)]: {} }));
+        setSections(prev => {
+          const newState = { ...prev, [String(courseId)]: {} };
+          console.log(`fetchCourseStaff: Updated sections state (no sections):`, newState);
+          return newState;
+        });
         toast.warn('No sections found for this course');
         return;
       }
@@ -176,12 +193,13 @@ const ManageCourses = () => {
       }, {});
 
       const staffRes = await api.get(`${API_BASE}/courses/${course.courseId}/staff`);
+      console.log(`fetchCourseStaff: Staff API response for course ${course.courseId}:`, staffRes.data);
       if (staffRes.data?.status === 'success' && Array.isArray(staffRes.data.data)) {
         staffRes.data.data.forEach(alloc => {
           const normalizedName = alloc.sectionName.replace('BatchBatch', 'Batch');
           if (batches[normalizedName]) {
             batches[normalizedName].push({
-              staffId: alloc.staffId,
+              staffId: alloc.Userid,
               staffName: alloc.staffName,
               staffCourseId: alloc.staffCourseId,
               sectionId: alloc.sectionId,
@@ -193,7 +211,12 @@ const ManageCourses = () => {
         });
       }
 
-      setSections(prev => ({ ...prev, [String(courseId)]: batches }));
+      setSections(prev => {
+        const newState = { ...prev, [String(courseId)]: batches };
+        console.log(`fetchCourseStaff: Updated sections state:`, newState);
+        setUpdateKey(prev => prev + 1); // Force re-render
+        return newState;
+      });
       setSelectedCourse(prev => ({
         ...prev,
         courseId,
@@ -202,12 +225,21 @@ const ManageCourses = () => {
       }));
       toast.success('Fetched course staff successfully');
     } catch (err) {
-      const message = err.response?.data?.message || 'Error fetching course staff';
+      const message = err.response?.data?.message || err.message || 'Error fetching course staff';
+      console.error(`fetchCourseStaff: Error for course ${courseId}:`, err.response?.data || err);
       toast.error(message);
-      if (message.includes('Unknown column')) {
+      if (err.response?.status === 404) {
+        toast.error(`Course with ID ${courseId} not found`);
+      } else if (err.response?.status === 401) {
+        toast.error('Authentication failed. Please log in again.');
+      } else if (message.includes('Unknown column')) {
         toast.warn('Database configuration issue detected. Please check server settings.');
       }
-      setSections(prev => ({ ...prev, [String(courseId)]: {} }));
+      setSections(prev => {
+        const newState = { ...prev, [String(courseId)]: {} };
+        console.log(`fetchCourseStaff: Updated sections state (error):`, newState);
+        return newState;
+      });
     } finally {
       setFetchingSections(false);
     }
@@ -215,14 +247,27 @@ const ManageCourses = () => {
 
   const handleAllocateStaff = async (staffId) => {
     await fetchCourseStaff(selectedCourse.courseId);
+    setUpdateKey(prev => prev + 1); // Force re-render
   };
 
-  const handleDeleteBatch = async (courseCode, sectionName) => {
-    await fetchCourseStaff(selectedCourse.courseId);
+  const handleDeleteBatch = async (courseId, sectionName) => {
+    // Optimistic update
+    setSections(prev => {
+      const normalizedName = sectionName.replace('BatchBatch', 'Batch');
+      const updatedBatches = { ...prev[String(courseId)] };
+      delete updatedBatches[normalizedName];
+      const newState = { ...prev, [String(courseId)]: updatedBatches };
+      console.log(`handleDeleteBatch: Optimistically updated sections for course ${courseId}:`, newState);
+      setUpdateKey(prev => prev + 1); // Force re-render
+      return newState;
+    });
+
+    await fetchCourseStaff(courseId);
   };
 
   const handleDeleteStaff = async (staffCourseId) => {
     await fetchCourseStaff(selectedCourse.courseId);
+    setUpdateKey(prev => prev + 1); // Force re-render
   };
 
   const handleEditStaff = (staffCourseId) => {
@@ -242,7 +287,13 @@ const ManageCourses = () => {
   };
 
   const handleDeleteCourse = async (courseId) => {
-    setCourses(courses.filter(course => course.courseId !== courseId));
+    setCourses(prev => prev.filter(course => course.courseId !== courseId));
+    setSections(prev => {
+      const newState = { ...prev };
+      delete newState[String(courseId)];
+      return newState;
+    });
+    setUpdateKey(prev => prev + 1); // Force re-render
   };
 
   const getCourseTypeColor = (type) => {
@@ -271,6 +322,7 @@ const ManageCourses = () => {
 
   const handleAddBatch = async () => {
     await fetchCourseStaff(selectedCourse.courseId);
+    setUpdateKey(prev => prev + 1); // Force re-render
   };
 
   const openEditModal = (course) => {
@@ -391,6 +443,7 @@ const ManageCourses = () => {
           console.log('Import response:', response.data);
           toast.success(`Imported ${response.data.importedCount} courses successfully`);
           fetchData();
+          setUpdateKey(prev => prev + 1); // Force re-render
         } catch (readerError) {
           console.error('Error processing Excel:', readerError);
           toast.error('Error processing Excel file: ' + readerError.message);
@@ -429,7 +482,7 @@ const ManageCourses = () => {
   const displayCourses = Object.keys(filters).some(key => filters[key]) ? filteredCourses : courses;
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen flex flex-col items-center">
+    <div className="p-6 bg-gray-50 min-h-screen flex flex-col items-center" key={updateKey}>
       <div className="w-full max-w-7xl mb-6">
         <div className="flex flex-col sm:flex-row justify-between items-center mb-4">
           <div className="text-center sm:text-left">
@@ -525,6 +578,7 @@ const ManageCourses = () => {
           handleAddBatch={handleAddBatch}
           setShowAddBatchModal={setShowAddBatchModal}
           setShowCourseDetailsModal={setShowCourseDetailsModal}
+          setSections={setSections}
         />
       )}
       {showCourseDetailsModal && selectedCourse && (
@@ -533,6 +587,7 @@ const ManageCourses = () => {
           sections={sections}
           fetchingSections={fetchingSections}
           setShowCourseDetailsModal={setShowCourseDetailsModal}
+          setSections={setSections}
           openEditModal={openEditModal}
           setShowAddBatchModal={setShowAddBatchModal}
           handleDeleteBatch={handleDeleteBatch}

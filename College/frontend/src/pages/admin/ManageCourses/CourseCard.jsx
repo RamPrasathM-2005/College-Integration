@@ -7,7 +7,8 @@ const API_BASE = 'http://localhost:4000/api/admin';
 
 const CourseCard = ({ course, sections, getCourseTypeColor, handleCourseClick, handleDeleteCourse, openEditModal }) => {
   const sem = course.semesterDetails;
-  const numBatches = sections[course.courseId] ? Object.keys(sections[course.courseId]).length : 0;
+  const numBatches = sections[String(course.courseId)] ? Object.keys(sections[String(course.courseId)]).length : 0;
+  console.log(`CourseCard: Sections for course ${course.courseId}:`, sections[String(course.courseId)]); // Debug log
 
   const handleDelete = async (e) => {
     e.stopPropagation();
