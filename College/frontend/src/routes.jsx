@@ -20,6 +20,7 @@ import ManageStaff from "./pages/admin/ManageStaffs/ManageStaff";
 import ManageStudents from "./pages/admin/ManageStudents/ManageStudents";
 import Timetable from "./pages/admin/Timetable";
 import OverallConsolidatedMarks from "./pages/admin/OverallConsolidatedMarks";
+import SubjectWiseMarks from "./pages/admin/SubjectWiseMarks";
 import CourseRecommendation from './pages/admin/CourseRecommendation';
 
 // Staff Pages
@@ -66,7 +67,8 @@ const routes = [
       { path: "manage-staff", element: <ManageStaff /> },
       { path: "manage-students", element: <ManageStudents /> },
       { path: "timetable", element: <Timetable /> },
-      { path: 'consolidated-marks', element: <OverallConsolidatedMarks /> },
+      { path: "consolidated-marks", element: <OverallConsolidatedMarks /> },
+      { path: "subjectWise-marks", element: <SubjectWiseMarks /> },
       { path: "course-recommendation", element: <CourseRecommendation/>},
       { path: "*", element: <NotFound /> },
     ],

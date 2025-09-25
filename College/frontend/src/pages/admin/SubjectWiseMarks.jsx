@@ -10,14 +10,17 @@ const MySwal = withReactContent(Swal);
 const { Option } = Select;
 const { Title, Text } = Typography;
 
-const OverallConsolidatedMarks = () => {
+const SubjectWiseMarks = () => {
   const [batches, setBatches] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [semesters, setSemesters] = useState([]);
+  const [courses, setCourses] = useState([]);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [selectedDept, setSelectedDept] = useState(null);
   const [selectedSem, setSelectedSem] = useState(null);
-  const [data, setData] = useState({ students: [], courses: [], marks: {} });
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [fullData, setFullData] = useState({ students: [], courses: [], marks: {} });
+  const [displayedData, setDisplayedData] = useState({ students: [], courses: [], marks: {} });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [form] = Form.useForm();
@@ -142,100 +145,122 @@ const OverallConsolidatedMarks = () => {
     fetchSemesters();
   }, [selectedBatch, selectedDept, batches, form]);
 
-  const handleSubmit = async () => {
-    if (!selectedBatch || !selectedDept || !selectedSem) {
-      setError('Please select Batch, Department, and Semester');
-      MySwal.fire({
-        toast: true,
-        position: 'top-end',
-        icon: 'warning',
-        title: 'Please select Batch, Department, and Semester',
-        showConfirmButton: false,
-        timer: 3000,
-        timerProgressBar: true,
-      });
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const selectedBatchData = batches.find((b) => String(b.batchId) === String(selectedBatch));
-      const selectedDeptData = departments.find((d) => String(d.Deptid) === String(selectedDept));
-      const params = {
-        batch: selectedBatchData?.batch || selectedBatch,
-        dept: selectedDeptData?.Deptacronym || selectedDept,
-        sem: selectedSem,
-      };
-      console.log('Sending request with params:', params);
-      const res = await api.get('/admin/consolidated-marks', { params });
-      console.log('API response:', JSON.stringify(res.data, null, 2));
-      const { students, courses, marks, message } = res.data.data;
-      if (message) {
-        setError(message);
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!selectedBatch || !selectedDept || !selectedSem) return;
+      setLoading(true);
+      setError(null);
+      setCourses([]);
+      setSelectedCourse(null);
+      setFullData({ students: [], courses: [], marks: {} });
+      setDisplayedData({ students: [], courses: [], marks: {} });
+      try {
+        const selectedBatchData = batches.find((b) => String(b.batchId) === String(selectedBatch));
+        const selectedDeptData = departments.find((d) => String(d.Deptid) === String(selectedDept));
+        const params = {
+          batch: selectedBatchData?.batch || selectedBatch,
+          dept: selectedDeptData?.Deptacronym || selectedDept,
+          sem: selectedSem,
+        };
+        console.log('Sending request with params:', params);
+        const res = await api.get('/admin/consolidated-marks', { params });
+        console.log('API response:', JSON.stringify(res.data, null, 2));
+        const { students, courses, marks, message } = res.data.data;
+        if (message) {
+          setError(message);
+          MySwal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'warning',
+            title: message,
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true,
+          });
+        } else if (courses.length === 0) {
+          setError('No courses found for the selected semester.');
+          MySwal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'warning',
+            title: 'No courses found for the selected semester',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true,
+          });
+        } else if (students.length === 0) {
+          setError('No students found for the selected criteria.');
+          MySwal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'warning',
+            title: 'No students found for the selected criteria',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true,
+          });
+        } else if (Object.keys(marks).length === 0) {
+          setError('No marks available for the selected courses.');
+          MySwal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'warning',
+            title: 'No marks available. Please ensure course outcomes and marks are configured.',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true,
+          });
+        }
+        setFullData({ students, courses, marks });
+        setCourses(courses);
+        console.log('Marks data:', marks);
+      } catch (err) {
+        const errorMsg = err.response?.data?.message || 'Failed to fetch consolidated marks';
+        setError(errorMsg);
         MySwal.fire({
           toast: true,
           position: 'top-end',
-          icon: 'warning',
-          title: message,
+          icon: 'error',
+          title: errorMsg,
           showConfirmButton: false,
           timer: 3000,
           timerProgressBar: true,
         });
-      } else if (courses.length === 0) {
-        setError('No courses found for the selected semester.');
-        MySwal.fire({
-          toast: true,
-          position: 'top-end',
-          icon: 'warning',
-          title: 'No courses found for the selected semester',
-          showConfirmButton: false,
-          timer: 3000,
-          timerProgressBar: true,
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [selectedBatch, selectedDept, selectedSem]);
+
+  useEffect(() => {
+    if (selectedCourse && fullData.courses.length > 0) {
+      const selCourseObj = fullData.courses.find(c => c.courseCode === selectedCourse);
+      if (selCourseObj) {
+        const dispCourses = [selCourseObj];
+        const dispMarks = {};
+        fullData.students.forEach(student => {
+          dispMarks[student.regno] = {
+            [selectedCourse]: fullData.marks[student.regno]?.[selectedCourse] || {}
+          };
         });
-      } else if (students.length === 0) {
-        setError('No students found for the selected criteria.');
-        MySwal.fire({
-          toast: true,
-          position: 'top-end',
-          icon: 'warning',
-          title: 'No students found for the selected criteria',
-          showConfirmButton: false,
-          timer: 3000,
-          timerProgressBar: true,
-        });
-      } else if (Object.keys(marks).length === 0) {
-        setError('No marks available for the selected courses.');
-        MySwal.fire({
-          toast: true,
-          position: 'top-end',
-          icon: 'warning',
-          title: 'No marks available. Please ensure course outcomes and marks are configured.',
-          showConfirmButton: false,
-          timer: 3000,
-          timerProgressBar: true,
+        setDisplayedData({
+          students: fullData.students,
+          courses: dispCourses,
+          marks: dispMarks
         });
       }
-      setData({ students, courses, marks });
-      console.log('Marks data:', marks);
-    } catch (err) {
-      const errorMsg = err.response?.data?.message || 'Failed to fetch consolidated marks';
-      setError(errorMsg);
-      MySwal.fire({
-        toast: true,
-        position: 'top-end',
-        icon: 'error',
-        title: errorMsg,
-        showConfirmButton: false,
-        timer: 3000,
-        timerProgressBar: true,
+    } else {
+      setDisplayedData({
+        students: fullData.students,
+        courses: [],
+        marks: {}
       });
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [selectedCourse, fullData]);
 
   const exportToExcel = () => {
-    const { students, courses, marks } = data;
+    const { students, courses, marks } = displayedData;
     if (!students.length || !courses.length) {
       MySwal.fire({
         toast: true,
@@ -283,8 +308,8 @@ const OverallConsolidatedMarks = () => {
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!merges'] = merges;
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Consolidated Marks');
-    XLSX.writeFile(wb, `consolidated_marks_${selectedBatch}_${selectedDept}_${selectedSem}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'Subject Wise Marks');
+    XLSX.writeFile(wb, `subject_wise_marks_${selectedBatch}_${selectedDept}_${selectedSem}_${selectedCourse || 'all'}.xlsx`);
     MySwal.fire({
       toast: true,
       position: 'top-end',
@@ -312,7 +337,7 @@ const OverallConsolidatedMarks = () => {
       width: 220,
       render: (text) => <span className="font-medium text-gray-800">{text}</span>
     },
-    ...data.courses.map(course => {
+    ...displayedData.courses.map(course => {
       const children = [];
       if (course.theoryCount > 0) {
         children.push({
@@ -321,7 +346,7 @@ const OverallConsolidatedMarks = () => {
           width: 100,
           align: 'center',
           render: (record) => {
-            const mark = data.marks[record.regno]?.[course.courseCode]?.theory;
+            const mark = displayedData.marks[record.regno]?.[course.courseCode]?.theory;
             return mark ? (
               <span className={`px-2 py-1 rounded ${mark >= 50 ? ' text-green-700' : ' text-red-700'}`}>
                 {mark}
@@ -339,7 +364,7 @@ const OverallConsolidatedMarks = () => {
           width: 100,
           align: 'center',
           render: (record) => {
-            const mark = data.marks[record.regno]?.[course.courseCode]?.practical;
+            const mark = displayedData.marks[record.regno]?.[course.courseCode]?.practical;
             return mark ? (
               <span className={`px-2 py-1 rounded ${mark >= 50 ? ' text-green-700' : ' text-red-700'}`}>
                 {mark}
@@ -357,7 +382,7 @@ const OverallConsolidatedMarks = () => {
           width: 120,
           align: 'center',
           render: (record) => {
-            const mark = data.marks[record.regno]?.[course.courseCode]?.experiential;
+            const mark = displayedData.marks[record.regno]?.[course.courseCode]?.experiential;
             return mark ? (
               <span className={`px-2 py-1 rounded ${mark >= 50 ? ' text-green-700' : ' text-red-700'}`}>
                 {mark}
@@ -394,6 +419,12 @@ const OverallConsolidatedMarks = () => {
     return dept;
   };
 
+  const getSelectedCourseInfo = () => {
+    if (!selectedCourse) return null;
+    const course = courses.find(c => c.courseCode === selectedCourse);
+    return course;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50">
       <div className="p-6 max-w-7xl mx-auto">
@@ -402,31 +433,30 @@ const OverallConsolidatedMarks = () => {
           className="mb-6 shadow-lg border-0 bg-white"
           bodyStyle={{ padding: '32px' }}
         >
-          <div className="mb-6">
-            <Title level={3} className="text-blue-800 mb-4 flex items-center">
-              <BookOutlined className="text-4xl text-white mb-4" />
-              Consolidated Marks
-            </Title>
-            <Divider />
-          </div>
-
           {error && (
             <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg">
               <div className="flex items-center">
+                {/* <InfoCircleOutlined className="text-red-400 mr-2" /> */}
                 <Text className="text-red-700">{error}</Text>
               </div>
             </div>
           )}
 
+            <Title level={3} className="text-blue-800 mb-2">
+                    Subject Wise Marks Report
+            </Title>
+
           <Spin spinning={loading}>
             <Form form={form} layout="vertical">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
                 <Form.Item
                   label={
                     <span className="text-gray-700 font-semibold flex items-center">
                       <CalendarOutlined className="mr-2 text-blue-600" />
                       Academic Batch
-                      
+                      <Tooltip title="Select the academic batch (e.g., 2023-2027)">
+                        {/* <InfoCircleOutlined className="ml-2 text-blue-400" /> */}
+                      </Tooltip>
                     </span>
                   }
                 >
@@ -436,7 +466,8 @@ const OverallConsolidatedMarks = () => {
                       setSelectedBatch(value);
                       setSelectedDept(null);
                       setSelectedSem(null);
-                      form.setFieldsValue({ dept: null, sem: null });
+                      setSelectedCourse(null);
+                      form.setFieldsValue({ dept: null, sem: null, course: null });
                     }}
                     placeholder="Choose academic batch"
                     allowClear
@@ -463,7 +494,9 @@ const OverallConsolidatedMarks = () => {
                     <span className="text-gray-700 font-semibold flex items-center">
                       <BookOutlined className="mr-2 text-blue-600" />
                       Department
-                     
+                      <Tooltip title="Select the department (e.g., Computer Science)">
+                        {/* <InfoCircleOutlined className="ml-2 text-blue-400" /> */}
+                      </Tooltip>
                     </span>
                   }
                   name="dept"
@@ -473,7 +506,8 @@ const OverallConsolidatedMarks = () => {
                     onChange={(value) => {
                       setSelectedDept(value);
                       setSelectedSem(null);
-                      form.setFieldsValue({ sem: null });
+                      setSelectedCourse(null);
+                      form.setFieldsValue({ sem: null, course: null });
                     }}
                     placeholder="Choose department"
                     disabled={!selectedBatch}
@@ -487,7 +521,11 @@ const OverallConsolidatedMarks = () => {
                       <Option key={dept.Deptid} value={dept.Deptid}>
                         <div className="flex justify-between items-center">
                           <span className="font-medium">{dept.Deptname}</span>
-                          
+                          {/* <Badge 
+                            color="blue" 
+                            text={dept.Deptacronym} 
+                            className="text-xs"
+                          /> */}
                         </div>
                       </Option>
                     ))}
@@ -499,14 +537,17 @@ const OverallConsolidatedMarks = () => {
                     <span className="text-gray-700 font-semibold flex items-center">
                       <CalendarOutlined className="mr-2 text-blue-600" />
                       Semester
-                     
                     </span>
                   }
                   name="sem"
                 >
                   <Select
                     value={selectedSem}
-                    onChange={setSelectedSem}
+                    onChange={(value) => {
+                      setSelectedSem(value);
+                      setSelectedCourse(null);
+                      form.setFieldsValue({ course: null });
+                    }}
                     placeholder="Choose semester"
                     disabled={!selectedDept}
                     allowClear
@@ -525,10 +566,41 @@ const OverallConsolidatedMarks = () => {
                     ))}
                   </Select>
                 </Form.Item>
+
+                <Form.Item
+                  label={
+                    <span className="text-gray-700 font-semibold flex items-center">
+                      <BookOutlined className="mr-2 text-blue-600" />
+                      Subject
+                    </span>
+                  }
+                  name="course"
+                >
+                  <Select
+                    value={selectedCourse}
+                    onChange={setSelectedCourse}
+                    placeholder="Choose subject"
+                    disabled={!selectedSem || courses.length === 0}
+                    allowClear
+                    showSearch
+                    optionFilterProp="children"
+                    size="large"
+                    className="w-full"
+                  >
+                    {courses.map(course => (
+                      <Option key={course.courseCode} value={course.courseCode}>
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">{course.courseTitle}</span>
+                          <span className="text-blue-600 text-sm">{course.courseCode}</span>
+                        </div>
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
               </div>
 
               {/* Selection Summary */}
-              {(selectedBatch || selectedDept || selectedSem) && (
+              {(selectedBatch || selectedDept || selectedSem || selectedCourse) && (
                 <div className="bg-blue-50 p-4 rounded-lg mb-6 border border-blue-200">
                   <Title level={5} className="text-blue-800 mb-3">Current Selection:</Title>
                   <Space wrap>
@@ -550,58 +622,47 @@ const OverallConsolidatedMarks = () => {
                         text={`Semester: ${selectedSem}`} 
                       />
                     )}
+                    {selectedCourse && (
+                      <Badge 
+                        color="purple" 
+                        text={`Subject: ${getSelectedCourseInfo()?.courseTitle || selectedCourse}`} 
+                      />
+                    )}
                   </Space>
                 </div>
               )}
-
-              <Form.Item>
-                <Button
-                  type="primary"
-                  onClick={handleSubmit}
-                  disabled={!selectedBatch || !selectedDept || !selectedSem}
-                  loading={loading}
-                  size="large"
-                  icon={<SearchOutlined />}
-                  className="w-full md:w-auto px-8 py-2 h-12 bg-gradient-to-r from-blue-600 to-blue-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300"
-                >
-                  Fetch Consolidated Marks
-                </Button>
-              </Form.Item>
             </Form>
           </Spin>
         </Card>
 
         {/* Results Section */}
-        {loading && data.students.length === 0 && (
+        {loading && displayedData.students.length === 0 && (
           <Card className="shadow-lg">
             <Skeleton active paragraph={{ rows: 8 }} />
           </Card>
         )}
 
-        {data.students.length === 0 && !loading && !error && (
+        {displayedData.students.length === 0 && !loading && !error && (
           <Card className="text-center shadow-lg bg-gradient-to-br from-gray-50 to-gray-100">
             <div className="py-12">
               <BookOutlined className="text-6xl text-gray-300 mb-4" />
               <Title level={3} className="text-gray-500 mb-2">No Data Available</Title>
               <Text className="text-gray-400 text-lg">
-                Please select a batch, department, and semester to view marks
+                Please select a batch, department, semester, and subject to view marks
               </Text>
             </div>
           </Card>
         )}
 
-        {data.students.length > 0 && (
+        {displayedData.students.length > 0 && (
           <Card 
             className="shadow-xl border-0"
             title={
               <div className="flex justify-between items-center">
                 <div>
-                  <Title level={3} className="text-blue-800 mb-2">
-                    Consolidated Marks Report
-                  </Title>
                   <Space>
-                    <Badge color="blue" text={`${data.students.length} Students`} />
-                    <Badge color="green" text={`${data.courses.length} Courses`} />
+                    <Badge color="blue" text={`${displayedData.students.length} Students`} />
+                    <Badge color="green" text={`${displayedData.courses.length} Course`} />
                   </Space>
                 </div>
                 <Button
@@ -618,7 +679,7 @@ const OverallConsolidatedMarks = () => {
             bodyStyle={{ padding: '24px' }}
           >
             <Table
-              dataSource={data.students}
+              dataSource={displayedData.students}
               columns={columns}
               rowKey="regno"
               scroll={{ x: 'max-content' }}
@@ -642,4 +703,4 @@ const OverallConsolidatedMarks = () => {
   );
 };
 
-export default OverallConsolidatedMarks;
+export default SubjectWiseMarks;

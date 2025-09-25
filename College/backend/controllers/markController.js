@@ -972,139 +972,219 @@ export const exportCourseWiseCsv = async (req, res) => {
 };
 
 export const getConsolidatedMarks = catchAsync(async (req, res) => {
-  const { batchId, deptId, sem } = req.query;
+  const { batch, dept, sem, batchId, deptId } = req.query;
+  const batchParam = batch || batchId;
+  const deptParam = dept || deptId;
+  const semParam = sem;
 
-  console.log('getConsolidatedMarks called with:', { batchId, deptId, sem });
+  console.log('Received query params:', { batchParam, deptParam, semParam });
 
-  if (!batchId || !deptId || !sem) {
-    return res.status(400).json({ status: 'error', message: 'batchId, deptId, and sem are required' });
+  if (!batchParam || !deptParam || !semParam) {
+    return res.status(400).json({ status: 'failure', message: 'Missing required parameters' });
   }
 
-  let connection;
-  try {
-    connection = await pool.getConnection();
+  // Get Deptid
+  let deptIdValue = deptParam;
+  const [deptRows] = await pool.query(
+    `SELECT Deptid FROM department WHERE Deptacronym = ? OR Deptid = ?`,
+    [deptParam, deptParam]
+  );
+  if (deptRows.length === 0) {
+    return res.status(404).json({ status: 'failure', message: 'Department not found' });
+  }
+  deptIdValue = deptRows[0].Deptid;
 
-    console.log('Fetching batch...');
-    const [batchRows] = await connection.query(
-      'SELECT batch FROM Batch WHERE batchId = ? AND isActive = "YES"',
-      [batchId]
-    );
-    if (!batchRows.length) {
-      return res.status(404).json({ status: 'error', message: `Batch with ID ${batchId} not found` });
-    }
-    const batch = batchRows[0].batch;
-    console.log('Batch fetched:', batch);
+  // Get batchId
+  const [batchRows] = await pool.query(
+    `SELECT batchId FROM Batch 
+     WHERE batch = ? 
+       AND branch = (SELECT Deptacronym FROM department WHERE Deptid = ?) 
+       AND isActive = 'YES'`,
+    [batchParam, deptIdValue]
+  );
+  if (batchRows.length === 0) {
+    console.log('Batch query failed for:', { batch: batchParam, deptId: deptIdValue });
+    return res.status(404).json({ status: 'failure', message: 'Batch not found' });
+  }
+  const batchIdValue = batchRows[0].batchId;
 
-    console.log('Fetching semester...');
-    const [semester] = await connection.query(
-      'SELECT semesterId FROM Semester WHERE batchId = ? AND semesterNumber = ? AND isActive = "YES"',
-      [batchId, sem]
-    );
-    if (!semester.length) {
-      return res.status(404).json({ status: 'error', message: `Semester ${sem} not found for batch ${batchId}` });
-    }
-    const semesterId = semester[0].semesterId;
-    console.log('Semester fetched:', semesterId);
+  // Get semesterId
+  const [semRows] = await pool.query(
+    `SELECT semesterId FROM Semester 
+     WHERE batchId = ? AND semesterNumber = ? AND isActive = 'YES'`,
+    [batchIdValue, semParam]
+  );
+  if (semRows.length === 0) {
+    return res.status(404).json({ status: 'failure', message: 'Semester not found' });
+  }
+  const semesterId = semRows[0].semesterId;
 
-    console.log('Fetching students...');
-    const [students] = await connection.query(
-      `SELECT sd.regno, u.username AS name, u.Userid AS userId
-       FROM student_details sd
-       JOIN users u ON sd.Userid = u.Userid
-       WHERE sd.batch = ? AND sd.Deptid = ? AND sd.Semester = CAST(? AS CHAR) AND sd.pending = FALSE`,
-      [batch, deptId, sem]
-    );
-    console.log('Students fetched:', students.length);
+  // Get students
+  const [students] = await pool.query(
+    `SELECT sd.regno, u.username AS name 
+     FROM student_details sd 
+     JOIN users u ON sd.Userid = u.Userid 
+     WHERE sd.Deptid = ? 
+       AND sd.batch = ? 
+       AND sd.Semester = ? 
+       AND u.status = 'active'`,
+    [deptIdValue, batchParam, semParam]
+  );
 
-    if (students.length === 0) {
-      console.warn('No students found for:', { batchId, batch, deptId, sem });
-      return res.status(200).json({
-        status: 'success',
-        data: { students: [], courses: [], marks: [] },
-        message: 'No students found for the selected batch, department, and semester'
+  // Get courses
+  const [courses] = await pool.query(
+    `SELECT c.courseCode, c.courseTitle, 
+            COALESCE(cp.theoryCount, 0) AS theoryCount, 
+            COALESCE(cp.practicalCount, 0) AS practicalCount, 
+            COALESCE(cp.experientialCount, 0) AS experientialCount 
+     FROM Course c 
+     LEFT JOIN CoursePartitions cp ON c.courseCode = cp.courseCode 
+     WHERE c.semesterId = ? AND c.isActive = 'YES'`,
+    [semesterId]
+  );
+  console.log('Courses fetched:', courses);
+
+  if (courses.length === 0) {
+    return res.status(200).json({
+      status: 'success',
+      data: { students, courses: [], marks: {} },
+      message: 'No courses found for the selected semester',
+    });
+  }
+
+  // Get COs with types
+  const courseCodes = courses.map(c => c.courseCode);
+  console.log('Course codes:', courseCodes);
+  let cosMap = {};
+  let cos = [];
+  if (courseCodes.length > 0) {
+    try {
+      [cos] = await pool.query(
+        `SELECT co.coId, co.courseCode, co.coNumber, ct.coType 
+         FROM CourseOutcome co 
+         LEFT JOIN COType ct ON co.coId = ct.coId 
+         WHERE UPPER(co.courseCode) IN (?)`,
+        [courseCodes.map(code => code.toUpperCase())]
+      );
+      console.log('Course outcomes fetched:', cos);
+      if (cos.length > 0) {
+        cosMap = cos.reduce((acc, co) => {
+          if (!acc[co.courseCode]) acc[co.courseCode] = [];
+          acc[co.courseCode].push(co);
+          return acc;
+        }, {});
+      } else {
+        console.warn('No course outcomes found for courseCodes:', courseCodes);
+      }
+    } catch (err) {
+      console.error('Error fetching course outcomes:', err.message, err.sql);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to fetch course outcomes',
       });
     }
-
-    console.log('Fetching courses...');
-    const [courses] = await connection.query(
-      `SELECT c.courseId, c.courseCode, c.courseTitle, cp.theoryCount, cp.practicalCount, cp.experientialCount
-       FROM Course c
-       LEFT JOIN CoursePartitions cp ON c.courseCode = cp.courseCode
-       WHERE c.semesterId = ? AND c.isActive = 'YES'`,
-      [semesterId]
-    );
-    console.log('Courses fetched:', courses.length);
-
-    const marks = [];
-    for (const student of students) {
-      for (const course of courses) {
-        console.log('Fetching COs for course:', course.courseCode);
-        const [cos] = await connection.query(
-          `SELECT co.coId, ct.coType
-           FROM CourseOutcome co
-           JOIN COType ct ON co.coId = ct.coId
-           WHERE co.courseCode = ?`,
-          [course.courseCode]
-        );
-        console.log('COs fetched:', cos.length);
-
-        let theorySum = 0, theoryCount = 0, practicalSum = 0, practicalCount = 0, experientialSum = 0, experientialCount = 0;
-
-        for (const co of cos) {
-          console.log('Fetching tools for CO:', co.coId);
-          const [tools] = await connection.query(
-            `SELECT t.toolId, t.weightage, td.maxMarks
-             FROM COTool t
-             JOIN ToolDetails td ON t.toolId = td.toolId
-             WHERE t.coId = ?`,
-            [co.coId]
-          );
-          console.log('Tools fetched:', tools.length);
-
-          let coMark = 0;
-          for (const tool of tools) {
-            console.log('Fetching marks for student:', student.regno, 'tool:', tool.toolId);
-            const [mark] = await connection.query(
-              `SELECT marksObtained
-               FROM StudentCOTool
-               WHERE regno = ? AND toolId = ?`,
-              [student.regno, tool.toolId]
-            );
-            const marksObtained = mark[0]?.marksObtained || 0;
-            coMark += (marksObtained / tool.maxMarks) * (tool.weightage / 100);
-          }
-          coMark *= 100;
-
-          if (co.coType === 'THEORY') {
-            theorySum += coMark;
-            theoryCount++;
-          } else if (co.coType === 'PRACTICAL') {
-            practicalSum += coMark;
-            practicalCount++;
-          } else if (co.coType === 'EXPERIENTIAL') {
-            experientialSum += coMark;
-            experientialCount++;
-          }
-        }
-
-        marks.push({
-          studentId: student.userId,
-          courseId: course.courseId,
-          theory: theoryCount ? (theorySum / theoryCount).toFixed(2) : '0.00',
-          practical: practicalCount ? (practicalSum / practicalCount).toFixed(2) : '0.00',
-          experiential: experientialCount ? (experientialSum / experientialCount).toFixed(2) : '0.00',
-        });
-      }
-    }
-
-    res.json({
-      status: 'success',
-      data: { students, courses, marks },
-    });
-  } catch (err) {
-    console.error('Error in getConsolidatedMarks:', err);
-    res.status(500).json({ status: 'error', message: err.message || 'Failed to fetch consolidated marks' });
-  } finally {
-    if (connection) connection.release();
   }
+
+  // Get tools
+  const coIds = cos.map(co => co.coId).filter(id => id != null);
+  console.log('Course outcome IDs:', coIds);
+  let toolsMap = {};
+  let tools = [];
+  if (coIds.length > 0) {
+    try {
+      [tools] = await pool.query(
+        `SELECT t.toolId, t.coId, t.toolName, t.weightage, td.maxMarks 
+         FROM COTool t 
+         JOIN ToolDetails td ON t.toolId = td.toolId 
+         WHERE t.coId IN (?)`,
+        [coIds]
+      );
+      console.log('Tools fetched:', tools);
+      toolsMap = tools.reduce((acc, tool) => {
+        if (!acc[tool.coId]) acc[tool.coId] = [];
+        acc[tool.coId].push(tool);
+        return acc;
+      }, {});
+    } catch (err) {
+      console.error('Error fetching tools:', err.message, err.sql);
+      return res.status(200).json({
+        status: 'success',
+        data: { students, courses, marks: {} },
+        message: 'No evaluation tools found for the selected courses',
+      });
+    }
+  }
+
+  // Get marks
+  const regnos = students.map(s => s.regno);
+  const toolIds = tools.map(t => t.toolId);
+  console.log('Student regnos:', regnos, 'Tool IDs:', toolIds);
+  let marksByStudentTool = {};
+  if (regnos.length > 0 && toolIds.length > 0) {
+    try {
+      const [marksRows] = await pool.query(
+        `SELECT regno, toolId, marksObtained 
+         FROM StudentCOTool 
+         WHERE regno IN (?) AND toolId IN (?)`,
+        [regnos, toolIds]
+      );
+      console.log('Marks fetched:', marksRows);
+      marksByStudentTool = marksRows.reduce((acc, m) => {
+        if (!acc[m.regno]) acc[m.regno] = {};
+        acc[m.regno][m.toolId] = m.marksObtained;
+        return acc;
+      }, {});
+    } catch (err) {
+      console.error('Error fetching marks:', err.message, err.sql);
+      return res.status(200).json({
+        status: 'success',
+        data: { students, courses, marks: {} },
+        message: 'No marks found for the selected students and tools',
+      });
+    }
+  }
+
+  // Compute consolidated marks
+  const marksMap = {};
+  students.forEach(student => {
+    const regno = student.regno;
+    marksMap[regno] = {};
+    courses.forEach(course => {
+      const courseCode = course.courseCode;
+      const courseCos = cosMap[courseCode] || [];
+
+      const computeAvg = (type) => {
+        const typeCos = courseCos.filter(co => co.coType && co.coType.toUpperCase() === type);
+        const typeCount = typeCos.length;
+        if (typeCount === 0) return null;
+
+        let sumCoMark = 0;
+        typeCos.forEach(co => {
+          let coMark = 0;
+          (toolsMap[co.coId] || []).forEach(tool => {
+            const marksObtained = marksByStudentTool[regno]?.[tool.toolId] || 0;
+            coMark += (marksObtained / (tool.maxMarks || 1)) * (tool.weightage / 100);
+          });
+          sumCoMark += coMark * 100;
+        });
+
+        const avg = sumCoMark / typeCount;
+        return isNaN(avg) ? null : avg.toFixed(2);
+      };
+
+      marksMap[regno][courseCode] = {
+        theory: course.theoryCount > 0 ? computeAvg('THEORY') : null,
+        practical: course.practicalCount > 0 ? computeAvg('PRACTICAL') : null,
+        experiential: course.experientialCount > 0 ? computeAvg('EXPERIENTIAL') : null,
+      };
+    });
+  });
+
+  console.log('Final marks map:', marksMap);
+  res.status(200).json({
+    status: 'success',
+    data: { students, courses, marks: marksMap },
+    message: cos.length === 0 ? 'No course outcomes found for the selected courses' : undefined,
+  });
 });
+
