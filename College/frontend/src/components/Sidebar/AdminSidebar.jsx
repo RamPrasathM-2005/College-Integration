@@ -22,6 +22,7 @@ const AdminSidebar = () => {
     { to: "/admin/manage-staff", icon: Users, label: "Staff" },
     { to: "/admin/manage-students", icon: Users, label: "Students" },
     { to: "/admin/timetable", icon: Calendar, label: "Timetable" },
+    { to: '/admin/consolidated-marks', icon: Book, label: 'Consolidated Marks' },
   ];
 
   const handleLogout = async () => {

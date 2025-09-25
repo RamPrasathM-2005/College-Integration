@@ -70,7 +70,12 @@ import {
   deleteTimetableEntry,
   getTimetableByFilters,
 } from '../../controllers/timetableController.js';
-
+import { 
+  getConsolidatedMarks 
+} from "../../controllers/markController.js";
+import {
+  getDepartments
+}from "../../controllers/departmentController.js";
 import { protect } from "../../controllers/auth/authController.js";
 
 const router = express.Router();
@@ -161,5 +166,12 @@ router.get('/timetable/semester/:semesterId',protect, getTimetable);
 router.post('/timetable/entry',protect, createTimetableEntry);
 router.put('/timetable/entry/:timetableId',protect, updateTimetableEntry);
 router.delete('/timetable/entry/:timetableId',protect, deleteTimetableEntry);
+
+router.get('/consolidated-marks', protect, getConsolidatedMarks);
+
+/* =========================
+   📌 Department Routes
+   ========================= */
+router.get('/departments', protect, getDepartments);
 
 export default router;
