@@ -184,9 +184,4 @@ router.delete("/buckets/:bucketId/courses/:courseCode", protect, removeCourseFro
    ========================= */
 router.get('/consolidated-marks', protect, getConsolidatedMarks);
 
-/* =========================
-   📌 Department Routes
-   ========================= */
-router.get('/departments', protect, getDepartments);
-
 export default router;
