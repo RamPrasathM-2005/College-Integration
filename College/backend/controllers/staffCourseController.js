@@ -23,7 +23,10 @@ export const getUsers = catchAsync(async (req, res) => {
       });
     }
 
-    const [rows] = await connection.execute(`
+
+  // ... (existing code)
+
+    const [rows] = await pool.execute(`
       SELECT 
         u.staffId, 
         u.Userid AS id, 
@@ -39,11 +42,12 @@ export const getUsers = catchAsync(async (req, res) => {
         c.semesterId
       FROM users u
       INNER JOIN department d ON u.Deptid = d.Deptid
-      LEFT JOIN StaffCourse sc ON u.Userid = sc.staffId
+      LEFT JOIN StaffCourse sc ON u.staffId = sc.staffId 
       LEFT JOIN Course c ON sc.courseCode = c.courseCode AND c.isActive = 'YES'
       LEFT JOIN Section s ON sc.sectionId = s.sectionId AND s.isActive = 'YES'
       WHERE u.role = 'Staff' AND u.status = 'active'
     `);
+
 
     const staffData = rows.reduce((acc, row) => {
       let staff = acc.find((s) => s.id === row.id);
