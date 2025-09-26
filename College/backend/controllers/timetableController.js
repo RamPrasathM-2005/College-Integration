@@ -559,7 +559,7 @@ export const deleteTimetableEntry = catchAsync(async (req, res) => {
 
     // Soft delete
     const [result] = await connection.execute(
-      'UPDATE Timetable SET isActive = "NO", updatedBy = ?, updatedAt = CURRENT_TIMESTAMP WHERE timetableId = ?',
+      'UPDATE Timetable SET isActive = "NO", updatedBy = ?, updatedDate = CURRENT_TIMESTAMP WHERE timetableId = ?',
       [userEmail, timetableId]
     );
 
