@@ -62,7 +62,7 @@ const Dashboard = () => {
               .filter(course => course && typeof course === 'object')
               .map((course, index) => ({
                 ...course,
-                id: course.courseCode || `course-${index}`,
+                id: course.id || `course-${index}`,
                 title: course.title || 'Untitled Course',
                 bgColor: colors[index % colors.length],
                 semester:  course.semester || 'Unknown Semester',

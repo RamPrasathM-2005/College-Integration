@@ -6,18 +6,32 @@ import path from 'path';
 import os from 'os';
 import { Readable } from 'stream';
 import { v4 as uuidv4 } from 'uuid';
-import  catchAsync from '../utils/catchAsync.js';
+import catchAsync from '../utils/catchAsync.js';
 
 const getStaffId = (req) => req.user.staffId || null;
 
 export const getCoursePartitions = async (req, res) => {
   const { courseCode } = req.params;
+  const staffId = getStaffId(req);
   if (!courseCode) {
     return res.status(400).json({ status: 'error', message: 'courseCode is required' });
   }
   try {
-    const [rows] = await pool.query('SELECT * FROM CoursePartitions WHERE courseCode = ?', [courseCode]);
-    res.json({ status: 'success', data: rows[0] || { theoryCount: 0, practicalCount: 0, experientialCount: 0 } });
+    // Fetch courseId using courseCode and ensure staff has access via StaffCourse
+    const [courseRows] = await pool.query(
+      `SELECT c.courseId 
+       FROM Course c
+       JOIN StaffCourse sc ON c.courseId = sc.courseId
+       WHERE c.courseCode = ? AND sc.Userid = ?`,
+      [courseCode, staffId]
+    );
+    if (courseRows.length === 0) {
+      return res.status(404).json({ status: 'error', message: `Course with code '${courseCode}' not found or not assigned to staff` });
+    }
+    const courseId = courseRows[0].courseId;
+
+    const [rows] = await pool.query('SELECT * FROM CoursePartitions WHERE courseId = ?', [courseId]);
+    res.json({ status: 'success', data: rows[0] || { theoryCount: 0, practicalCount: 0, experientialCount: 0, courseId } });
   } catch (err) {
     console.error('Error in getCoursePartitions:', err);
     res.status(500).json({ status: 'error', message: err.message });
@@ -41,14 +55,21 @@ export const saveCoursePartitions = async (req, res) => {
   }
 
   try {
-    // Check if course exists
-    const [courseCheck] = await pool.query('SELECT courseCode FROM Course WHERE courseCode = ?', [courseCode]);
+    // Check if course exists and is assigned to staff
+    const [courseCheck] = await pool.query(
+      `SELECT c.courseId 
+       FROM Course c
+       JOIN StaffCourse sc ON c.courseId = sc.courseId
+       WHERE c.courseCode = ? AND sc.Userid = ?`,
+      [courseCode, staffId]
+    );
     if (courseCheck.length === 0) {
-      return res.status(404).json({ status: 'error', message: `Course with code '${courseCode}' does not exist` });
+      return res.status(404).json({ status: 'error', message: `Course with code '${courseCode}' does not exist or not assigned to staff` });
     }
+    const courseId = courseCheck[0].courseId;
 
     // Check if partitions already exist
-    const [existing] = await pool.query('SELECT partitionId FROM CoursePartitions WHERE courseCode = ?', [courseCode]);
+    const [existing] = await pool.query('SELECT partitionId FROM CoursePartitions WHERE courseId = ?', [courseId]);
     if (existing.length > 0) {
       return res.status(409).json({
         status: 'error',
@@ -58,8 +79,8 @@ export const saveCoursePartitions = async (req, res) => {
 
     // Save partitions
     const [result] = await pool.query(
-      'INSERT INTO CoursePartitions (courseCode, theoryCount, practicalCount, experientialCount, createdBy) VALUES (?, ?, ?, ?, ?)',
-      [courseCode, theoryCount, practicalCount, experientialCount, staffId || 'admin']
+      'INSERT INTO CoursePartitions (courseId, theoryCount, practicalCount, experientialCount, createdBy) VALUES (?, ?, ?, ?, ?)',
+      [courseId, theoryCount, practicalCount, experientialCount, staffId || 'admin']
     );
 
     // Auto-create COs
@@ -70,8 +91,8 @@ export const saveCoursePartitions = async (req, res) => {
     // Theory COs
     for (let i = 0; i < theoryCount; i++) {
       const [result] = await pool.query(
-        'INSERT INTO CourseOutcome (courseCode, coNumber) VALUES (?, ?)',
-        [courseCode, `CO${coNumber}`]
+        'INSERT INTO CourseOutcome (courseId, coNumber) VALUES (?, ?)',
+        [courseId, `CO${coNumber}`]
       );
       const coId = result.insertId;
       await pool.query(
@@ -85,8 +106,8 @@ export const saveCoursePartitions = async (req, res) => {
     // Practical COs
     for (let i = 0; i < practicalCount; i++) {
       const [result] = await pool.query(
-        'INSERT INTO CourseOutcome (courseCode, coNumber) VALUES (?, ?)',
-        [courseCode, `CO${coNumber}`]
+        'INSERT INTO CourseOutcome (courseId, coNumber) VALUES (?, ?)',
+        [courseId, `CO${coNumber}`]
       );
       const coId = result.insertId;
       await pool.query(
@@ -100,8 +121,8 @@ export const saveCoursePartitions = async (req, res) => {
     // Experiential COs
     for (let i = 0; i < experientialCount; i++) {
       const [result] = await pool.query(
-        'INSERT INTO CourseOutcome (courseCode, coNumber) VALUES (?, ?)',
-        [courseCode, `CO${coNumber}`]
+        'INSERT INTO CourseOutcome (courseId, coNumber) VALUES (?, ?)',
+        [courseId, `CO${coNumber}`]
       );
       const coId = result.insertId;
       await pool.query(
@@ -134,35 +155,46 @@ export const updateCoursePartitions = async (req, res) => {
     return res.status(400).json({ status: 'error', message: 'theoryCount, practicalCount, and experientialCount are required' });
   }
   try {
-    const [courseCheck] = await pool.query('SELECT courseCode FROM Course WHERE courseCode = ?', [courseCode]);
+    // Check if course exists and is assigned to staff
+    const [courseCheck] = await pool.query(
+      `SELECT c.courseId 
+       FROM Course c
+       JOIN StaffCourse sc ON c.courseId = sc.courseId
+       WHERE c.courseCode = ? AND sc.Userid = ?`,
+      [courseCode, staffId]
+    );
     if (courseCheck.length === 0) {
-      return res.status(404).json({ status: 'error', message: `Course with code '${courseCode}' does not exist` });
+      return res.status(404).json({ status: 'error', message: `Course with code '${courseCode}' does not exist or not assigned to staff` });
     }
-    const [existing] = await pool.query('SELECT partitionId FROM CoursePartitions WHERE courseCode = ?', [courseCode]);
+    const courseId = courseCheck[0].courseId;
+
+    // Check if partitions exist
+    const [existing] = await pool.query('SELECT partitionId FROM CoursePartitions WHERE courseId = ?', [courseId]);
     if (existing.length === 0) {
       return res.status(404).json({ status: 'error', message: 'No partitions found for this course. Use POST to create.' });
     }
+
     // Update partitions
     await pool.query(
-      'UPDATE CoursePartitions SET theoryCount = ?, practicalCount = ?, experientialCount = ?, updatedBy = ? WHERE courseCode = ?',
-      [theoryCount, practicalCount, experientialCount, staffId || 'admin', courseCode]
+      'UPDATE CoursePartitions SET theoryCount = ?, practicalCount = ?, experientialCount = ?, updatedBy = ? WHERE courseId = ?',
+      [theoryCount, practicalCount, experientialCount, staffId || 'admin', courseId]
     );
-    
+
     // Fetch existing COs with types, sorted by coNumber
     const [existingCOs] = await pool.query(
       `SELECT co.coId, co.coNumber, ct.coType 
        FROM CourseOutcome co
        LEFT JOIN COType ct ON co.coId = ct.coId
-       WHERE co.courseCode = ?
+       WHERE co.courseId = ?
        ORDER BY CAST(SUBSTRING(co.coNumber, 3) AS UNSIGNED)`,
-      [courseCode]
+      [courseId]
     );
-    
+
     // Group by type
     let theoryCOs = existingCOs.filter(co => co.coType === 'THEORY');
     let practicalCOs = existingCOs.filter(co => co.coType === 'PRACTICAL');
     let experientialCOs = existingCOs.filter(co => co.coType === 'EXPERIENTIAL');
-    
+
     // Adjust theory group
     while (theoryCOs.length > theoryCount) {
       const toDelete = theoryCOs.pop();
@@ -173,8 +205,8 @@ export const updateCoursePartitions = async (req, res) => {
     for (let i = 0; i < theoryCount - theoryCOs.length; i++) {
       const tempCoNumber = `CO1000${i}`;
       const [result] = await pool.query(
-        'INSERT INTO CourseOutcome (courseCode, coNumber) VALUES (?, ?)',
-        [courseCode, tempCoNumber]
+        'INSERT INTO CourseOutcome (courseId, coNumber) VALUES (?, ?)',
+        [courseId, tempCoNumber]
       );
       const coId = result.insertId;
       await pool.query(
@@ -183,7 +215,7 @@ export const updateCoursePartitions = async (req, res) => {
       );
       theoryCOs.push({ coId, coNumber: tempCoNumber, coType: 'THEORY' });
     }
-    
+
     // Adjust practical group
     while (practicalCOs.length > practicalCount) {
       const toDelete = practicalCOs.pop();
@@ -192,10 +224,10 @@ export const updateCoursePartitions = async (req, res) => {
       await pool.query('DELETE FROM CourseOutcome WHERE coId = ?', [toDelete.coId]);
     }
     for (let i = 0; i < practicalCount - practicalCOs.length; i++) {
-      const tempCoNumber = `CO1000${ theoryCount + i}`;
+      const tempCoNumber = `CO1000${theoryCount + i}`;
       const [result] = await pool.query(
-        'INSERT INTO CourseOutcome (courseCode, coNumber) VALUES (?, ?)',
-        [courseCode, tempCoNumber]
+        'INSERT INTO CourseOutcome (courseId, coNumber) VALUES (?, ?)',
+        [courseId, tempCoNumber]
       );
       const coId = result.insertId;
       await pool.query(
@@ -204,7 +236,7 @@ export const updateCoursePartitions = async (req, res) => {
       );
       practicalCOs.push({ coId, coNumber: tempCoNumber, coType: 'PRACTICAL' });
     }
-    
+
     // Adjust experiential group
     while (experientialCOs.length > experientialCount) {
       const toDelete = experientialCOs.pop();
@@ -213,10 +245,10 @@ export const updateCoursePartitions = async (req, res) => {
       await pool.query('DELETE FROM CourseOutcome WHERE coId = ?', [toDelete.coId]);
     }
     for (let i = 0; i < experientialCount - experientialCOs.length; i++) {
-      const tempCoNumber = `CO1000${ theoryCount + practicalCount + i}`;
+      const tempCoNumber = `CO1000${theoryCount + practicalCount + i}`;
       const [result] = await pool.query(
-        'INSERT INTO CourseOutcome (courseCode, coNumber) VALUES (?, ?)',
-        [courseCode, tempCoNumber]
+        'INSERT INTO CourseOutcome (courseId, coNumber) VALUES (?, ?)',
+        [courseId, tempCoNumber]
       );
       const coId = result.insertId;
       await pool.query(
@@ -225,7 +257,7 @@ export const updateCoursePartitions = async (req, res) => {
       );
       experientialCOs.push({ coId, coNumber: tempCoNumber, coType: 'EXPERIENTIAL' });
     }
-    
+
     // Recombine and renumber all COs sequentially
     const allCOs = [...theoryCOs, ...practicalCOs, ...experientialCOs];
     let coNumber = 1;
@@ -242,7 +274,7 @@ export const updateCoursePartitions = async (req, res) => {
       coIds.push(co.coId);
       coNumber++;
     }
-    
+
     res.json({ status: 'success', message: 'Partitions and COs updated successfully', data: { coIds } });
   } catch (err) {
     console.error('Error in updateCoursePartitions:', err);
@@ -252,20 +284,30 @@ export const updateCoursePartitions = async (req, res) => {
 
 export const getCOsForCourse = async (req, res) => {
   const { courseCode } = req.params;
+  const staffId = getStaffId(req);
   if (!courseCode) {
     return res.status(400).json({ status: 'error', message: 'courseCode is required' });
   }
   try {
-    const [courseCheck] = await pool.query('SELECT courseCode FROM Course WHERE courseCode = ?', [courseCode]);
+    // Fetch courseId and verify staff assignment
+    const [courseCheck] = await pool.query(
+      `SELECT c.courseId 
+       FROM Course c
+       JOIN StaffCourse sc ON c.courseId = sc.courseId
+       WHERE c.courseCode = ? AND sc.Userid = ?`,
+      [courseCode, staffId]
+    );
     if (courseCheck.length === 0) {
-      return res.status(404).json({ status: 'error', message: `Course with code '${courseCode}' does not exist` });
+      return res.status(404).json({ status: 'error', message: `Course with code '${courseCode}' does not exist or not assigned to staff` });
     }
+    const courseId = courseCheck[0].courseId;
+
     const [cos] = await pool.query(
       `SELECT co.*, ct.coType FROM CourseOutcome co
        LEFT JOIN COType ct ON co.coId = ct.coId
-       WHERE co.courseCode = ?
+       WHERE co.courseId = ?
        ORDER BY co.coNumber`,
-      [courseCode]
+      [courseId]
     );
     res.json({ status: 'success', data: cos });
   } catch (err) {
@@ -277,7 +319,7 @@ export const getCOsForCourse = async (req, res) => {
 export const getToolsForCO = async (req, res) => {
   const { coId } = req.params;
   try {
-    const [coCheck] = await pool.query('SELECT courseCode FROM CourseOutcome WHERE coId = ?', [coId]);
+    const [coCheck] = await pool.query('SELECT courseId FROM CourseOutcome WHERE coId = ?', [coId]);
     if (coCheck.length === 0) {
       return res.status(404).json({ status: 'error', message: 'CO not found' });
     }
@@ -302,7 +344,7 @@ export const createTool = async (req, res) => {
     return res.status(400).json({ status: 'error', message: 'toolName, weightage, and maxMarks are required' });
   }
   try {
-    const [coCheck] = await pool.query('SELECT courseCode FROM CourseOutcome WHERE coId = ?', [coId]);
+    const [coCheck] = await pool.query('SELECT courseId FROM CourseOutcome WHERE coId = ?', [coId]);
     if (coCheck.length === 0) {
       return res.status(404).json({ status: 'error', message: 'CO not found' });
     }
@@ -330,7 +372,7 @@ export const saveToolsForCO = async (req, res) => {
     return res.status(400).json({ status: 'error', message: 'tools array is required' });
   }
   try {
-    const [coCheck] = await pool.query('SELECT courseCode FROM CourseOutcome WHERE coId = ?', [coId]);
+    const [coCheck] = await pool.query('SELECT courseId FROM CourseOutcome WHERE coId = ?', [coId]);
     if (coCheck.length === 0) {
       return res.status(404).json({ status: 'error', message: 'CO not found' });
     }
@@ -437,10 +479,10 @@ export const getStudentMarksForTool = async (req, res) => {
        JOIN student_details sd ON sc.regno = sd.regno 
        JOIN users u ON sd.Userid = u.Userid
        JOIN StudentCourse studentc ON sd.regno = studentc.regno
-       JOIN StaffCourse stc ON studentc.sectionId = stc.sectionId AND studentc.courseCode = stc.courseCode
+       JOIN StaffCourse stc ON studentc.sectionId = stc.sectionId AND studentc.courseId = stc.courseId
        JOIN COTool t ON sc.toolId = t.toolId
        JOIN CourseOutcome co ON t.coId = co.coId
-       WHERE sc.toolId = ? AND stc.staffId = ? AND studentc.courseCode = co.courseCode`,
+       WHERE sc.toolId = ? AND stc.Userid = ? AND studentc.courseId = co.courseId`,
       [toolId, staffId]
     );
     res.json({ status: 'success', data: marks });
@@ -460,9 +502,10 @@ export const saveStudentMarksForTool = async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Marks array is required and cannot be empty' });
     }
 
-    // Check if tool exists and get maxMarks, courseCode
+    // Check if tool exists and get maxMarks, courseId
     const [tool] = await pool.query(
-      `SELECT td.maxMarks, co.courseCode FROM ToolDetails td 
+      `SELECT td.maxMarks, co.courseId 
+       FROM ToolDetails td 
        JOIN COTool t ON td.toolId = t.toolId 
        JOIN CourseOutcome co ON t.coId = co.coId 
        WHERE td.toolId = ?`,
@@ -471,7 +514,7 @@ export const saveStudentMarksForTool = async (req, res) => {
     if (!tool.length) {
       return res.status(404).json({ status: 'error', message: `Tool with ID ${toolId} not found` });
     }
-    const { maxMarks, courseCode } = tool[0];
+    const { maxMarks, courseId } = tool[0];
 
     // Validate regnos against student_details, StudentCourse, and StaffCourse (staff's section)
     const regnos = marks.marks.map(m => m.regno);
@@ -479,22 +522,22 @@ export const saveStudentMarksForTool = async (req, res) => {
       `SELECT sd.regno 
        FROM student_details sd 
        JOIN StudentCourse sc ON sd.regno = sc.regno 
-       JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseCode = stc.courseCode
-       WHERE sd.regno IN (?) AND sc.courseCode = ? AND stc.staffId = ?`,
-      [regnos, courseCode, staffId]
+       JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseId = stc.courseId
+       WHERE sd.regno IN (?) AND sc.courseId = ? AND stc.Userid = ?`,
+      [regnos, courseId, staffId]
     );
     const validRegnos = new Set(validStudents.map(s => s.regno));
     const invalidRegnos = regnos.filter(r => !validRegnos.has(r));
     if (invalidRegnos.length > 0) {
       return res.status(400).json({
         status: 'error',
-        message: `Invalid regnos for staff ${staffId}'s section in course ${courseCode}: ${invalidRegnos.join(', ')}`,
+        message: `Invalid regnos for staff ${staffId}'s section in course: ${invalidRegnos.join(', ')}`,
       });
     }
     if (validRegnos.size === 0) {
       return res.status(400).json({
         status: 'error',
-        message: `No valid students found for staff ${staffId}'s section in course ${courseCode}`,
+        message: `No valid students found for staff ${staffId}'s section in course`,
       });
     }
 
@@ -565,7 +608,7 @@ export const importMarksForTool = async (req, res) => {
   try {
     // Check tool existence
     const [tool] = await pool.query(
-      `SELECT td.maxMarks, co.courseCode 
+      `SELECT td.maxMarks, co.courseId 
        FROM ToolDetails td 
        JOIN COTool t ON td.toolId = t.toolId 
        JOIN CourseOutcome co ON t.coId = co.coId 
@@ -575,7 +618,7 @@ export const importMarksForTool = async (req, res) => {
     if (!tool.length) {
       return res.status(404).json({ status: 'error', message: `Tool with ID ${toolId} not found` });
     }
-    const { maxMarks, courseCode } = tool[0];
+    const { maxMarks, courseId } = tool[0];
 
     // Parse CSV from buffer
     const results = [];
@@ -608,16 +651,16 @@ export const importMarksForTool = async (req, res) => {
       `SELECT sd.regno 
        FROM student_details sd 
        JOIN StudentCourse sc ON sd.regno = sc.regno 
-       JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseCode = stc.courseCode
-       WHERE sd.regno IN (?) AND sc.courseCode = ? AND stc.staffId = ?`,
-      [regnos, courseCode, staffId]
+       JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseId = stc.courseId
+       WHERE sd.regno IN (?) AND sc.courseId = ? AND stc.Userid = ?`,
+      [regnos, courseId, staffId]
     );
     const validRegnos = new Set(validStudents.map(s => s.regno));
     const invalidRegnos = regnos.filter(r => !validRegnos.has(r));
     if (invalidRegnos.length > 0) {
       return res.status(400).json({
         status: 'error',
-        message: `Invalid regnos for staff ${staffId}'s section in course ${courseCode}: ${invalidRegnos.join(', ')}`,
+        message: `Invalid regnos for staff ${staffId}'s section in course: ${invalidRegnos.join(', ')}`,
       });
     }
 
@@ -679,22 +722,22 @@ export const exportCoWiseCsv = async (req, res) => {
 
     // Fetch students from staff's section for the CO's course
     const [courseInfo] = await pool.query(
-      'SELECT courseCode FROM CourseOutcome WHERE coId = ?',
+      'SELECT courseId FROM CourseOutcome WHERE coId = ?',
       [coId]
     );
     if (courseInfo.length === 0) {
       return res.status(404).json({ status: 'error', message: 'CO not found' });
     }
-    const courseCode = courseInfo[0].courseCode;
+    const courseId = courseInfo[0].courseId;
 
     const [students] = await pool.query(
       `SELECT DISTINCT sd.regno, u.username AS name 
        FROM student_details sd
        JOIN users u ON sd.Userid = u.Userid
        JOIN StudentCourse sc ON sd.regno = sc.regno
-       JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseCode = stc.courseCode
-       JOIN CourseOutcome co ON sc.courseCode = co.courseCode
-       WHERE co.coId = ? AND stc.staffId = ?`,
+       JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseId = stc.courseId
+       JOIN CourseOutcome co ON sc.courseId = co.courseId
+       WHERE co.coId = ? AND stc.Userid = ?`,
       [coId, staffId]
     );
     if (students.length === 0) {
@@ -762,13 +805,26 @@ export const getStudentsForCourse = async (req, res) => {
   const { courseCode } = req.params;
   const staffId = getStaffId(req);
   try {
+    const [courseCheck] = await pool.query(
+      `SELECT c.courseId 
+       FROM Course c
+       JOIN StaffCourse sc ON c.courseId = sc.courseId
+       WHERE c.courseCode = ? AND sc.Userid = ?`,
+      [courseCode, staffId]
+    );
+    if (courseCheck.length === 0) {
+      return res.status(404).json({ status: 'error', message: `Course with code '${courseCode}' not found or not assigned to staff` });
+    }
+    const courseId = courseCheck[0].courseId;
+
     const [students] = await pool.query(
-      `SELECT sd.regno, u.username AS name FROM student_details sd
+      `SELECT sd.regno, u.username AS name 
+       FROM student_details sd
        JOIN users u ON sd.Userid = u.Userid
        JOIN StudentCourse sc ON sd.regno = sc.regno
-       JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseCode = stc.courseCode
-       WHERE sc.courseCode = ? AND stc.staffId = ?`,
-      [courseCode, staffId]
+       JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseId = stc.courseId
+       WHERE sc.courseId = ? AND stc.Userid = ?`,
+      [courseId, staffId]
     );
     res.json({ status: 'success', data: students });
   } catch (err) {
@@ -777,66 +833,30 @@ export const getStudentsForCourse = async (req, res) => {
   }
 };
 
-export const getMyCourses = async (req, res) => {
-  const staffId = getStaffId(req);
-  if (!staffId) {
-    return res.status(401).json({ status: 'error', message: 'Invalid staff ID' });
-  }
-
-  try {
-    const [courses] = await pool.query(
-      `SELECT 
-         sc.staffCourseId,
-         sc.staffId,
-         sc.courseCode AS id,
-         c.courseTitle AS title,
-         sc.sectionId,
-         s.sectionName,
-         sc.Deptid,
-         d.Deptname AS departmentName,
-         CONCAT(
-           b.batchYears, ' ',
-           CASE WHEN sem.semesterNumber % 2 = 1 THEN 'ODD' ELSE 'EVEN' END,
-           ' SEMESTER'
-         ) AS semester,
-         sem.semesterNumber,
-         b.degree,
-         b.branch,
-         b.batch
-       FROM StaffCourse sc
-       JOIN Course c ON sc.courseCode = c.courseCode
-       JOIN Section s ON sc.sectionId = s.sectionId
-       JOIN department d ON sc.Deptid = d.Deptid
-       JOIN Semester sem ON c.semesterId = sem.semesterId
-       JOIN Batch b ON sem.batchId = b.batchId
-       WHERE sc.staffId = ?
-         AND c.isActive = 'YES'
-         AND s.isActive = 'YES'
-         AND sem.isActive = 'YES'
-         AND b.isActive = 'YES'
-       ORDER BY c.courseTitle`,
-      [staffId]
-    );
-
-    res.json({ status: 'success', data: courses });
-  } catch (err) {
-    console.error('Error in getMyCourses:', err);
-    res.status(500).json({ status: 'error', message: err.message });
-  }
-};
-
 export const getStudentsForSection = async (req, res) => {
   const { courseCode, sectionId } = req.params;
   const staffId = getStaffId(req);
   try {
+    const [courseCheck] = await pool.query(
+      `SELECT c.courseId 
+       FROM Course c
+       JOIN StaffCourse sc ON c.courseId = sc.courseId
+       WHERE c.courseCode = ? AND sc.Userid = ?`,
+      [courseCode, staffId]
+    );
+    if (courseCheck.length === 0) {
+      return res.status(404).json({ status: 'error', message: `Course with code '${courseCode}' not found or not assigned to staff` });
+    }
+    const courseId = courseCheck[0].courseId;
+
     const [rows] = await pool.query(
       `SELECT sd.regno, u.username AS name
        FROM student_details sd
        JOIN users u ON sd.Userid = u.Userid
        JOIN StudentCourse sc ON sd.regno = sc.regno
-       JOIN StaffCourse stc ON sc.courseCode = stc.courseCode AND sc.sectionId = stc.sectionId
-       WHERE sc.courseCode = ? AND sc.sectionId = ? AND stc.staffId = ?`,
-      [courseCode, sectionId, staffId]
+       JOIN StaffCourse stc ON sc.courseId = stc.courseId AND sc.sectionId = stc.sectionId
+       WHERE sc.courseId = ? AND sc.sectionId = ? AND stc.Userid = ?`,
+      [courseId, sectionId, staffId]
     );
     res.json({ status: 'success', data: rows });
   } catch (err) {
@@ -850,15 +870,22 @@ export const exportCourseWiseCsv = async (req, res) => {
   const staffId = getStaffId(req);
   try {
     // Validate course
-    const [courseCheck] = await pool.query('SELECT courseCode FROM Course WHERE courseCode = ?', [courseCode]);
+    const [courseCheck] = await pool.query(
+      `SELECT c.courseId 
+       FROM Course c
+       JOIN StaffCourse sc ON c.courseId = sc.courseId
+       WHERE c.courseCode = ? AND sc.Userid = ?`,
+      [courseCode, staffId]
+    );
     if (courseCheck.length === 0) {
-      return res.status(404).json({ status: 'error', message: `Course ${courseCode} not found` });
+      return res.status(404).json({ status: 'error', message: `Course ${courseCode} not found or not assigned to staff` });
     }
+    const courseId = courseCheck[0].courseId;
 
     // Fetch COs
     const [cos] = await pool.query(
-      'SELECT co.*, ct.coType FROM CourseOutcome co JOIN COType ct ON co.coId = ct.coId WHERE courseCode = ? ORDER BY co.coNumber',
-      [courseCode]
+      'SELECT co.*, ct.coType FROM CourseOutcome co JOIN COType ct ON co.coId = ct.coId WHERE courseId = ? ORDER BY co.coNumber',
+      [courseId]
     );
     if (cos.length === 0) {
       return res.status(404).json({ status: 'error', message: `No course outcomes found for course ${courseCode}` });
@@ -870,9 +897,9 @@ export const exportCourseWiseCsv = async (req, res) => {
        FROM student_details sd
        JOIN users u ON sd.Userid = u.Userid
        JOIN StudentCourse sc ON sd.regno = sc.regno
-       JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseCode = stc.courseCode
-       WHERE sc.courseCode = ? AND stc.staffId = ?`,
-      [courseCode, staffId]
+       JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseId = stc.courseId
+       WHERE sc.courseId = ? AND stc.Userid = ?`,
+      [courseId, staffId]
     );
     if (students.length === 0) {
       return res.status(404).json({ status: 'error', message: `No students found in your section for course ${courseCode}` });
@@ -908,66 +935,116 @@ export const exportCourseWiseCsv = async (req, res) => {
             const marks = mark[0]?.marksObtained || 0;
             coMark += (marks / tool.maxMarks) * (tool.weightage / 100);
           }
-          coMark *= 100;
-          row[co.coNumber] = coMark.toFixed(2);
-          if (co.coType === 'THEORY') { theorySum += coMark; theoryCount++; }
-          else if (co.coType === 'PRACTICAL') { pracSum += coMark; pracCount++; }
-          else if (co.coType === 'EXPERIENTIAL') { expSum += coMark; expCount++; }
-        }
-        row.avgTheory = theoryCount ? (theorySum / theoryCount).toFixed(2) : '0.00';
-        row.avgPractical = pracCount ? (pracSum / pracCount).toFixed(2) : '0.00';
-        row.avgExperiential = expCount ? (expSum / expCount).toFixed(2) : '0.00';
+          coMark *=ව
 
-        // Calculate finalAvg using only non-zero partitions
-        const activePartitions = [
-          { count: theoryCount, type: 'THEORY' },
-          { count: pracCount, type: 'PRACTICAL' },
-          { count: expCount, type: 'EXPERIENTIAL' },
-        ].filter(p => p.count > 0);
-        let final = 0;
-        if (activePartitions.length > 0) {
-          const totalWeight = cos
-            .filter(co => activePartitions.some(p => p.type === co.coType))
-            .reduce((sum, co) => sum + 1, 0); // Equal weight per CO
-          final = cos
-            .filter(co => activePartitions.some(p => p.type === co.coType))
-            .reduce((sum, co) => sum + (parseFloat(row[co.coNumber]) / totalWeight), 0);
-        }
-        row.finalAvg = final.toFixed(2);
+        coMark *= 100;
+        row[co.coNumber] = coMark.toFixed(2);
+        if (co.coType === 'THEORY') { theorySum += coMark; theoryCount++; }
+        else if (co.coType === 'PRACTICAL') { pracSum += coMark; pracCount++; }
+        else if (co.coType === 'EXPERIENTIAL') { expSum += coMark; expCount++; }
+      }
+      row.avgTheory = theoryCount ? (theorySum / theoryCount).toFixed(2) : '0.00';
+      row.avgPractical = pracCount ? (pracSum / pracCount).toFixed(2) : '0.00';
+      row.avgExperiential = expCount ? (expSum / expCount).toFixed(2) : '0.00';
 
-        return row;
-      })
+      // Calculate finalAvg using only non-zero partitions
+      const activePartitions = [
+        { count: theoryCount, type: 'THEORY' },
+        { count: pracCount, type: 'PRACTICAL' },
+        { count: expCount, type: 'EXPERIENTIAL' },
+      ].filter(p => p.count > 0);
+      let final = 0;
+      if (activePartitions.length > 0) {
+        const totalWeight = cos
+          .filter(co => activePartitions.some(p => p.type === co.coType))
+          .reduce((sum, co) => sum + 1, 0); // Equal weight per CO
+        final = cos
+          .filter(co => activePartitions.some(p => p.type === co.coType))
+          .reduce((sum, co) => sum + (parseFloat(row[co.coNumber]) / totalWeight), 0);
+      }
+      row.finalAvg = final.toFixed(2);
+
+      return row;
+    })
+  );
+
+  // Generate dynamic filename with timestamp
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `${courseCode}_marks_${timestamp}.csv`;
+  const filePath = path.join(os.tmpdir(), filename);
+
+  // Write CSV
+  const csvWriter = createCsvWriter({
+    path: filePath,
+    header,
+  });
+  await csvWriter.writeRecords(data);
+
+  // Send file for download
+  res.download(filePath, filename, (err) => {
+    if (err) {
+      console.error('Error sending file:', err);
+      res.status(500).json({ status: 'error', message: `Failed to send CSV: ${err.message}` });
+    }
+    // Clean up file
+    fs.unlink(filePath, (unlinkErr) => {
+      if (unlinkErr) console.error('Error deleting file:', unlinkErr);
+    });
+  });
+} catch (err) {
+  console.error('Error in exportCourseWiseCsv:', err);
+  res.status(500).json({ 
+    status: 'error', 
+    message: `Export failed: ${err.message}. Check if students/COs exist for course ${courseCode} and staff ${staffId}.` 
+  });
+}
+};
+
+export const getMyCourses = async (req, res) => {
+  const staffId = getStaffId(req);
+  if (!staffId) {
+    return res.status(401).json({ status: 'error', message: 'Invalid staff ID' });
+  }
+
+  try {
+    const [courses] = await pool.query(
+      `SELECT 
+         sc.staffCourseId,
+         sc.Userid AS staffId,
+         c.courseCode AS id,
+         c.courseTitle AS title,
+         sc.sectionId,
+         s.sectionName,
+         sc.Deptid,
+         d.Deptname AS departmentName,
+         CONCAT(
+           b.batchYears, ' ',
+           CASE WHEN sem.semesterNumber % 2 = 1 THEN 'ODD' ELSE 'EVEN' END,
+           ' SEMESTER'
+         ) AS semester,
+         sem.semesterNumber,
+         b.degree,
+         b.branch,
+         b.batch
+       FROM StaffCourse sc
+       JOIN Course c ON sc.courseId = c.courseId
+       JOIN Section s ON sc.sectionId = s.sectionId
+       JOIN department d ON sc.Deptid = d.Deptid
+       JOIN Semester sem ON c.semesterId = sem.semesterId
+       JOIN Batch b ON sem.batchId = b.batchId
+       WHERE sc.Userid = ?
+         AND c.isActive = 'YES'
+         AND s.isActive = 'YES'
+         AND sem.isActive = 'YES'
+         AND b.isActive = 'YES'
+       ORDER BY c.courseTitle`,
+      [staffId]
     );
 
-    // Generate dynamic filename with timestamp
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `${courseCode}_marks_${timestamp}.csv`;
-    const filePath = path.join(os.tmpdir(), filename);
-
-    // Write CSV
-    const csvWriter = createCsvWriter({
-      path: filePath,
-      header,
-    });
-    await csvWriter.writeRecords(data);
-
-    // Send file for download
-    res.download(filePath, filename, (err) => {
-      if (err) {
-        console.error('Error sending file:', err);
-        res.status(500).json({ status: 'error', message: `Failed to send CSV: ${err.message}` });
-      }
-      // Clean up file
-      fs.unlink(filePath, (unlinkErr) => {
-        if (unlinkErr) console.error('Error deleting file:', unlinkErr);
-      });
-    });
+    res.json({ status: 'success', data: courses });
   } catch (err) {
-    console.error('Error in exportCourseWiseCsv:', err);
-    res.status(500).json({ 
-      status: 'error', 
-      message: `Export failed: ${err.message}. Check if students/COs exist for course ${courseCode} and staff ${staffId}.` 
-    });
+    console.error('Error in getMyCourses:', err);
+    res.status(500).json({ status: 'error', message: err.message });
   }
 };
 
@@ -1038,7 +1115,7 @@ export const getConsolidatedMarks = catchAsync(async (req, res) => {
             COALESCE(cp.practicalCount, 0) AS practicalCount, 
             COALESCE(cp.experientialCount, 0) AS experientialCount 
      FROM Course c 
-     LEFT JOIN CoursePartitions cp ON c.courseCode = cp.courseCode 
+     LEFT JOIN CoursePartitions cp ON c.courseId = cp.courseId 
      WHERE c.semesterId = ? AND c.isActive = 'YES'`,
     [semesterId]
   );
@@ -1053,28 +1130,28 @@ export const getConsolidatedMarks = catchAsync(async (req, res) => {
   }
 
   // Get COs with types
-  const courseCodes = courses.map(c => c.courseCode);
-  console.log('Course codes:', courseCodes);
+  const courseIds = courses.map(c => c.courseId);
+  console.log('Course IDs:', courseIds);
   let cosMap = {};
   let cos = [];
-  if (courseCodes.length > 0) {
+  if (courseIds.length > 0) {
     try {
       [cos] = await pool.query(
-        `SELECT co.coId, co.courseCode, co.coNumber, ct.coType 
+        `SELECT co.coId, co.courseId, co.coNumber, ct.coType 
          FROM CourseOutcome co 
          LEFT JOIN COType ct ON co.coId = ct.coId 
-         WHERE UPPER(co.courseCode) IN (?)`,
-        [courseCodes.map(code => code.toUpperCase())]
+         WHERE co.courseId IN (?)`,
+        [courseIds]
       );
       console.log('Course outcomes fetched:', cos);
       if (cos.length > 0) {
         cosMap = cos.reduce((acc, co) => {
-          if (!acc[co.courseCode]) acc[co.courseCode] = [];
-          acc[co.courseCode].push(co);
+          if (!acc[co.courseId]) acc[co.courseId] = [];
+          acc[co.courseId].push(co);
           return acc;
         }, {});
       } else {
-        console.warn('No course outcomes found for courseCodes:', courseCodes);
+        console.warn('No course outcomes found for courseIds:', courseIds);
       }
     } catch (err) {
       console.error('Error fetching course outcomes:', err.message, err.sql);
@@ -1150,8 +1227,8 @@ export const getConsolidatedMarks = catchAsync(async (req, res) => {
     const regno = student.regno;
     marksMap[regno] = {};
     courses.forEach(course => {
-      const courseCode = course.courseCode;
-      const courseCos = cosMap[courseCode] || [];
+      const courseId = course.courseId;
+      const courseCos = cosMap[courseId] || [];
 
       const computeAvg = (type) => {
         const typeCos = courseCos.filter(co => co.coType && co.coType.toUpperCase() === type);
@@ -1172,7 +1249,7 @@ export const getConsolidatedMarks = catchAsync(async (req, res) => {
         return isNaN(avg) ? null : avg.toFixed(2);
       };
 
-      marksMap[regno][courseCode] = {
+      marksMap[regno][course.courseCode] = {
         theory: course.theoryCount > 0 ? computeAvg('THEORY') : null,
         practical: course.practicalCount > 0 ? computeAvg('PRACTICAL') : null,
         experiential: course.experientialCount > 0 ? computeAvg('EXPERIENTIAL') : null,
@@ -1187,4 +1264,3 @@ export const getConsolidatedMarks = catchAsync(async (req, res) => {
     message: cos.length === 0 ? 'No course outcomes found for the selected courses' : undefined,
   });
 });
-
