@@ -20,7 +20,7 @@ import withReactContent from 'sweetalert2-react-content';
 
 const MySwal = withReactContent(Swal);
 
-const useMarkAllocation = (courseId, sectionId) => {
+const useMarkAllocation = (courseCode, sectionId) => {
   const [partitions, setPartitions] = useState({ theoryCount: 0, practicalCount: 0, experientialCount: 0, partitionId: null });
   const [courseOutcomes, setCourseOutcomes] = useState([]);
   const [students, setStudents] = useState([]);
@@ -38,18 +38,18 @@ const useMarkAllocation = (courseId, sectionId) => {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!courseId || courseId.startsWith('course-') || !sectionId) {
-        console.error('Error: Invalid courseId or sectionId:', courseId, sectionId);
+      if (!courseCode || !sectionId) {
+        console.error('Error: Invalid courseCode or sectionId:', courseCode, sectionId);
         setError('Invalid course or section selected. Please select a valid course and section.');
         return;
       }
       try {
         setError('');
-        const parts = await getCoursePartitions(courseId);
+        const parts = await getCoursePartitions(courseCode);
         setPartitions(parts);
         setNewPartition(parts);
         setShowPartitionModal(!parts.partitionId);
-        const cos = await getCOsForCourse(courseId);
+        const cos = await getCOsForCourse(courseCode);
         console.log('getCOsForCourse response:', cos);
         if (!Array.isArray(cos)) {
           console.error('Error: getCOsForCourse did not return an array:', cos);
@@ -64,7 +64,7 @@ const useMarkAllocation = (courseId, sectionId) => {
           })
         );
         setCourseOutcomes(cosWithTools);
-        const studentsData = await getStudentsForSection(courseId, sectionId);
+        const studentsData = await getStudentsForSection(courseCode, sectionId);
         console.log('getStudentsForSection response:', studentsData);
         if (!Array.isArray(studentsData)) {
           console.error('Error: getStudentsForSection did not return an array:', studentsData);
@@ -97,7 +97,7 @@ const useMarkAllocation = (courseId, sectionId) => {
       }
     };
     fetchData();
-  }, [courseId, sectionId]);
+  }, [courseCode, sectionId]);
 
   const toggleCoCollapse = (coId) => {
     setCoCollapsed((prev) => ({ ...prev, [coId]: !prev[coId] }));
@@ -115,7 +115,7 @@ const useMarkAllocation = (courseId, sectionId) => {
 
     if (result.isConfirmed) {
       try {
-        const currentPartitions = await getCoursePartitions(courseId);
+        const currentPartitions = await getCoursePartitions(courseCode);
         setPartitions(currentPartitions);
         const saveResult = await handleSavePartitions(currentPartitions.partitionId);
         if (saveResult.success) {
@@ -133,7 +133,7 @@ const useMarkAllocation = (courseId, sectionId) => {
   };
 
   const handleSavePartitions = async (partitionId) => {
-    if (!courseId || courseId.startsWith('course-')) {
+    if (!courseCode) {
       const errMsg = 'Invalid course selected';
       console.error(errMsg);
       setError(errMsg);
@@ -151,18 +151,18 @@ const useMarkAllocation = (courseId, sectionId) => {
     }
     try {
       setError('');
-      console.log('Saving partitions for courseId:', courseId, 'Data:', newPartition, 'partitionId:', partitionId);
-      const currentPartitions = await getCoursePartitions(courseId);
+      console.log('Saving partitions for courseCode:', courseCode, 'Data:', newPartition, 'partitionId:', partitionId);
+      const currentPartitions = await getCoursePartitions(courseCode);
       const exists = !!currentPartitions.partitionId;
       let response;
       if (exists) {
-        response = await updateCoursePartitions(courseId, newPartition);
+        response = await updateCoursePartitions(courseCode, newPartition);
       } else {
-        response = await saveCoursePartitions(courseId, newPartition);
+        response = await saveCoursePartitions(courseCode, newPartition);
       }
       setPartitions({ ...newPartition, partitionId: response.data?.partitionId || currentPartitions.partitionId });
       setShowPartitionModal(false);
-      const cos = await getCOsForCourse(courseId);
+      const cos = await getCOsForCourse(courseCode);
       console.log('getCOsForCourse after save partitions:', cos);
       if (!Array.isArray(cos)) {
         console.error('Error: getCOsForCourse did not return an array after saving partitions:', cos);
@@ -191,10 +191,10 @@ const useMarkAllocation = (courseId, sectionId) => {
         }).then(async (result) => {
           if (result.isConfirmed) {
             try {
-              const updateResponse = await updateCoursePartitions(courseId, newPartition);
+              const updateResponse = await updateCoursePartitions(courseCode, newPartition);
               setPartitions({ ...newPartition, partitionId: updateResponse.data?.partitionId });
               setShowPartitionModal(false);
-              const cos = await getCOsForCourse(courseId);
+              const cos = await getCOsForCourse(courseCode);
               const cosWithTools = await Promise.all(
                 cos.map(async (co) => {
                   const tools = await getToolsForCO(co.coId);
@@ -271,82 +271,116 @@ const useMarkAllocation = (courseId, sectionId) => {
     }
   };
 
-  const updateStudentMark = (toolId, regno, marks) => {
+  const updateStudentMark = async (toolId, regno, marks) => {
     setStudents((prev) =>
       prev.map((s) =>
         s.regno === regno ? { ...s, marks: { ...s.marks, [toolId]: marks } } : s
       )
     );
-  };
-
-  const handleSaveToolMarks = async () => {
-    if (!selectedCO) {
-      const errMsg = 'No CO selected';
-      setError(errMsg);
-      return { success: false, error: errMsg };
-    }
-    if (!selectedCO.tools || selectedCO.tools.length === 0) {
-      const errMsg = 'No tools defined for the selected CO';
-      setError(errMsg);
-      return { success: false, error: errMsg };
-    }
-    if (!students || students.length === 0) {
-      const errMsg = 'No students enrolled in this course section';
-      setError(errMsg);
-      return { success: false, error: errMsg };
-    }
     try {
       setError('');
-      console.log('Saving marks for CO:', selectedCO.coId, 'Tools:', selectedCO.tools, 'Students:', students);
-      for (const tool of selectedCO.tools) {
-        const marksArray = students
-          .filter((s) => s.marks?.[tool.toolId] !== undefined && s.marks[tool.toolId] !== null)
-          .map((s) => ({
-            regno: s.regno,
-            marksObtained: Number(s.marks[tool.toolId]),
-          }));
-        if (marksArray.length === 0) {
-          console.warn(`No marks to save for tool ${tool.toolId}`);
-          continue;
-        }
-        console.log(`Prepared payload for tool ${tool.toolId}:`, { marks: marksArray });
-        await saveStudentMarksForTool(tool.toolId, { marks: marksArray });
+      const [tool] = await pool.query(
+        'SELECT maxMarks FROM ToolDetails WHERE toolId = ?',
+        [toolId]
+      );
+      if (!tool.length) {
+        throw new Error(`Tool with ID ${toolId} not found`);
       }
+      const maxMarks = tool[0].maxMarks;
+      if (marks < 0) {
+        setError(`Marks for ${regno} cannot be negative`);
+        return { success: false, error: `Marks for ${regno} cannot be negative` };
+      }
+      if (marks > maxMarks) {
+        setError(`Marks for ${regno} (${marks}) exceed max (${maxMarks})`);
+        return { success: false, error: `Marks for ${regno} (${marks}) exceed max (${maxMarks})` };
+      }
+      await saveStudentMarksForTool(toolId, { marks: [{ regno, marksObtained: marks }] });
+      return { success: true, message: 'Mark updated successfully' };
+    } catch (err) {
+      console.error('Error updating mark:', err);
+      const errMsg = err.response?.data?.message || err.message || 'Failed to update mark';
+      setError(errMsg);
+      return { success: false, error: errMsg };
+    }
+  };
+
+  const handleSaveToolMarks = async (toolId, marks) => {
+    try {
+      setError('');
+      await saveStudentMarksForTool(toolId, { marks });
+      const updatedMarks = await getStudentMarksForTool(toolId);
+      setStudents((prev) =>
+        prev.map((student) => {
+          const studentMark = updatedMarks.find((m) => m.regno === student.regno);
+          return {
+            ...student,
+            marks: {
+              ...student.marks,
+              [toolId]: studentMark ? studentMark.marksObtained : student.marks[toolId] || 0,
+            },
+          };
+        })
+      );
       return { success: true, message: 'Marks saved successfully' };
     } catch (err) {
-      console.error('Error saving marks:', err);
+      console.error('Error saving tool marks:', err);
       const errMsg = err.response?.data?.message || err.message || 'Failed to save marks';
       setError(errMsg);
       return { success: false, error: errMsg };
     }
   };
 
-  const handleImportMarks = async (file) => {
-    if (!selectedTool) return { success: false, error: 'No tool selected for import' };
+  const handleImportMarks = async (toolId, file) => {
     try {
       setError('');
-      await importMarksForTool(selectedTool.toolId, file);
-      const updatedTools = await getToolsForCO(selectedCO.coId);
-      const updatedStudents = await Promise.all(
-        students.map(async (s) => {
-          const newMarks = {};
-          for (const tool of updatedTools) {
-            const marksData = await getStudentMarksForTool(tool.toolId);
-            const studentMark = marksData.find((m) => m.regno === s.regno);
-            newMarks[tool.toolId] = studentMark ? studentMark.marksObtained : 0;
-          }
-          return { ...s, marks: newMarks };
+      const formData = new FormData();
+      formData.append('file', file);
+      await importMarksForTool(toolId, formData);
+      const updatedMarks = await getStudentMarksForTool(toolId);
+      setStudents((prev) =>
+        prev.map((student) => {
+          const studentMark = updatedMarks.find((m) => m.regno === student.regno);
+          return {
+            ...student,
+            marks: {
+              ...student.marks,
+              [toolId]: studentMark ? studentMark.marksObtained : student.marks[toolId] || 0,
+            },
+          };
         })
       );
-      setStudents(updatedStudents);
-      setCourseOutcomes((prev) =>
-        prev.map((co) => (co.coId === selectedCO.coId ? { ...co, tools: updatedTools } : co))
-      );
-      setSelectedCO({ ...selectedCO, tools: updatedTools });
+      setShowImportModal(false);
       return { success: true, message: 'Marks imported successfully' };
     } catch (err) {
       console.error('Error importing marks:', err);
       const errMsg = err.response?.data?.message || err.message || 'Failed to import marks';
+      setError(errMsg);
+      return { success: false, error: errMsg };
+    }
+  };
+
+  const handleExportCoWiseCsv = async (coId) => {
+    try {
+      setError('');
+      await exportCoWiseCsv(coId);
+      return { success: true, message: 'CSV exported successfully' };
+    } catch (err) {
+      console.error('Error exporting CO-wise CSV:', err);
+      const errMsg = err.response?.data?.message || err.message || 'Failed to export CSV';
+      setError(errMsg);
+      return { success: false, error: errMsg };
+    }
+  };
+
+  const handleExportCourseWiseCsv = async () => {
+    try {
+      setError('');
+      await exportCourseWiseCsv(courseCode);
+      return { success: true, message: 'Course-wise CSV exported successfully' };
+    } catch (err) {
+      console.error('Error exporting course-wise CSV:', err);
+      const errMsg = err.response?.data?.message || err.message || 'Failed to export CSV';
       setError(errMsg);
       return { success: false, error: errMsg };
     }
@@ -384,8 +418,8 @@ const useMarkAllocation = (courseId, sectionId) => {
     updateStudentMark,
     handleSaveToolMarks,
     handleImportMarks,
-    exportCoWiseCsv,
-    exportCourseWiseCsv,
+    handleExportCoWiseCsv,
+    exportCourseWiseCsv: handleExportCourseWiseCsv,
     error,
     setError,
   };

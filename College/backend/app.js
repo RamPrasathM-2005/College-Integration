@@ -7,7 +7,7 @@ import authRoutes from './routes/auth/authRoutes.js';
 import departmentRoutes from './routes/departmentRoutes.js';
 import staffRoutes from './routes/staff/staffRoutes.js';
 
-dotenv.config({ path: './.env' });
+dotenv.config({ path: './config.env' });
 
 const app = express();
 

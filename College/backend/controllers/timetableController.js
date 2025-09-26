@@ -23,7 +23,7 @@ export const getAllTimetableDepartments = catchAsync(async (req, res) => {
     }
 
     const [rows] = await connection.execute(
-      'SELECT Deptid, Deptacronym AS deptCode, Deptname FROM Department'
+      'SELECT Deptid, Deptacronym AS deptCode, Deptname FROM department'
     );
 
     await connection.commit();
@@ -124,14 +124,14 @@ export const getTimetable = catchAsync(async (req, res) => {
 
     const [rows] = await connection.execute(
       `
-      SELECT t.timetableId, t.courseCode, 
+      SELECT t.timetableId, c.courseCode, 
              COALESCE(t.sectionId, 0) AS sectionId, 
              UPPER(COALESCE(t.dayOfWeek, '')) AS dayOfWeek, 
              t.periodNumber, 
-             COALESCE(c.courseTitle, t.courseCode) AS courseTitle, 
+             COALESCE(c.courseTitle, c.courseCode) AS courseTitle, 
              COALESCE(s.sectionName, 'No Section') AS sectionName
       FROM Timetable t
-      LEFT JOIN Course c ON t.courseCode = c.courseCode AND c.isActive = "YES"
+      LEFT JOIN Course c ON t.courseId = c.courseId AND c.isActive = "YES"
       LEFT JOIN Section s ON t.sectionId = s.sectionId AND (s.isActive = "YES" OR s.isActive IS NULL)
       WHERE t.semesterId = ? 
         AND t.isActive = "YES" 
@@ -209,14 +209,14 @@ export const getTimetableByFilters = catchAsync(async (req, res) => {
 
     const [rows] = await connection.execute(
       `
-      SELECT t.timetableId, t.courseCode, 
+      SELECT t.timetableId, c.courseCode, 
              COALESCE(t.sectionId, 0) AS sectionId, 
              UPPER(COALESCE(t.dayOfWeek, '')) AS dayOfWeek, 
              t.periodNumber, 
-             COALESCE(c.courseTitle, t.courseCode) AS courseTitle, 
+             COALESCE(c.courseTitle, c.courseCode) AS courseTitle, 
              COALESCE(s.sectionName, 'No Section') AS sectionName
       FROM Timetable t
-      LEFT JOIN Course c ON t.courseCode = c.courseCode AND c.isActive = "YES"
+      LEFT JOIN Course c ON t.courseId = c.courseId AND c.isActive = "YES"
       LEFT JOIN Section s ON t.sectionId = s.sectionId AND (s.isActive = "YES" OR s.isActive IS NULL)
       JOIN Semester sem ON t.semesterId = sem.semesterId
       JOIN Batch b ON sem.batchId = b.batchId
@@ -255,7 +255,7 @@ export const getTimetableByFilters = catchAsync(async (req, res) => {
 });
 
 export const createTimetableEntry = catchAsync(async (req, res) => {
-  const { courseCode, courseTitle, sectionId, dayOfWeek, periodNumber, Deptid, semesterId } = req.body;
+  const { courseId, courseTitle, sectionId, dayOfWeek, periodNumber, Deptid, semesterId } = req.body;
   const userEmail = req.user?.email || 'admin';
   let connection;
 
@@ -273,8 +273,8 @@ export const createTimetableEntry = catchAsync(async (req, res) => {
     }
 
     // Validate required fields
-    if (!courseCode || !dayOfWeek || !periodNumber || !Deptid || !semesterId) {
-      throw new Error('courseCode, dayOfWeek, periodNumber, Deptid, and semesterId are required');
+    if (!courseId || !dayOfWeek || !periodNumber || !Deptid || !semesterId) {
+      throw new Error('courseId, dayOfWeek, periodNumber, Deptid, and semesterId are required');
     }
 
     // Validate numeric fields
@@ -319,36 +319,35 @@ export const createTimetableEntry = catchAsync(async (req, res) => {
       throw new Error('Time slot already assigned');
     }
 
-    // Validate courseCode and courseTitle
-    let finalCourseTitle = courseTitle || courseCode;
+    // Validate courseId and courseTitle
+    let finalCourseTitle = courseTitle;
     const [courseRows] = await connection.execute(
-      'SELECT courseId, courseTitle FROM Course WHERE courseCode = ? AND isActive = "YES"',
-      [courseCode]
+      'SELECT courseId, courseTitle, courseCode FROM Course WHERE courseId = ? AND isActive = "YES"',
+      [courseId]
     );
     if (courseRows.length > 0) {
       finalCourseTitle = courseRows[0].courseTitle; // Use actual courseTitle for valid courses
     } else if (!courseTitle) {
-      // Allow manual entries if courseTitle is provided
-      finalCourseTitle = courseCode; // Use courseCode as courseTitle for manual entries
+      throw new Error(`No active course found with courseId ${courseId} and no courseTitle provided`);
     }
 
     // Validate sectionId if provided
     if (sectionId) {
       const [sectionCheck] = await connection.execute(
-        'SELECT sectionId FROM Section WHERE sectionId = ? AND courseCode = ? AND isActive = "YES"',
-        [sectionId, courseCode]
+        'SELECT sectionId FROM Section WHERE sectionId = ? AND courseId = ? AND isActive = "YES"',
+        [sectionId, courseId]
       );
       if (sectionCheck.length === 0) {
-        throw new Error(`No active section found with sectionId ${sectionId} for courseCode ${courseCode}`);
+        throw new Error(`No active section found with sectionId ${sectionId} for courseId ${courseId}`);
       }
     }
 
     const [result] = await connection.execute(
       `
-      INSERT INTO Timetable (courseCode, sectionId, dayOfWeek, periodNumber, Deptid, semesterId, isActive, createdBy, updatedBy)
+      INSERT INTO Timetable (courseId, sectionId, dayOfWeek, periodNumber, Deptid, semesterId, isActive, createdBy, updatedBy)
       VALUES (?, ?, ?, ?, ?, ?, 'YES', ?, ?)
       `,
-      [courseCode, sectionId || null, dayOfWeek, periodNumber, Deptid, semesterId, userEmail, userEmail]
+      [courseId, sectionId || null, dayOfWeek, periodNumber, Deptid, semesterId, userEmail, userEmail]
     );
 
     await connection.commit();
@@ -358,7 +357,7 @@ export const createTimetableEntry = catchAsync(async (req, res) => {
       message: 'Timetable entry created successfully',
       data: {
         timetableId: result.insertId,
-        courseCode,
+        courseCode: courseRows.length > 0 ? courseRows[0].courseCode : courseId,
         courseTitle: finalCourseTitle,
         sectionId: sectionId || null,
         dayOfWeek,
@@ -370,7 +369,7 @@ export const createTimetableEntry = catchAsync(async (req, res) => {
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('Error creating timetable entry:', error);
-    res.status(error.message.includes('No active user') || error.message.includes('Invalid') || error.message.includes('No active') || error.message.includes('Time slot') ? 400 : 500).json({
+    res.status(error.message.includes('No active user') || error.message.includes('Invalid') || error.message.includes('No active') || error.message.includes('Time slot') || error.message.includes('No department') ? 400 : 500).json({
       status: 'failure',
       message: `Failed to create timetable entry: ${error.message}`,
     });
@@ -381,7 +380,7 @@ export const createTimetableEntry = catchAsync(async (req, res) => {
 
 export const updateTimetableEntry = catchAsync(async (req, res) => {
   const { timetableId } = req.params;
-  const { courseCode, sectionId, dayOfWeek, periodNumber, Deptid, semesterId } = req.body;
+  const { courseId, sectionId, dayOfWeek, periodNumber, Deptid, semesterId } = req.body;
   const userEmail = req.user?.email || 'admin';
   let connection;
 
@@ -402,10 +401,10 @@ export const updateTimetableEntry = catchAsync(async (req, res) => {
     }
 
     // Validate required fields
-    if (!courseCode || !dayOfWeek || !periodNumber || !Deptid || !semesterId) {
+    if (!courseId || !dayOfWeek || !periodNumber || !Deptid || !semesterId) {
       return res.status(400).json({
         status: 'failure',
-        message: 'courseCode, dayOfWeek, periodNumber, Deptid, and semesterId are required',
+        message: 'courseId, dayOfWeek, periodNumber, Deptid, and semesterId are required',
       });
     }
 
@@ -421,15 +420,15 @@ export const updateTimetableEntry = catchAsync(async (req, res) => {
       });
     }
 
-    // Validate courseCode
+    // Validate courseId
     const [courseRows] = await connection.execute(
-      'SELECT courseId FROM Course WHERE courseCode = ? AND isActive = "YES"',
-      [courseCode]
+      'SELECT courseId FROM Course WHERE courseId = ? AND isActive = "YES"',
+      [courseId]
     );
     if (courseRows.length === 0) {
       return res.status(404).json({
         status: 'failure',
-        message: `No active course found with courseCode ${courseCode}`,
+        message: `No active course found with courseId ${courseId}`,
       });
     }
 
@@ -481,13 +480,13 @@ export const updateTimetableEntry = catchAsync(async (req, res) => {
     // Validate sectionId if provided
     if (sectionId) {
       const [sectionCheck] = await connection.execute(
-        'SELECT sectionId FROM Section WHERE sectionId = ? AND courseCode = ? AND isActive = "YES"',
-        [sectionId, courseCode]
+        'SELECT sectionId FROM Section WHERE sectionId = ? AND courseId = ? AND isActive = "YES"',
+        [sectionId, courseId]
       );
       if (sectionCheck.length === 0) {
         return res.status(404).json({
           status: 'failure',
-          message: `No active section found with sectionId ${sectionId} for courseCode ${courseCode}`,
+          message: `No active section found with sectionId ${sectionId} for courseId ${courseId}`,
         });
       }
     }
@@ -495,10 +494,10 @@ export const updateTimetableEntry = catchAsync(async (req, res) => {
     const [result] = await connection.execute(
       `
       UPDATE Timetable
-      SET courseCode = ?, sectionId = ?, dayOfWeek = ?, periodNumber = ?, Deptid = ?, semesterId = ?, updatedBy = ?, updatedAt = CURRENT_TIMESTAMP
+      SET courseId = ?, sectionId = ?, dayOfWeek = ?, periodNumber = ?, Deptid = ?, semesterId = ?, updatedBy = ?, updatedAt = CURRENT_TIMESTAMP
       WHERE timetableId = ?
       `,
-      [courseCode, sectionId || null, dayOfWeek, periodNumber, Deptid, semesterId, userEmail, timetableId]
+      [courseId, sectionId || null, dayOfWeek, periodNumber, Deptid, semesterId, userEmail, timetableId]
     );
 
     if (result.affectedRows === 0) {
@@ -516,7 +515,7 @@ export const updateTimetableEntry = catchAsync(async (req, res) => {
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('Error updating timetable entry:', error);
-    res.status(400).json({
+    res.status(error.message.includes('No active user') || error.message.includes('Invalid') || error.message.includes('No active') || error.message.includes('Time slot') || error.message.includes('No department') ? 400 : 500).json({
       status: 'failure',
       message: 'Failed to update timetable entry: ' + error.message,
     });
@@ -560,7 +559,7 @@ export const deleteTimetableEntry = catchAsync(async (req, res) => {
 
     // Soft delete
     const [result] = await connection.execute(
-      'UPDATE Timetable SET isActive = "NO", updatedBy = ?, updatedAt = CURRENT_TIMESTAMP WHERE timetableId = ?',
+      'UPDATE Timetable SET isActive = "NO", updatedBy = ?, updatedDate = CURRENT_TIMESTAMP WHERE timetableId = ?',
       [userEmail, timetableId]
     );
 

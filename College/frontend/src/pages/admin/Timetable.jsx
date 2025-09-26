@@ -149,7 +149,7 @@ const Timetable = () => {
           const response = await axios.get(`${API_BASE_URL}/api/admin/semesters/${selectedSem}/courses`);
           console.log('Courses API response:', response.data);
           if (response.data?.status === 'success' && Array.isArray(response.data.data)) {
-            setCourses(response.data.data);
+            setCourses(response.data.data); // Expects courseId, courseCode, courseTitle
             setError(null);
           } else {
             throw new Error('Invalid response structure: data is not an array');
@@ -215,9 +215,10 @@ const Timetable = () => {
       if (!backendPeriodNumber) {
         throw new Error('Invalid period number');
       }
+      const selectedCourse = allocationMode === 'select' ? courses.find(c => c.courseCode === courseValue) : null;
       await axios.post(`${API_BASE_URL}/api/admin/timetable/entry`, {
-        courseCode: courseValue,
-        courseTitle: allocationMode === 'manual' ? courseValue : undefined, // Send courseTitle for manual entries
+        courseId: allocationMode === 'select' ? selectedCourse.courseId : courseValue,
+        courseTitle: allocationMode === 'manual' ? courseValue : undefined,
         dayOfWeek: selectedCell.day,
         periodNumber: backendPeriodNumber,
         Deptid: parseInt(selectedDept),
@@ -629,7 +630,7 @@ const Timetable = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {courses.length > 0 ? (
               courses.map(course => {
-                const scheduleCount = timetableData.filter(entry => entry.courseCode === course.courseCode).length;
+                const scheduleCount = timetableData.filter(entry => entry.courseId === course.courseId).length;
                 return (
                   <div key={course.courseId} className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow bg-white">
                     <div className="font-semibold text-gray-900">{course.courseCode}</div>
@@ -648,7 +649,7 @@ const Timetable = () => {
           <h3 className="text-lg font-semibold mt-6 mb-4 text-gray-900">Scheduled Activities</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {timetableData
-              .filter(entry => !courses.some(course => course.courseCode === entry.courseCode))
+              .filter(entry => !courses.some(course => course.courseId === entry.courseId))
               .map(entry => (
                 <div key={entry.timetableId} className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow bg-white">
                   <div className="font-semibold text-gray-900">{entry.courseCode}</div>
