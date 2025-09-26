@@ -51,31 +51,8 @@ const manageStudentsService = {
         throw new Error(studentsRes.data.message || 'Failed to fetch students');
       }
 
-      let studentsData = [];
-      let coursesData = [];
-
-      // Handle different response formats
-      if (studentsRes.data.studentsData || studentsRes.data.coursesData) {
-        studentsData = studentsRes.data.studentsData || [];
-        coursesData = studentsRes.data.coursesData || [];
-      } else if (Array.isArray(studentsRes.data.data)) {
-        // Handle provided response format (only courses)
-        coursesData = studentsRes.data.data.map((course) => ({
-          courseId: course.courseId,
-          courseCode: course.courseCode,
-          courseTitle: course.courseName,
-          batches: course.batches.map((batch) => ({
-            sectionId: batch.sectionId,
-            sectionName: batch.batchId,
-            staffId: String(batch.Userid || ''),
-            staffName: batch.staff || 'Not Assigned',
-            enrolled: batch.enrolled || 0,
-            capacity: batch.capacity || 'N/A',
-          })),
-        }));
-      } else {
-        throw new Error('Unexpected response format');
-      }
+      let studentsData = studentsRes.data.studentsData || [];
+      let coursesData = studentsRes.data.coursesData || [];
 
       console.log('Raw studentsData:', studentsData);
       console.log('Raw coursesData:', coursesData);
@@ -86,9 +63,10 @@ const manageStudentsService = {
             enrolledCourses: Array.isArray(student.enrolledCourses)
               ? student.enrolledCourses.map((course) => ({
                   ...course,
+                  courseId: String(course.courseId),
+                  courseCode: course.courseCode,
                   staffId: course.staffId ? String(course.staffId).replace(/"/g, '') : '',
                   staffName: course.staffName && typeof course.staffName === 'string' ? course.staffName.replace(/"/g, '') : 'Not Assigned',
-                  courseCode: course.courseCode && typeof course.courseCode === 'string' ? course.courseCode.replace(/"/g, '') : '',
                   sectionName: course.sectionName && typeof course.sectionName === 'string' ? course.sectionName.replace(/"/g, '') : '',
                 }))
               : [],
@@ -98,14 +76,16 @@ const manageStudentsService = {
       coursesData = Array.isArray(coursesData)
         ? coursesData.map((course) => ({
             ...course,
-            courseTitle: course.courseTitle || course.courseName || 'Unknown Course',
+            courseId: String(course.courseId),
+            courseCode: course.courseCode,
+            courseTitle: course.courseTitle || 'Unknown Course',
             batches: Array.isArray(course.batches)
               ? course.batches.map((batch, index) => ({
                   ...batch,
-                  sectionId: batch.sectionId || batch.batchId || index + 1,
+                  sectionId: String(batch.sectionId),
                   sectionName: batch.sectionName || `Batch ${index + 1}`,
                   staffId: batch.staffId ? String(batch.staffId) : '',
-                  staffName: batch.staffName || batch.staff || 'Not Assigned',
+                  staffName: batch.staffName || 'Not Assigned',
                   enrolled: batch.enrolled || 0,
                   capacity: batch.capacity || 'N/A',
                 }))
@@ -118,18 +98,20 @@ const manageStudentsService = {
         try {
           const coursesRes = await api.get(`${API_BASE}/courses/available/${batchId}/${semesterNumber}`);
           if (coursesRes.status === 200 && coursesRes.data.status === 'success') {
-            const rawCoursesData = coursesRes.data.data || coursesRes.data;
+            const rawCoursesData = coursesRes.data.data || [];
             coursesData = Array.isArray(rawCoursesData)
               ? rawCoursesData.map((course) => ({
                   ...course,
-                  courseTitle: course.courseName || course.courseTitle || 'Unknown Course',
-                  batches: Array.isArray(course.batches)
-                    ? course.batches.map((batch, index) => ({
+                  courseId: String(course.courseId),
+                  courseCode: course.courseCode,
+                  courseTitle: course.courseTitle || course.courseName || 'Unknown Course',
+                  batches: Array.isArray(course.batches || course.sections)
+                    ? (course.batches || course.sections).map((batch, index) => ({
                         ...batch,
-                        sectionId: batch.batchId || batch.sectionId || index + 1,
+                        sectionId: String(batch.sectionId),
                         sectionName: batch.sectionName || `Batch ${index + 1}`,
-                        staffId: batch.Userid ? String(batch.Userid) : String(batch.staffId || ''),
-                        staffName: batch.staff || batch.staffName || 'Not Assigned',
+                        staffId: batch.staffId ? String(batch.staffId) : String(batch.Userid || ''),
+                        staffName: batch.staffName || batch.staff || 'Not Assigned',
                         enrolled: batch.enrolled || 0,
                         capacity: batch.capacity || 'N/A',
                       }))
@@ -152,10 +134,10 @@ const manageStudentsService = {
     }
   },
 
-  unenroll: async (rollnumber, courseCode) => {
+  unenroll: async (rollnumber, courseId) => {
     try {
       const res = await api.delete(`${API_BASE}/students/unenroll`, {
-        data: { rollnumber, courseCode },
+        data: { rollnumber, courseId },
       });
       if (res.status !== 200 || res.data.status !== 'success') {
         throw new Error(res.data.message || 'Failed to unenroll.');
@@ -172,7 +154,9 @@ const manageStudentsService = {
       const responses = await Promise.all(
         assignments.map((assignment) =>
           api.post(`${API_BASE}/students/enroll`, {
-            ...assignment,
+            rollnumber: assignment.rollnumber,
+            courseId: String(assignment.courseId),
+            sectionName: assignment.sectionName,
             staffId: String(assignment.staffId),
           }).then((res) => ({
             status: res.status,
@@ -187,7 +171,7 @@ const manageStudentsService = {
         const errorMessages = failed
           .map(
             (res) =>
-              `${res.data.message || 'Unknown error'} (Student: ${res.assignment.rollnumber}, Course: ${res.assignment.courseCode})`
+              `${res.data.message || 'Unknown error'} (Student: ${res.assignment.rollnumber}, Course: ${res.assignment.courseId})`
           )
           .join('; ');
         throw new Error(`Failed to save ${failed.length} assignment(s): ${errorMessages}`);

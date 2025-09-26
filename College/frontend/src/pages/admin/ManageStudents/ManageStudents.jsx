@@ -174,7 +174,7 @@ const ManageStudents = () => {
                         {availableCourses.length > 0 ? (
                           availableCourses.map((course) => (
                             <th
-                              key={course.courseCode}
+                              key={course.courseId}
                               className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                               style={{ width: '300px', minWidth: '300px' }}
                             >
@@ -222,11 +222,11 @@ const ManageStudents = () => {
                           </td>
                           {availableCourses.length > 0 ? (
                             availableCourses.map((course) => {
-                              const enrolled = student.enrolledCourses.find((c) => c.courseCode === course.courseCode);
+                              const enrolled = student.enrolledCourses.find((c) => c.courseId === course.courseId);
                               const selectedStaffId = enrolled ? String(enrolled.staffId) : '';
                               return (
                                 <td
-                                  key={course.courseCode}
+                                  key={course.courseId}
                                   className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
                                   style={{ width: '300px', minWidth: '300px' }}
                                 >
@@ -234,13 +234,13 @@ const ManageStudents = () => {
                                     value={selectedStaffId}
                                     onChange={(e) => {
                                       const staffId = e.target.value;
-                                      console.log('Dropdown change:', { rollnumber: student.rollnumber, courseCode: course.courseCode, staffId });
+                                      console.log('Dropdown change:', { rollnumber: student.rollnumber, courseId: course.courseId, staffId });
                                       if (!staffId) {
-                                        unenroll(student, course.courseCode);
+                                        unenroll(student, course.courseId);
                                       } else {
                                         const section = course.batches.find((b) => String(b.staffId) === String(staffId));
                                         if (section) {
-                                          assignStaff(student, course.courseCode, section.sectionId, staffId);
+                                          assignStaff(student, course.courseId, section.sectionId, staffId);
                                         } else {
                                           console.warn('Section not found for staffId:', staffId);
                                         }
@@ -281,7 +281,7 @@ const ManageStudents = () => {
                 </h2>
                 <div className="mt-4">
                   {availableCourses.map((course) => (
-                    <div key={course.courseCode} className="p-4 border-b border-gray-200">
+                    <div key={course.courseId} className="p-4 border-b border-gray-200">
                       <div className="flex justify-between items-center">
                         <div>
                           <span className="font-bold text-gray-900">{course.courseCode}</span>

@@ -9,28 +9,29 @@ const useManageStudentsHandlers = (
   setPendingAssignments,
   setError
 ) => {
-  const assignStaff = (student, courseCode, sectionId, staffId) => {
+  const assignStaff = (student, courseId, sectionId, staffId) => {
     try {
-      const course = availableCourses.find((c) => c.courseCode === courseCode);
+      const course = availableCourses.find((c) => c.courseId === courseId);
       if (!course) {
-        setError(`No course found for code ${courseCode}`);
-        showErrorToast('Error', `No course found for code ${courseCode}`);
+        setError(`No course found for ID ${courseId}`);
+        showErrorToast('Error', `No course found for ID ${courseId}`);
         return false;
       }
       const section = course.batches.find((b) => String(b.sectionId) === String(sectionId) && String(b.staffId) === String(staffId));
       if (!section) {
-        setError(`No section found for course ${courseCode} with sectionId ${sectionId} and staffId ${staffId}`);
-        showErrorToast('Error', `No section found for course ${courseCode}`);
+        setError(`No section found for course ${course.courseCode} with sectionId ${sectionId} and staffId ${staffId}`);
+        showErrorToast('Error', `No section found for course ${course.courseCode}`);
         return false;
       }
 
-      console.log('Assigning:', { student: student.rollnumber, courseCode, sectionId, staffId, sectionName: section.sectionName }); // Debugging log
+      console.log('Assigning:', { student: student.rollnumber, courseId, courseCode: course.courseCode, sectionId, staffId, sectionName: section.sectionName });
 
       setPendingAssignments((prev) => ({
         ...prev,
-        [`${student.rollnumber}-${courseCode}`]: {
+        [`${student.rollnumber}-${courseId}`]: {
           rollnumber: student.rollnumber,
-          courseCode,
+          courseId: String(courseId),
+          courseCode: course.courseCode,
           sectionId: String(section.sectionId),
           sectionName: section.sectionName,
           staffId: String(staffId),
@@ -43,11 +44,13 @@ const useManageStudentsHandlers = (
           s.rollnumber === student.rollnumber
             ? {
                 ...s,
-                enrolledCourses: s.enrolledCourses.some((c) => c.courseCode === courseCode)
+                enrolledCourses: s.enrolledCourses.some((c) => c.courseId === courseId)
                   ? s.enrolledCourses.map((c) =>
-                      c.courseCode === courseCode
+                      c.courseId === courseId
                         ? {
                             ...c,
+                            courseId: String(courseId),
+                            courseCode: course.courseCode,
                             sectionId: String(section.sectionId),
                             sectionName: section.sectionName,
                             staffId: String(staffId),
@@ -58,8 +61,8 @@ const useManageStudentsHandlers = (
                   : [
                       ...s.enrolledCourses,
                       {
-                        courseId: course.courseId,
-                        courseCode,
+                        courseId: String(courseId),
+                        courseCode: course.courseCode,
                         courseTitle: course.courseTitle,
                         sectionId: String(section.sectionId),
                         sectionName: section.sectionName,
@@ -80,25 +83,25 @@ const useManageStudentsHandlers = (
     }
   };
 
-  const unenroll = async (student, courseCode) => {
+  const unenroll = async (student, courseId) => {
     try {
-      console.log('Unenrolling:', { rollnumber: student.rollnumber, courseCode }); // Debugging log
+      console.log('Unenrolling:', { rollnumber: student.rollnumber, courseId });
 
       setPendingAssignments((prev) => {
         const newAssignments = { ...prev };
-        delete newAssignments[`${student.rollnumber}-${courseCode}`];
+        delete newAssignments[`${student.rollnumber}-${courseId}`];
         return newAssignments;
       });
 
       setStudents((prev) =>
         prev.map((s) =>
           s.rollnumber === student.rollnumber
-            ? { ...s, enrolledCourses: s.enrolledCourses.filter((c) => c.courseCode !== courseCode) }
+            ? { ...s, enrolledCourses: s.enrolledCourses.filter((c) => c.courseId !== courseId) }
             : s
         )
       );
 
-      const success = await manageStudentsService.unenroll(student.rollnumber, courseCode);
+      const success = await manageStudentsService.unenroll(student.rollnumber, courseId);
       if (!success) {
         throw new Error('Failed to unenroll.');
       }
@@ -112,7 +115,7 @@ const useManageStudentsHandlers = (
   };
 
   const applyToAll = (course) => {
-    console.log('Applying to all for course:', course.courseCode, 'Batches:', course.batches); // Debugging log
+    console.log('Applying to all for course:', course.courseId, 'Batches:', course.batches);
     const batch1 = course.batches.find(
       (b) =>
         b.sectionName &&
@@ -129,7 +132,7 @@ const useManageStudentsHandlers = (
     }
 
     students.forEach((student) => {
-      assignStaff(student, course.courseCode, batch1.sectionId, batch1.staffId);
+      assignStaff(student, course.courseId, batch1.sectionId, batch1.staffId);
     });
   };
 
@@ -137,12 +140,12 @@ const useManageStudentsHandlers = (
     try {
       const assignments = Object.values(pendingAssignments).map((assignment) => ({
         rollnumber: assignment.rollnumber,
-        courseCode: assignment.courseCode,
+        courseId: assignment.courseId,
         sectionName: assignment.sectionName,
         staffId: String(assignment.staffId),
       }));
 
-      console.log('Saving assignments:', assignments); // Debugging log
+      console.log('Saving assignments:', assignments);
 
       if (assignments.length === 0) {
         showInfoToast('No Changes', 'No assignments to save.');
