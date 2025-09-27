@@ -272,38 +272,33 @@ const useMarkAllocation = (courseCode, sectionId) => {
   };
 
   const updateStudentMark = async (toolId, regno, marks) => {
-    setStudents((prev) =>
-      prev.map((s) =>
-        s.regno === regno ? { ...s, marks: { ...s.marks, [toolId]: marks } } : s
-      )
-    );
-    try {
-      setError('');
-      const [tool] = await pool.query(
-        'SELECT maxMarks FROM ToolDetails WHERE toolId = ?',
-        [toolId]
-      );
-      if (!tool.length) {
-        throw new Error(`Tool with ID ${toolId} not found`);
-      }
-      const maxMarks = tool[0].maxMarks;
-      if (marks < 0) {
-        setError(`Marks for ${regno} cannot be negative`);
-        return { success: false, error: `Marks for ${regno} cannot be negative` };
-      }
-      if (marks > maxMarks) {
-        setError(`Marks for ${regno} (${marks}) exceed max (${maxMarks})`);
-        return { success: false, error: `Marks for ${regno} (${marks}) exceed max (${maxMarks})` };
-      }
-      await saveStudentMarksForTool(toolId, { marks: [{ regno, marksObtained: marks }] });
-      return { success: true, message: 'Mark updated successfully' };
-    } catch (err) {
-      console.error('Error updating mark:', err);
-      const errMsg = err.response?.data?.message || err.message || 'Failed to update mark';
-      setError(errMsg);
-      return { success: false, error: errMsg };
-    }
-  };
+  // Optimistically update the local state
+  const previousStudents = [...students]; // Store previous state for rollback
+  setStudents((prev) =>
+    prev.map((s) =>
+      s.regno === regno ? { ...s, marks: { ...s.marks, [toolId]: marks } } : s
+    )
+  );
+
+  try {
+    setError('');
+    // Call the backend API to validate and save the mark
+    const response = await saveStudentMarksForTool(toolId, {
+      marks: [{ regno, marksObtained: marks }],
+    });
+    return { success: true, message: response.message || 'Mark updated successfully' };
+  } catch (err) {
+    console.error('Error updating mark:', err);
+    // Roll back the optimistic update
+    setStudents(previousStudents);
+    const errMsg =
+      err.response?.data?.message ||
+      err.message ||
+      'Failed to update mark';
+    setError(errMsg);
+    return { success: false, error: errMsg };
+  }
+};
 
   const handleSaveToolMarks = async (toolId, marks) => {
     try {

@@ -18,7 +18,7 @@ export const getElectiveBuckets = catchAsync(async (req, res) => {
       const [courses] = await connection.execute(
         `SELECT c.courseCode, c.courseTitle 
          FROM ElectiveBucketCourse ebc 
-         JOIN Course c ON ebc.courseCode = c.courseCode 
+         JOIN Course c ON ebc.courseId = c.courseId 
          WHERE ebc.bucketId = ?`,
         [bucket.bucketId]
       );

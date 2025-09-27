@@ -23,7 +23,7 @@ const AdminSidebar = () => {
     { to: "/admin/manage-students", icon: Users, label: "Students" },
     { to: "/admin/timetable", icon: Calendar, label: "Timetable" },
     { to: '/admin/consolidated-marks', icon: Book, label: 'Consolidated Marks' },
-    { to: "/admin/subjectwise-marks", icon: Book, label: "subjectwise-marks" },
+    { to: "/admin/subjectwise-marks", icon: Book, label: "Subjectwise Marks" },
     { to: "/admin/course-recommendation", icon: BookImage, label: "Course Recommendation"}
   ];
 
