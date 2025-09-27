@@ -1,3 +1,4 @@
+
 import axios from 'axios';
 
 const API_URL = 'http://localhost:4000/api/staff';
@@ -31,6 +32,28 @@ api.interceptors.response.use(
   }
 );
 
+export const createTool = async (coId, tool) => {
+  try {
+    console.log('createTool called with:', { coId, tool });
+    const response = await api.post(`/tools/${coId}`, tool);
+    return response.data;
+  } catch (error) {
+    console.error('Error in createTool:', error);
+    throw error;
+  }
+};
+
+export const saveStudentMarksForTool = async (toolId, marks) => {
+  try {
+    console.log('saveStudentMarksForTool called with:', { toolId, marks });
+    const response = await api.post(`/marks/${toolId}`, marks);
+    return response.data;
+  } catch (error) {
+    console.error('Error in saveStudentMarksForTool:', error);
+    throw error;
+  }
+};
+
 export const getCoursePartitions = async (courseCode) => {
   const response = await api.get(`/partitions/${courseCode}`);
   return response.data.data;
@@ -56,11 +79,6 @@ export const getToolsForCO = async (coId) => {
   return response.data.data || [];
 };
 
-export const createTool = async (coId, tool) => {
-  const response = await api.post(`/tools/${coId}`, tool);
-  return response.data.data;
-};
-
 export const saveToolsForCO = async (coId, tools) => {
   const response = await api.post(`/tools/${coId}/save`, tools);
   return response.data;
@@ -77,18 +95,16 @@ export const deleteTool = async (toolId) => {
 };
 
 export const getStudentMarksForTool = async (toolId) => {
-  const response = await api.get(`/marks/${toolId}`);
-  return response.data.data || [];
-};
-
-export const saveStudentMarksForTool = async (toolId, marks) => {
   try {
-    console.log('Sending payload to backend:', marks); // Log to verify payload
-    const response = await api.post(`/marks/${toolId}`, marks);
-    return response.data;
+    const response = await api.get(`/marks/${toolId}`);
+    console.log(`getStudentMarksForTool response for toolId ${toolId}:`, response.data);
+    if (response.data.debug) {
+      console.log('Debug info:', response.data.debug);
+    }
+    return response.data.data || [];
   } catch (error) {
-    console.error('Error in saveStudentMarksForTool:', error);
-    throw error;
+    console.error('Error in getStudentMarksForTool:', error);
+    throw new Error(error.response?.data?.message || 'Failed to fetch marks');
   }
 };
 
@@ -118,7 +134,7 @@ export const exportCoWiseCsv = async (coId) => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    window.URL.revokeObjectURL(url); // Clean up
+    window.URL.revokeObjectURL(url);
   } catch (err) {
     console.error('Error in exportCoWiseCsv:', err);
     throw new Error(err.response?.data?.message || 'Failed to export CO-wise CSV');
@@ -137,7 +153,7 @@ export const exportCourseWiseCsv = async (courseCode) => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    window.URL.revokeObjectURL(url); // Clean up
+    window.URL.revokeObjectURL(url);
   } catch (err) {
     console.error('Error in exportCourseWiseCsv:', err);
     throw new Error(err.response?.data?.message || 'Failed to export course-wise CSV');

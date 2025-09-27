@@ -2,7 +2,7 @@ import React from 'react';
 import { BookOpen, TrendingUp, Users } from 'lucide-react';
 
 const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }) => {
-  if (!students?.length || !courseOutcomes?.length) {
+  if (!students?.length || !courseOutcomes?.length || !calculateInternalMarks) {
     return (
       <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 text-center">
         <div className="flex flex-col items-center justify-center py-12">
@@ -17,6 +17,9 @@ const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }
       </div>
     );
   }
+
+  console.log('InternalMarksTable - students:', students); // Debug log
+  console.log('InternalMarksTable - courseOutcomes:', courseOutcomes); // Debug log
 
   return (
     <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
@@ -55,13 +58,13 @@ const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }
                   Student Name
                 </div>
               </th>
-              {courseOutcomes.map((co, index) => (
+              {courseOutcomes.map((co) => (
                 <th key={co.coId} className="px-4 py-4 text-center text-sm font-semibold text-gray-700 border-r border-gray-200 min-w-[110px]">
                   <div className="flex flex-col items-center">
-                    <div className="w-8 h-8  text-blue-600 rounded-lg flex items-center justify-center mb-2 text-xs font-bold">
+                    <div className="w-8 h-8 text-blue-600 rounded-lg flex items-center justify-center mb-2 text-xs font-bold">
                       {co.coNumber}
                     </div>
-                    <span className="text-xs text-gray-500"></span>
+                    <span className="text-xs text-gray-500">{co.coType || ''}</span>
                   </div>
                 </th>
               ))}
@@ -89,7 +92,7 @@ const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }
                   <span className="text-xs text-gray-500">Experiential Avg</span>
                 </div>
               </th>
-              <th className="px-4 py-4 text-center text-sm font-semibold text-blue-600  min-w-[140px]">
+              <th className="px-4 py-4 text-center text-sm font-semibold text-blue-600 min-w-[140px]">
                 <div className="flex flex-col items-center">
                   <div className="w-8 h-8 bg-blue-600 bg-opacity-20 rounded-lg flex items-center justify-center mb-1">
                     <TrendingUp className="w-4 h-4 text-white" />
@@ -101,79 +104,68 @@ const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }
           </thead>
           <tbody className="divide-y divide-gray-100">
             {students.map((student, index) => {
-              const averages = calculateInternalMarks(student.rollnumber);
+              const averages = calculateInternalMarks(student.regno || student.rollnumber);
+              console.log(`Averages for student ${student.regno || student.rollnumber}:`, averages); // Debug log
               const isEvenRow = index % 2 === 0;
 
               return (
                 <tr
-                  key={student.rollnumber}
+                  key={student.regno || student.rollnumber}
                   className={`transition-colors duration-200 hover:bg-gray-50 ${
                     isEvenRow ? 'bg-white' : 'bg-gray-25'
                   }`}
                 >
                   <td className="px-6 py-4 text-sm text-gray-900 border-r border-gray-100 sticky left-0 bg-inherit z-10">
                     <div className="flex items-center">
-                      <div className="w-8 h-8  text-blue-600 rounded-lg flex items-center justify-center mr-3 text-xs font-semibold">
+                      <div className="w-8 h-8 text-blue-600 rounded-lg flex items-center justify-center mr-3 text-xs font-semibold">
                         {index + 1}
                       </div>
-                      <span className="font-mono text-gray-700 font-medium">{student.rollnumber}</span>
+                      <span className="font-mono text-gray-700 font-medium">{student.regno || student.rollnumber}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-900 border-r border-gray-100 sticky left-[140px] bg-inherit z-10">
                     {student.name}
                   </td>
                   {courseOutcomes.map((co) => {
-                    let coMark = 0;
-                    for (const tool of co.tools || []) {
-                      const marks = student.marks[tool.toolId] || 0;
-                      const maxMarks = Number(tool.maxMarks) || 100;
-                      const weightage = Number(tool.weightage) || 100;
-                      if (maxMarks === 0) {
-                        console.warn(`Invalid maxMarks for toolId ${tool.toolId}:`, maxMarks);
-                        return;
-                      }
-                      coMark += (marks / maxMarks) * (weightage / 100);
-                    }
-                    coMark *= 100;
-                    const finalMark = isNaN(coMark) ? 0 : coMark;
-
+                    const coMark = averages[co.coId] || 0;
+                    console.log(`CO mark for ${co.coNumber} (coId: ${co.coId}): ${coMark}`); // Debug log
                     return (
                       <td key={co.coId} className="px-4 py-4 text-center border-r border-gray-100">
                         <span
                           className={`inline-flex items-center justify-center w-14 h-8 text-sm font-semibold ${
-                            finalMark >= 80
-                              ? ' text-emerald-700'
-                              : finalMark >= 70
-                              ? ' text-blue-700 '
-                              : finalMark >= 60
-                              ? ' text-amber-700 '
-                              : finalMark >= 50
-                              ? ' text-orange-700 '
-                              : ' text-red-700 '
+                            coMark >= 80
+                              ? 'text-emerald-700'
+                              : coMark >= 70
+                              ? 'text-blue-700'
+                              : coMark >= 60
+                              ? 'text-amber-700'
+                              : coMark >= 50
+                              ? 'text-orange-700'
+                              : 'text-red-700'
                           }`}
                         >
-                          {finalMark.toFixed(1)}
+                          {coMark.toFixed(1)}
                         </span>
                       </td>
                     );
                   })}
                   <td className="px-4 py-4 text-center border-r border-gray-100">
-                    <span className="inline-flex items-center justify-center w-16 h-8  text-emerald-700  text-sm font-semibold">
+                    <span className="inline-flex items-center justify-center w-16 h-8 text-emerald-700 text-sm font-semibold">
                       {averages.avgTheory || '0.00'}
                     </span>
                   </td>
                   <td className="px-4 py-4 text-center border-r border-gray-100">
-                    <span className="inline-flex items-center justify-center w-16 h-8  text-violet-700 text-sm font-semibold">
+                    <span className="inline-flex items-center justify-center w-16 h-8 text-violet-700 text-sm font-semibold">
                       {averages.avgPractical || '0.00'}
                     </span>
                   </td>
                   <td className="px-4 py-4 text-center border-r border-gray-100">
-                    <span className="inline-flex items-center justify-center w-16 h-8   text-amber-700  text-sm font-semibold">
+                    <span className="inline-flex items-center justify-center w-16 h-8 text-amber-700 text-sm font-semibold">
                       {averages.avgExperiential || '0.00'}
                     </span>
                   </td>
                   <td className="px-4 py-4 text-center">
-                    <span className="inline-flex items-center justify-center w-20 h-10 text-blue-600 text-sm font-bold ">
+                    <span className="inline-flex items-center justify-center w-20 h-10 text-blue-600 text-sm font-bold">
                       {averages.finalAvg || '0.00'}
                     </span>
                   </td>

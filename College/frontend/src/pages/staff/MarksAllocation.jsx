@@ -114,14 +114,35 @@ const MarksAllocation = () => {
     MySwal.fire('Success', 'Tool removed from draft', 'success');
   };
 
-  const handleSaveToolMarksClick = async () => {
-    const result = await handleSaveToolMarks();
-    if (result.success) {
-      MySwal.fire('Success', result.message, 'success');
-    } else {
-      MySwal.fire('Error', result.error, 'error');
+const handleSaveToolMarksClick = async () => {
+  if (!selectedCO || !selectedCO.tools || selectedCO.tools.length === 0) {
+    MySwal.fire('Error', 'No tools selected for this CO', 'error');
+    return;
+  }
+
+  let allSuccess = true;
+  let errorMessage = '';
+
+  for (const tool of selectedCO.tools) {
+    const marks = students.map((student) => ({
+      regno: student.regno,
+      marksObtained: student.marks?.[tool.toolId] || 0,
+    }));
+
+    const result = await handleSaveToolMarks(tool.toolId, marks);
+    if (!result.success) {
+      allSuccess = false;
+      errorMessage = result.error;
+      break;
     }
-  };
+  }
+
+  if (allSuccess) {
+    MySwal.fire('Success', 'Marks saved successfully for all tools', 'success');
+  } else {
+    MySwal.fire('Error', errorMessage || 'Failed to save marks for some tools', 'error');
+  }
+};
 
   const handleImportClick = async () => {
     if (!importFile) {
