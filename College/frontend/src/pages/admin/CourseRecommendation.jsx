@@ -16,7 +16,7 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="p-6 bg-red-100 border border-red-400 text-red-700 rounded-xl shadow-lg max-w-7xl mx-auto">
           <h2 className="text-xl font-bold mb-2">Something went wrong!</h2>
-          <p className="mb-4">{this.state.error?.message || 'An unexpected error occurred.'}</p>
+          <p classNa8me="mb-4">{this.state.error?.message || 'An unexpected error occurred.'}</p>
           <button
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"

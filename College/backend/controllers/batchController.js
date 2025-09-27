@@ -167,3 +167,39 @@ export const deleteBatch = catchAsync(async (req, res) => {
     connection.release();
   }
 });
+
+
+export const getOrCreateBatch = async (Deptid, regulationYear, createdBy, updatedBy) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    // Try to find an existing batch
+    const [batches] = await connection.execute(
+      `SELECT batchId FROM Batch WHERE Deptid = ? AND batch = ? AND isActive = 'YES'`,
+      [Deptid, regulationYear.toString()]
+    );
+
+    if (batches.length > 0) {
+      await connection.commit();
+      return batches[0].batchId;
+    }
+
+    // Create a new batch
+    const batchYears = `${regulationYear}-${regulationYear + 4}`; // e.g., "2023-2027"
+    const [result] = await connection.execute(
+      `INSERT INTO Batch (Deptid, degree, branch, batch, batchYears, isActive, createdBy, updatedBy)
+       VALUES (?, 'B.Tech', (SELECT Deptacronym FROM department WHERE Deptid = ?), ?, ?, 'YES', ?, ?)`,
+      [Deptid, Deptid, regulationYear.toString(), batchYears, createdBy, updatedBy]
+    );
+
+    await connection.commit();
+    return result.insertId;
+  } catch (err) {
+    if (connection) await connection.rollback();
+    throw new Error(`Error getting or creating batch: ${err.message}`);
+  } finally {
+    if (connection) connection.release();
+  }
+};
