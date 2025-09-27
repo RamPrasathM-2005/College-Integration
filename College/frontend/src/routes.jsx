@@ -23,6 +23,7 @@ import ManageRegulations from "./pages/admin/ManageRegulations"
 import OverallConsolidatedMarks from "./pages/admin/OverallConsolidatedMarks";
 import SubjectWiseMarks from "./pages/admin/SubjectWiseMarks";
 import CourseRecommendation from './pages/admin/CourseRecommendation';
+import BatchRegulationAllocation from "./pages/admin/BatchRegulationAllocation";
 
 // Staff Pages
 import StaffDashboard from "./pages/staff/Dashboard";
@@ -64,7 +65,8 @@ const routes = [
       { index: true, element: <AdminDashboard /> },
       { path: "dashboard", element: <AdminDashboard /> },
       { path: "manage-semesters", element: <ManageSemesters /> },
-      { path: "manage-regulations", element: <ManageRegulations></ManageRegulations> },
+      { path: "manage-regulations", element: <ManageRegulations/> },
+      { path: "manage-batches", element: <BatchRegulationAllocation/> },
       { path: "manage-courses", element: <ManageCourses /> },
       { path: "manage-staff", element: <ManageStaff /> },
       { path: "manage-students", element: <ManageStudents /> },

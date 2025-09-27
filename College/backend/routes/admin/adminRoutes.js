@@ -1,3 +1,4 @@
+
 import express from "express";
 import {
   addSemester,
@@ -14,7 +15,7 @@ import {
   updateCourse,
   deleteCourse,
   importCourses,
-} from "../../controllers/subjectController.js"; // Changed from subjectController.js
+} from "../../controllers/subjectController.js";
 import {
   allocateStaffToCourse,
   allocateCourseToStaff,
@@ -80,7 +81,6 @@ import {
   removeCourseFromBucket,
   updateElectiveBucketName,
 } from "../../controllers/electiveBucketController.js";
-
 import {
   getAllRegulations,
   importRegulationCourses,
@@ -88,11 +88,8 @@ import {
   getVerticalsByRegulation,
   getAvailableCoursesForVertical,
   allocateCoursesToVertical,
+  allocateRegulationToBatch, // Add this import
 } from "../../controllers/regulationController.js";
-
-
-
-
 import { protect } from "../../controllers/auth/authController.js";
 
 const router = express.Router();
@@ -209,18 +206,15 @@ router.delete("/buckets/:bucketId/courses/:courseId", protect, removeCourseFromB
    ========================= */
 router.get("/consolidated-marks", protect, getConsolidatedMarks);
 
-
-
 /* =========================
-   📌 Regulations
+   📌 Regulation Routes
    ========================= */
-
-
 router.route('/regulations').get(protect, getAllRegulations);
 router.route('/regulations/courses').post(protect, importRegulationCourses);
 router.route('/regulations/verticals').post(protect, createVertical);
 router.route('/regulations/:regulationId/verticals').get(protect, getVerticalsByRegulation);
 router.route('/regulations/:regulationId/courses/available').get(protect, getAvailableCoursesForVertical);
 router.route('/regulations/verticals/courses').post(protect, allocateCoursesToVertical);
+router.route('/regulations/allocate-to-batch').post(protect, allocateRegulationToBatch); // Added this route
 
 export default router;
