@@ -166,7 +166,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 6) Course - Stores course details for each semester (MODIFIED)
+        // 6) Course - Stores course details for each semester
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Course (
                 courseId INT PRIMARY KEY AUTO_INCREMENT,
@@ -194,7 +194,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 7) Section - Stores sections for each course (MODIFIED)
+        // 7) Section - Stores sections for each course
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Section (
                 sectionId INT PRIMARY KEY AUTO_INCREMENT,
@@ -211,7 +211,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 8) StudentCourse - Enrolls students in courses with sections (MODIFIED)
+        // 8) StudentCourse - Enrolls students in courses with sections
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS StudentCourse (
                 studentCourseId INT PRIMARY KEY AUTO_INCREMENT,
@@ -232,7 +232,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 9) StaffCourse - Assigns staff to courses and sections (MODIFIED)
+        // 9) StaffCourse - Assigns staff to courses and sections
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS StaffCourse (
                 staffCourseId INT PRIMARY KEY AUTO_INCREMENT,
@@ -256,7 +256,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 10) CourseOutcome - Stores course outcomes (MODIFIED)
+        // 10) CourseOutcome - Stores course outcomes
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS CourseOutcome (
                 coId INT PRIMARY KEY AUTO_INCREMENT,
@@ -296,7 +296,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 13) Timetable - Stores class schedules (MODIFIED)
+        // 13) Timetable - Stores class schedules
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Timetable (
                 timetableId INT PRIMARY KEY AUTO_INCREMENT,
@@ -337,7 +337,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 15) PeriodAttendance - Stores period-wise attendance (MODIFIED)
+        // 15) PeriodAttendance - Stores period-wise attendance
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS PeriodAttendance (
                 periodAttendanceId INT PRIMARY KEY AUTO_INCREMENT,
@@ -365,7 +365,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 16) CoursePartitions - Stores CO counts per partition for each course (MODIFIED)
+        // 16) CoursePartitions - Stores CO counts per partition for each course
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS CoursePartitions (
                 partitionId INT PRIMARY KEY AUTO_INCREMENT,
@@ -428,7 +428,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 20) ElectiveBucketCourse - Maps courses to elective buckets (MODIFIED)
+        // 20) ElectiveBucketCourse - Maps courses to elective buckets
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS ElectiveBucketCourse (
                 id INT PRIMARY KEY AUTO_INCREMENT,
@@ -438,6 +438,54 @@ const initDatabase = async () => {
                 UNIQUE (bucketId, courseId),
                 CONSTRAINT fk_ebc_bucket FOREIGN KEY (bucketId) REFERENCES ElectiveBucket(bucketId) ON DELETE CASCADE,
                 CONSTRAINT fk_ebc_course FOREIGN KEY (courseId) REFERENCES Course(courseId) ON DELETE CASCADE
+            )
+        `);
+
+        // 21) Regulation - Stores regulation details
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS Regulation (
+                regulationId INT PRIMARY KEY AUTO_INCREMENT,
+                Deptid INT NOT NULL,
+                regulationYear INT NOT NULL,
+                isActive ENUM('YES','NO') DEFAULT 'YES',
+                createdBy VARCHAR(150),
+                updatedBy VARCHAR(150),
+                createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT fk_regulation_dept FOREIGN KEY (Deptid) REFERENCES department(Deptid) ON DELETE RESTRICT,
+                UNIQUE (Deptid, regulationYear)
+            )
+        `);
+
+        // 22) Vertical - Stores verticals associated with a regulation
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS Vertical (
+                verticalId INT PRIMARY KEY AUTO_INCREMENT,
+                regulationId INT NOT NULL,
+                verticalName VARCHAR(100) NOT NULL,
+                isActive ENUM('YES','NO') DEFAULT 'YES',
+                createdBy VARCHAR(150),
+                updatedBy VARCHAR(150),
+                createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT fk_vertical_regulation FOREIGN KEY (regulationId) REFERENCES Regulation(regulationId) ON DELETE CASCADE,
+                UNIQUE (regulationId, verticalName)
+            )
+        `);
+
+        // 23) VerticalCourse - Maps courses to verticals
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS VerticalCourse (
+                verticalCourseId INT PRIMARY KEY AUTO_INCREMENT,
+                verticalId INT NOT NULL,
+                courseId INT NOT NULL,
+                createdBy VARCHAR(150),
+                updatedBy VARCHAR(150),
+                createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT fk_vc_vertical FOREIGN KEY (verticalId) REFERENCES Vertical(verticalId) ON DELETE CASCADE,
+                CONSTRAINT fk_vc_course FOREIGN KEY (courseId) REFERENCES Course(courseId) ON DELETE CASCADE,
+                UNIQUE (verticalId, courseId)
             )
         `);
 
@@ -453,9 +501,38 @@ const initDatabase = async () => {
             (6, 'Artificial Intelligence and Data Science', 'AIDS')
         `);
 
+        // Insert default regulations (2023, 2019, 2015) for each department
+        const [departments] = await connection.execute('SELECT Deptid FROM department');
+        const deptIds = departments.map(row => row.Deptid);
+        const regulationYears = [2023, 2019, 2015]; // Adjust as needed
+        const defaultVerticals = ['AI', 'Data Science', 'Cybersecurity', 'Cloud Computing'];
+
+        for (const deptId of deptIds) {
+            for (const year of regulationYears) {
+                // Insert regulation
+                const [regResult] = await connection.execute(
+                    `INSERT IGNORE INTO Regulation (Deptid, regulationYear, createdBy, updatedBy)
+                     VALUES (?, ?, 'admin', 'admin')`,
+                    [deptId, year]
+                );
+                const regulationId = regResult.insertId;
+
+                if (regulationId) {
+                    // Insert default verticals for each regulation
+                    for (const verticalName of defaultVerticals) {
+                        await connection.execute(
+                            `INSERT IGNORE INTO Vertical (regulationId, verticalName, createdBy, updatedBy)
+                             VALUES (?, ?, 'admin', 'admin')`,
+                            [regulationId, verticalName]
+                        );
+                    }
+                }
+            }
+        }
+
         // Commit the transaction
         await connection.commit();
-        console.log("✅ Database initialized with new academic schema");
+        console.log("✅ Database initialized with new academic schema including Regulation and Vertical tables");
 
     } catch (err) {
         // Rollback on error

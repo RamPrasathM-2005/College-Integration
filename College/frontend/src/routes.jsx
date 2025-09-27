@@ -19,6 +19,7 @@ import ManageCourses from "./pages/admin/ManageCourses/ManageCourses";
 import ManageStaff from "./pages/admin/ManageStaffs/ManageStaff";
 import ManageStudents from "./pages/admin/ManageStudents/ManageStudents";
 import Timetable from "./pages/admin/Timetable";
+import ManageRegulations from "./pages/admin/ManageRegulations"
 import OverallConsolidatedMarks from "./pages/admin/OverallConsolidatedMarks";
 import SubjectWiseMarks from "./pages/admin/SubjectWiseMarks";
 import CourseRecommendation from './pages/admin/CourseRecommendation';
@@ -63,6 +64,7 @@ const routes = [
       { index: true, element: <AdminDashboard /> },
       { path: "dashboard", element: <AdminDashboard /> },
       { path: "manage-semesters", element: <ManageSemesters /> },
+      { path: "manage-regulations", element: <ManageRegulations></ManageRegulations> },
       { path: "manage-courses", element: <ManageCourses /> },
       { path: "manage-staff", element: <ManageStaff /> },
       { path: "manage-students", element: <ManageStudents /> },

@@ -304,40 +304,30 @@ export const logout = catchAsync(async (req, res) => {
 
 export const protect = catchAsync(async (req, res, next) => {
   let token;
-  const authHeader = req.headers.authorization || req.headers.Authorization; // Handle both cases
-  //console.log('Protect: Authorization Header:', authHeader); // Debug log
+  const authHeader = req.headers.authorization || req.headers.Authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.split(' ')[1];
-   // console.log('Protect: Extracted Token:', token); // Debug log
   }
 
   if (!token) {
-   // console.log('Protect error: No token provided');
     return res.status(401).json({ status: 'failure', message: 'Not authorized, token required' });
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    //console.log('Protect: Decoded Token:', decoded); // Debug log
-
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
     const connection = await pool.getConnection();
     try {
       const [users] = await connection.execute(
         'SELECT Userid, username, role, email, staffId, Deptid, status FROM users WHERE Userid = ? AND status = ?',
         [decoded.Userid, 'active']
       );
-      //console.log('Protect: Database Query Result:', users); // Debug log
 
       if (users.length === 0) {
-       // console.log('Protect error: No active user found for Userid:', decoded.Userid);
         return res.status(401).json({ status: 'failure', message: 'Invalid token or user not found' });
       }
 
       const user = users[0];
-      //console.log('Protect: User Data:', user); // Debug log
-
       if (!user.email) {
-        //console.log('Protect error: User email is missing for Userid:', decoded.Userid);
         return res.status(401).json({
           status: 'failure',
           message: 'Authentication required: No user or email provided',
@@ -345,7 +335,6 @@ export const protect = catchAsync(async (req, res, next) => {
       }
 
       req.user = user;
-     // console.log('Protect: req.user set:', req.user); // Debug log
       next();
     } finally {
       connection.release();

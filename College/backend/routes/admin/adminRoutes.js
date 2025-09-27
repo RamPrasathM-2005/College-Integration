@@ -80,6 +80,19 @@ import {
   removeCourseFromBucket,
   updateElectiveBucketName,
 } from "../../controllers/electiveBucketController.js";
+
+import {
+  getAllRegulations,
+  importRegulationCourses,
+  createVertical,
+  getVerticalsByRegulation,
+  getAvailableCoursesForVertical,
+  allocateCoursesToVertical,
+} from "../../controllers/regulationController.js";
+
+
+
+
 import { protect } from "../../controllers/auth/authController.js";
 
 const router = express.Router();
@@ -195,5 +208,19 @@ router.delete("/buckets/:bucketId/courses/:courseId", protect, removeCourseFromB
    📌 Consolidated Marks Routes
    ========================= */
 router.get("/consolidated-marks", protect, getConsolidatedMarks);
+
+
+
+/* =========================
+   📌 Regulations
+   ========================= */
+
+
+router.route('/regulations').get(protect, getAllRegulations);
+router.route('/regulations/courses').post(protect, importRegulationCourses);
+router.route('/regulations/verticals').post(protect, createVertical);
+router.route('/regulations/:regulationId/verticals').get(protect, getVerticalsByRegulation);
+router.route('/regulations/:regulationId/courses/available').get(protect, getAvailableCoursesForVertical);
+router.route('/regulations/verticals/courses').post(protect, allocateCoursesToVertical);
 
 export default router;

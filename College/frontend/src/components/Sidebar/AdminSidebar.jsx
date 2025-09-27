@@ -18,6 +18,7 @@ const AdminSidebar = () => {
   const sidebarItems = [
     { to: "/admin/dashboard", icon: Home, label: "Dashboard" },
     { to: "/admin/manage-semesters", icon: Calendar, label: "Semesters" },
+    { to: "/admin/manage-regulations", icon: BookImage, label: "Manage Regulations"},
     { to: "/admin/manage-courses", icon: Book, label: "Courses" },
     { to: "/admin/manage-staff", icon: Users, label: "Staff" },
     { to: "/admin/manage-students", icon: Users, label: "Students" },
