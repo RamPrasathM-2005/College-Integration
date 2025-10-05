@@ -73,12 +73,10 @@ const useManageStaffData = () => {
       const coursesWithDetails = await Promise.all(
         Array.isArray(coursesData) ? coursesData.map(async course => {
           const cacheKey = `sections_${course.courseId}`;
-          let sections = sectionCache.get(cacheKey);
-          if (!sections) {
-            sections = await manageStaffService.getCourseSections(course.courseId);
-            sectionCache.set(cacheKey, sections);
-          }
-          console.log(`Fetched sections for course ${course.courseId} (${course.courseCode}):`, sections);
+          // Always fetch fresh sections, do not use cache
+          const sections = await manageStaffService.getCourseSections(course.courseId);
+          console.log(`getCourseSections response for course ${course.courseId}:`, sections); // Debugging log
+          sectionCache.set(cacheKey, sections); // Still cache for in-session use
           const semester = semestersData.find(s => s.semesterId === course.semesterId) || {};
           const batch = batchesData.find(b => b.batchId === semester.batchId) || {};
           return {
@@ -97,7 +95,6 @@ const useManageStaffData = () => {
           };
         }) : []
       );
-      console.log('Updated courses with sections:', coursesWithDetails);
       setCourses(coursesWithDetails);
     } catch (err) {
       setError(`Failed to fetch data: ${err.message}`);
@@ -107,7 +104,16 @@ const useManageStaffData = () => {
     }
   };
 
+  // Function to clear section cache for a specific course
+  const clearSectionCache = (courseId) => {
+    const cacheKey = `sections_${courseId}`;
+    sectionCache.delete(cacheKey);
+    console.log(`Cleared section cache for course ${courseId}`); // Debugging log
+  };
+
   useEffect(() => {
+    console.log('ManageStaff page mounted, clearing section cache');
+    sectionCache.clear(); // Clear cache on mount to ensure fresh data
     fetchData();
   }, []);
 
@@ -131,6 +137,27 @@ const useManageStaffData = () => {
     }
   }, [staffList, selectedStaff]);
 
+  useEffect(() => {
+    if (selectedCourse && courses.length > 0) {
+      const updatedCourse = courses.find(c => c.courseId === selectedCourse.courseId);
+      if (updatedCourse) {
+        const oldSections = selectedCourse.sections || [];
+        const newSections = updatedCourse.sections || [];
+        const hasDifference = oldSections.length !== newSections.length ||
+          newSections.some((newS, idx) => {
+            const oldS = oldSections[idx];
+            return !oldS || newS.sectionId !== oldS.sectionId || newS.sectionName !== oldS.sectionName;
+          });
+        if (hasDifference) {
+          setSelectedCourse({ ...updatedCourse });
+        }
+      } else {
+        setSelectedCourse(null);
+        setSelectedSectionId('');
+      }
+    }
+  }, [courses, selectedCourse, setSelectedCourse, setSelectedSectionId]);
+
   return {
     staffList,
     courses,
@@ -152,6 +179,7 @@ const useManageStaffData = () => {
     selectedCourseCode,
     setSelectedCourseCode,
     fetchData,
+    clearSectionCache,
   };
 };
 

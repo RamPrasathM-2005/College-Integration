@@ -33,6 +33,7 @@ const ManageStaff = () => {
     selectedCourseCode,
     setSelectedCourseCode,
     fetchData,
+    clearSectionCache, // Add clearSectionCache
   } = useManageStaffData();
 
   const {
@@ -92,6 +93,7 @@ const ManageStaff = () => {
     setSelectedCourseStudents,
     courses,
     fetchData,
+    clearSectionCache, // Pass clearSectionCache
   });
 
   if (loading) return <div className="p-6 text-center text-gray-600">Loading...</div>;
