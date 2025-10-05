@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
-import manageStaffService from '../../../../services/manageStaffService';
-
-// Simple in-memory cache for sections
-const sectionCache = new Map();
+import { useLocation } from 'react-router-dom';
+import manageStaffService, { clearSectionCache } from '../../../../services/manageStaffService';
 
 const useManageStaffData = () => {
   const [staffList, setStaffList] = useState([]);
@@ -19,9 +17,13 @@ const useManageStaffData = () => {
   const [selectedCourseStudents, setSelectedCourseStudents] = useState([]);
   const [selectedCourseCode, setSelectedCourseCode] = useState('');
 
+  const location = useLocation();
+
   const fetchData = async () => {
     setLoading(true);
     try {
+      console.log('Triggering cache clear before fetching data');
+      clearSectionCache();
       const departmentsData = await manageStaffService.getDepartments();
       const formattedDepartments = departmentsData.map(dept => ({
         departmentId: dept.Deptid,
@@ -72,11 +74,9 @@ const useManageStaffData = () => {
 
       const coursesWithDetails = await Promise.all(
         Array.isArray(coursesData) ? coursesData.map(async course => {
-          const cacheKey = `sections_${course.courseId}`;
-          // Always fetch fresh sections, do not use cache
+          console.log(`Fetching sections for course ${course.courseId}`);
           const sections = await manageStaffService.getCourseSections(course.courseId);
-          console.log(`getCourseSections response for course ${course.courseId}:`, sections); // Debugging log
-          sectionCache.set(cacheKey, sections); // Still cache for in-session use
+          console.log(`Fetched sections for course ${course.courseId}:`, sections);
           const semester = semestersData.find(s => s.semesterId === course.semesterId) || {};
           const batch = batchesData.find(b => b.batchId === semester.batchId) || {};
           return {
@@ -95,6 +95,7 @@ const useManageStaffData = () => {
           };
         }) : []
       );
+      console.log('Courses updated:', coursesWithDetails);
       setCourses(coursesWithDetails);
     } catch (err) {
       setError(`Failed to fetch data: ${err.message}`);
@@ -104,18 +105,10 @@ const useManageStaffData = () => {
     }
   };
 
-  // Function to clear section cache for a specific course
-  const clearSectionCache = (courseId) => {
-    const cacheKey = `sections_${courseId}`;
-    sectionCache.delete(cacheKey);
-    console.log(`Cleared section cache for course ${courseId}`); // Debugging log
-  };
-
   useEffect(() => {
-    console.log('ManageStaff page mounted, clearing section cache');
-    sectionCache.clear(); // Clear cache on mount to ensure fresh data
+    console.log('Route changed, triggering fresh fetch');
     fetchData();
-  }, []);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (selectedStaff && staffList.length > 0) {
@@ -179,7 +172,6 @@ const useManageStaffData = () => {
     selectedCourseCode,
     setSelectedCourseCode,
     fetchData,
-    clearSectionCache,
   };
 };
 

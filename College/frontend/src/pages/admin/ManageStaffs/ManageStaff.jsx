@@ -33,7 +33,6 @@ const ManageStaff = () => {
     selectedCourseCode,
     setSelectedCourseCode,
     fetchData,
-    clearSectionCache, // Add clearSectionCache
   } = useManageStaffData();
 
   const {
@@ -78,6 +77,7 @@ const ManageStaff = () => {
     setOperationFromModal,
     newBatchForm,
     setNewBatchForm,
+    courseRefreshKey,
   } = useManageStaffHandlers({
     selectedStaff,
     setSelectedStaff,
@@ -87,13 +87,12 @@ const ManageStaff = () => {
     setSelectedSectionId,
     selectedStaffCourse,
     setSelectedStaffCourse,
-    selectedCourseCode,
-    setSelectedCourseCode,
     selectedCourseStudents,
     setSelectedCourseStudents,
+    selectedCourseCode,
+    setSelectedCourseCode,
     courses,
     fetchData,
-    clearSectionCache, // Pass clearSectionCache
   });
 
   if (loading) return <div className="p-6 text-center text-gray-600">Loading...</div>;
@@ -179,6 +178,7 @@ const ManageStaff = () => {
           batches={batches}
           operationLoading={operationLoading}
           handleRemoveCourse={handleRemoveCourse}
+          courseRefreshKey={courseRefreshKey}
         />
       )}
       {showAddBatchModal && selectedStaff && selectedCourse && (

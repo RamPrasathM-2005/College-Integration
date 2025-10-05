@@ -137,16 +137,32 @@ export const getStudentEnrolledCourses = catchAsync(async (req, res) => {
 });
 
 export const getStudentsByCourseAndSection = catchAsync(async (req, res) => {
-  const { courseId, sectionId } = req.query;
-  if (!courseId || !sectionId) {
+  const { courseCode, sectionId } = req.query;
+
+  if (!courseCode || !sectionId) {
     return res.status(400).json({
-      status: "failure",
-      message: "courseId and sectionId are required",
+      status: 'failure',
+      message: 'courseCode and sectionId are required',
     });
   }
 
   try {
-    const [rows] = await connection.execute(
+    // Fetch courseId from courseCode
+    const [courseRows] = await pool.execute(
+      `SELECT courseId FROM Course WHERE courseCode = ? AND isActive = 'YES'`,
+      [courseCode]
+    );
+
+    if (courseRows.length === 0) {
+      return res.status(404).json({
+        status: 'failure',
+        message: `Course with code ${courseCode} not found or inactive`,
+      });
+    }
+
+    const courseId = courseRows[0].courseId;
+
+    const [rows] = await pool.execute(
       `SELECT 
         sd.regno AS rollnumber,
         u.username AS name,
@@ -161,17 +177,17 @@ export const getStudentsByCourseAndSection = catchAsync(async (req, res) => {
     );
 
     res.status(200).json({
-      status: "success",
+      status: 'success',
       data: rows,
     });
   } catch (err) {
-    console.error("Error fetching students by course and section:", {
+    console.error('Error fetching students by course and section:', {
       message: err.message,
       stack: err.stack,
-      query: { courseId, sectionId },
+      query: { courseCode, sectionId },
     });
     res.status(500).json({
-      status: "error",
+      status: 'error',
       message: err.message,
     });
   }

@@ -22,11 +22,11 @@ const AllocateCourseModal = React.memo(({
   batches,
   operationLoading,
   handleRemoveCourse,
+  courseRefreshKey,
 }) => {
   const semesterOptions = [...new Set(semesters.map(sem => String(sem.semesterNumber)))].filter(sem => sem).sort((a, b) => a - b);
   const batchOptions = [...new Set(semesters.map(sem => sem.batchYears))].filter(batch => batch).sort();
 
-  // Update selectedCourse and selectedSectionId when allocatedCourses or courses change
   useEffect(() => {
     if (selectedCourse) {
       const updatedCourse = getFilteredCourses.find(c => c.courseId === selectedCourse.courseId);
@@ -38,12 +38,11 @@ const AllocateCourseModal = React.memo(({
         setSelectedSectionId('');
       }
     }
-  }, [selectedStaff.allocatedCourses, getFilteredCourses, selectedCourse, setSelectedCourse, setSelectedSectionId]);
+  }, [selectedStaff.allocatedCourses, getFilteredCourses, selectedCourse, setSelectedCourse, setSelectedSectionId, courseRefreshKey]);
 
-  // Generate a key for the course list to force re-render when allocatedCourses or courses change
   const courseListKey = useMemo(() => {
-    return `${selectedStaff.staffId}-${selectedStaff.allocatedCourses.map(c => `${c.courseCode}-${c.sectionId}`).join('-')}-${getFilteredCourses.map(c => c.courseId).join('-')}`;
-  }, [selectedStaff, getFilteredCourses]);
+    return `${selectedStaff.staffId}-${selectedStaff.allocatedCourses.map(c => `${c.courseCode}-${c.sectionId}`).join('-')}-${getFilteredCourses.map(c => c.courseId).join('-')}-${courseRefreshKey}`;
+  }, [selectedStaff, getFilteredCourses, courseRefreshKey]);
 
   return (
     <div className="fixed inset-0 backdrop-blur-md bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50 transition-all duration-300">

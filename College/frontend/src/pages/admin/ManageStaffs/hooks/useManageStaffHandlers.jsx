@@ -15,7 +15,6 @@ const useManageStaffHandlers = ({
   setSelectedCourseStudents,
   courses,
   fetchData,
-  clearSectionCache, // Add clearSectionCache to the parameters
 }) => {
   const [operationLoading, setOperationLoading] = useState(false);
   const [showStaffDetailsModal, setShowStaffDetailsModal] = useState(false);
@@ -45,8 +44,6 @@ const useManageStaffHandlers = ({
       const numberOfBatches = parseInt(newBatchForm.numberOfBatches) || 1;
       const res = await manageStaffService.addSections(selectedCourse.courseId, numberOfBatches);
       if (res.status === 201) {
-        // Clear cache for the course to ensure fresh sections
-        clearSectionCache(selectedCourse.courseId); // Use the passed function
         setShowAddBatchModal(false);
         setNewBatchForm({ numberOfBatches: 1 });
         await fetchData();
@@ -129,6 +126,7 @@ const useManageStaffHandlers = ({
         setSelectedCourse(null);
         setSelectedSectionId('');
         setExpandedCourses(prev => prev.includes(selectedStaff.id) ? prev : [...prev, selectedStaff.id]);
+        setCourseRefreshKey(prev => prev + 1);
         showSuccessToast(`Course ${selectedCourse.code} ${isUpdate ? 'updated' : 'allocated'} successfully`);
       } else {
         setSelectedStaff(prev => {
@@ -200,6 +198,7 @@ const useManageStaffHandlers = ({
         if (!operationFromModal) {
           setExpandedCourses(prev => prev.includes(selectedStaff.id) ? prev : [...prev, selectedStaff.id]);
         }
+        setCourseRefreshKey(prev => prev + 1);
         showSuccessToast(`Section updated for course ${selectedStaffCourse.courseCode}`);
       } else {
         setSelectedStaff(prev => {
@@ -267,6 +266,7 @@ const useManageStaffHandlers = ({
           setSelectedCourse(null);
           setSelectedSectionId('');
           setExpandedCourses(prev => prev.includes(staff.id) ? prev : [...prev, staff.id]);
+          setCourseRefreshKey(prev => prev + 1);
           showSuccessToast(`Course ${courseToRemove.courseCode} removed successfully`);
         } else {
           setSelectedStaff(prev => {
@@ -298,6 +298,7 @@ const useManageStaffHandlers = ({
     try {
       const students = await manageStaffService.getEnrolledStudents(courseCode, sectionId);
       setSelectedCourseStudents(students);
+      setSelectedCourseCode(courseCode);
       setShowStudentsModal(true);
     } catch (err) {
       showErrorToast('Error', `Error fetching students: ${err.response?.data?.message || err.message}`);
