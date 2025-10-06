@@ -28,7 +28,7 @@ const ManageCourses = () => {
   const [fetchingSections, setFetchingSections] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [filters, setFilters] = useState({ dept: '', semester: '', name: '', type: '' });
+  const [filters, setFilters] = useState({ dept: '', semester: '', batch: '', name: '', type: '' });
   const [staffSearch, setStaffSearch] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -469,11 +469,12 @@ const ManageCourses = () => {
   if (error) return <div className="p-6 text-red-500">{error}</div>;
 
   const filteredCourses = courses.filter(course => {
-    const { dept, semester, name, type } = filters;
+    const { dept, semester, batch, name, type } = filters;
     const semDetails = course.semesterDetails;
     return (
       (!dept || semDetails?.branch === dept) &&
       (!semester || semDetails?.semesterNumber.toString() === semester) &&
+      (!batch || semDetails?.batch === batch) &&
       (!name || course.courseTitle.toLowerCase().includes(name.toLowerCase())) &&
       (!type || course.type === type)
     );
