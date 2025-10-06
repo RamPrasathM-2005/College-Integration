@@ -17,12 +17,12 @@ const AdminSidebar = () => {
 
   const sidebarItems = [
     { to: "/admin/dashboard", icon: Home, label: "Dashboard" },
-    { to: "/admin/manage-semesters", icon: Calendar, label: "Semesters" },
+    { to: "/admin/manage-semesters", icon: Calendar, label: "Manage Semesters" },
     { to: "/admin/manage-regulations", icon: BookImage, label: "Manage Regulations"},
-    { to: "/admin/manage-batches", icon: Settings, label: "Batches" },
-    { to: "/admin/manage-courses", icon: Book, label: "Courses" },
-    { to: "/admin/manage-staff", icon: Users, label: "Staff" },
-    { to: "/admin/manage-students", icon: Users, label: "Students" },
+    { to: "/admin/manage-batches", icon: Settings, label: "Allocate Regulation to Batch" },
+    { to: "/admin/manage-courses", icon: Book, label: "Manage Courses" },
+    { to: "/admin/manage-staff", icon: Users, label: "Allocate Staff to Course" },
+    { to: "/admin/manage-students", icon: Users, label: "Allocate Students to Staff" },
     { to: "/admin/timetable", icon: Calendar, label: "Timetable" },
     { to: '/admin/consolidated-marks', icon: Book, label: 'Consolidated Marks' },
     { to: "/admin/subjectwise-marks", icon: Book, label: "Subjectwise Marks" },
