@@ -90,7 +90,7 @@ const ManageStaff = () => {
     selectedCourseStudents,
     setSelectedCourseStudents,
     selectedCourseCode,
-    setSelectedCourseCode,
+    setSelectedCourseCode, // Pass the setter to the handlers
     courses,
     fetchData,
   });

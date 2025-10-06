@@ -13,6 +13,8 @@ const useManageStaffHandlers = ({
   setSelectedStaffCourse,
   selectedCourseStudents,
   setSelectedCourseStudents,
+  selectedCourseCode,
+  setSelectedCourseCode, // Added to receive the setter
   courses,
   fetchData,
 }) => {
@@ -298,7 +300,7 @@ const useManageStaffHandlers = ({
     try {
       const students = await manageStaffService.getEnrolledStudents(courseCode, sectionId);
       setSelectedCourseStudents(students);
-      setSelectedCourseCode(courseCode);
+      setSelectedCourseCode(courseCode); // Now properly defined
       setShowStudentsModal(true);
     } catch (err) {
       showErrorToast('Error', `Error fetching students: ${err.response?.data?.message || err.message}`);

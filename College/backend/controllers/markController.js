@@ -911,73 +911,105 @@ export const exportCoWiseCsv = async (req, res) => {
   }
 };
 
-
 export const getStudentsForCourse = catchAsync(async (req, res) => {
   const { courseCode } = req.params;
   const userId = getStaffId(req); // Returns Userid (e.g., '2')
+  console.log('getStudentsForCourse - Input:', { courseCode, userId, userIdType: typeof userId });
+
+  // Input validation
+  if (!courseCode) {
+    return res.status(400).json({ status: 'error', message: 'Course code is required' });
+  }
+  if (!userId) {
+    return res.status(401).json({ status: 'error', message: 'User not authenticated or Userid missing' });
+  }
+
   try {
-    console.log('getStudentsForCourse - courseCode:', courseCode, 'userId:', userId, 'userId type:', typeof userId);
-
-    // Debug: Log req.user
-    console.log('req.user:', req.user);
-
-    // Debug: Check Course table
-    const [courseOnly] = await pool.query(
-      `SELECT courseId, courseCode FROM Course WHERE UPPER(courseCode) = UPPER(?)`,
-      [courseCode]
-    );
-    console.log('Course table check:', courseOnly);
-
-    // Debug: Check StaffCourse table
-    const [staffCourseCheck] = await pool.query(
-      `SELECT courseId, Userid, sectionId, Deptid FROM StaffCourse WHERE courseId = (SELECT courseId FROM Course WHERE UPPER(courseCode) = UPPER(?)) AND Userid = ?`,
-      [courseCode, userId]
-    );
-    console.log('StaffCourse check:', staffCourseCheck);
-
-    // Main query
-    const [courseCheck] = await pool.query(
-      `SELECT c.courseId 
-       FROM Course c
-       JOIN StaffCourse sc ON c.courseId = sc.courseId
+    // Step 1: Find all courseIds and sectionIds assigned to the staff for the courseCode
+    const [staffCourseRows] = await pool.query(
+      `SELECT sc.courseId, sc.sectionId, sc.Userid, c.courseCode, c.semesterId, s.sectionName,
+              c.isActive AS courseActive, s.isActive AS sectionActive
+       FROM StaffCourse sc
+       JOIN Course c ON sc.courseId = c.courseId
+       JOIN Section s ON sc.sectionId = s.sectionId
        WHERE UPPER(c.courseCode) = UPPER(?) AND sc.Userid = ?`,
       [courseCode, userId]
     );
-    console.log('Course check result:', courseCheck);
+    console.log('getStudentsForCourse - StaffCourse query result:', staffCourseRows);
 
-    if (courseCheck.length === 0) {
+    if (staffCourseRows.length === 0) {
+      const [availableCourses] = await pool.query(
+        `SELECT c.courseId, c.courseCode, c.semesterId, c.isActive
+         FROM Course c
+         WHERE UPPER(c.courseCode) = UPPER(?)`,
+        [courseCode]
+      );
       return res.status(404).json({
         status: 'error',
-        message: `Course with code '${courseCode}' not found or not assigned to user ID ${userId}`,
-        debug: { courseOnly, staffCourseCheck }
+        message: `Course '${courseCode}' not found or not assigned to staff with Userid ${userId}`,
+        debug: { availableCourses, staffCourseRows },
       });
     }
-    const courseId = courseCheck[0].courseId;
 
-    const [students] = await pool.query(
-      `SELECT sd.regno, u.username AS name 
+    // Step 2: Validate that all courses and sections are active
+    const inactiveCourses = staffCourseRows.filter(row => row.courseActive !== 'YES');
+    if (inactiveCourses.length > 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: `Some courses for '${courseCode}' are inactive`,
+        debug: { inactiveCourses },
+      });
+    }
+
+    const inactiveSections = staffCourseRows.filter(row => row.sectionActive !== 'YES');
+    if (inactiveSections.length > 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: `Some sections for course '${courseCode}' are inactive`,
+        debug: { inactiveSections },
+      });
+    }
+
+    // Step 3: Fetch students for all matching courseIds and sectionIds
+    const courseIds = staffCourseRows.map(row => row.courseId);
+    const sectionIds = staffCourseRows.map(row => row.sectionId);
+    const [studentRows] = await pool.query(
+      `SELECT DISTINCT sd.regno, u.username AS name
        FROM student_details sd
        JOIN users u ON sd.Userid = u.Userid
        JOIN StudentCourse sc ON sd.regno = sc.regno
-       JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseId = stc.courseId
-       WHERE sc.courseId = ? AND stc.Userid = ?`,
-      [courseId, userId]
+       JOIN StaffCourse stc ON sc.courseId = stc.courseId AND sc.sectionId = stc.sectionId
+       WHERE sc.courseId IN (?) AND sc.sectionId IN (?) AND stc.Userid = ?`,
+      [courseIds, sectionIds, userId]
     );
-    console.log('Students retrieved:', students);
+    console.log('getStudentsForCourse - Students query result:', studentRows);
 
-    res.json({ status: 'success', data: students });
+    // Step 4: Return response in the format expected by the frontend
+    res.json({
+      status: 'success',
+      results: studentRows.length,
+      data: studentRows,
+    });
   } catch (err) {
-    console.error('Error in getStudentsForCourse:', err);
-    res.status(500).json({ status: 'error', message: err.message || 'Failed to fetch students' });
+    console.error('Error in getStudentsForCourse:', {
+      message: err.message,
+      stack: err.stack,
+      query: { courseCode, userId },
+    });
+    res.status(500).json({
+      status: 'error',
+      message: `Error fetching students: ${err.message}`,
+      debug: { error: err.message },
+    });
   }
 });
-
 
 export const getStudentsForSection = catchAsync(async (req, res) => {
   const { courseCode, sectionId } = req.params;
   const userId = getStaffId(req); // Returns Userid (e.g., '2')
-  console.log('getStudentsForSection - courseCode:', courseCode, 'sectionId:', sectionId, 'userId:', userId, 'userId type:', typeof userId);
+  console.log('getStudentsForSection - Input:', { courseCode, sectionId, userId, userIdType: typeof userId });
 
+  // Input validation
   if (!courseCode) {
     return res.status(400).json({ status: 'error', message: 'Course code is required' });
   }
@@ -988,61 +1020,83 @@ export const getStudentsForSection = catchAsync(async (req, res) => {
     return res.status(401).json({ status: 'error', message: 'User not authenticated or Userid missing' });
   }
 
-  // Debug: Check Course table
-  const [courseOnly] = await pool.query(
-    `SELECT courseId, courseCode FROM Course WHERE UPPER(courseCode) = UPPER(?)`,
-    [courseCode]
-  );
-  console.log('getStudentsForSection - Course table check:', courseOnly);
+  try {
+    // Step 1: Check if the staff is assigned to the course and section
+    const [staffCourseRows] = await pool.query(
+      `SELECT sc.courseId, sc.sectionId, sc.Userid, c.courseCode, c.semesterId, s.sectionName, s.isActive AS sectionActive, c.isActive AS courseActive
+       FROM StaffCourse sc
+       JOIN Course c ON sc.courseId = c.courseId
+       JOIN Section s ON sc.sectionId = s.sectionId
+       WHERE UPPER(c.courseCode) = UPPER(?) AND sc.sectionId = ? AND sc.Userid = ?`,
+      [courseCode, sectionId, userId]
+    );
+    console.log('getStudentsForSection - StaffCourse query result:', staffCourseRows);
 
-  // Debug: Check StaffCourse table
-  const [staffCourseCheck] = await pool.query(
-    `SELECT courseId, Userid, sectionId, Deptid 
-     FROM StaffCourse 
-     WHERE courseId = (SELECT courseId FROM Course WHERE UPPER(courseCode) = UPPER(?)) 
-     AND sectionId = ? 
-     AND Userid = ?`,
-    [courseCode, sectionId, userId]
-  );
-  console.log('getStudentsForSection - StaffCourse check:', staffCourseCheck);
+    if (staffCourseRows.length === 0) {
+      const [availableSections] = await pool.query(
+        `SELECT s.sectionId, s.sectionName, s.isActive, c.courseId, c.courseCode, c.semesterId
+         FROM Section s
+         JOIN Course c ON s.courseId = c.courseId
+         JOIN StaffCourse sc ON s.courseId = sc.courseId AND s.sectionId = sc.sectionId
+         WHERE UPPER(c.courseCode) = UPPER(?) AND sc.Userid = ?`,
+        [courseCode, userId]
+      );
+      return res.status(403).json({
+        status: 'error',
+        message: `Course '${courseCode}' with section ${sectionId} is not assigned to staff with Userid ${userId}`,
+        debug: { staffCourseRows, availableSections },
+      });
+    }
 
-  // Main query
-  const [courseCheck] = await pool.query(
-    `SELECT c.courseId 
-     FROM Course c
-     JOIN StaffCourse sc ON c.courseId = sc.courseId
-     WHERE UPPER(c.courseCode) = UPPER(?) 
-     AND sc.sectionId = ? 
-     AND sc.Userid = ?`,
-    [courseCode, sectionId, userId]
-  );
-  console.log('getStudentsForSection - courseCheck:', courseCheck);
+    const { courseId, sectionActive, courseActive, semesterId, sectionName } = staffCourseRows[0];
 
-  if (courseCheck.length === 0) {
-    return res.status(404).json({
+    // Step 2: Validate course and section are active
+    if (courseActive !== 'YES') {
+      return res.status(404).json({
+        status: 'error',
+        message: `Course '${courseCode}' is inactive`,
+        debug: { courseId, courseCode, semesterId, sectionId, sectionName },
+      });
+    }
+
+    if (sectionActive !== 'YES') {
+      return res.status(404).json({
+        status: 'error',
+        message: `Section ${sectionId} (${sectionName}) for course '${courseCode}' is inactive`,
+        debug: { courseId, sectionId, sectionName },
+      });
+    }
+
+    // Step 3: Fetch enrolled students
+    const [studentRows] = await pool.query(
+      `SELECT sd.regno, u.username AS name
+       FROM student_details sd
+       JOIN users u ON sd.Userid = u.Userid
+       JOIN StudentCourse sc ON sd.regno = sc.regno
+       JOIN StaffCourse stc ON sc.courseId = stc.courseId AND sc.sectionId = stc.sectionId
+       WHERE sc.courseId = ? AND sc.sectionId = ? AND stc.Userid = ?`,
+      [courseId, sectionId, userId]
+    );
+    console.log('getStudentsForSection - Students query result:', studentRows);
+
+    // Step 4: Return response in the format expected by the frontend
+    res.json({
+      status: 'success',
+      results: studentRows.length,
+      data: studentRows,
+    });
+  } catch (err) {
+    console.error('Error in getStudentsForSection:', {
+      message: err.message,
+      stack: err.stack,
+      query: { courseCode, sectionId, userId },
+    });
+    res.status(500).json({
       status: 'error',
-      message: `Course with code '${courseCode}' not found or not assigned to staff with Userid ${userId} for section ${sectionId}`,
-      debug: { courseOnly, staffCourseCheck }
+      message: `Error fetching students: ${err.message}`,
+      debug: { error: err.message },
     });
   }
-  const courseId = courseCheck[0].courseId;
-
-  const [rows] = await pool.query(
-    `SELECT sd.regno, u.username AS name
-     FROM student_details sd
-     JOIN users u ON sd.Userid = u.Userid
-     JOIN StudentCourse sc ON sd.regno = sc.regno
-     JOIN StaffCourse stc ON sc.courseId = stc.courseId AND sc.sectionId = stc.sectionId
-     WHERE sc.courseId = ? AND sc.sectionId = ? AND stc.Userid = ?`,
-    [courseId, sectionId, userId]
-  );
-  console.log('getStudentsForSection - students:', rows);
-
-  res.json({
-    status: 'success',
-    results: rows.length,
-    data: rows
-  });
 });
 
 export const exportCourseWiseCsv = catchAsync(async (req, res) => {
@@ -1442,3 +1496,4 @@ export const getConsolidatedMarks = catchAsync(async (req, res) => {
     message: cos.length === 0 ? 'No course outcomes found for the selected courses' : undefined,
   });
 });
+
