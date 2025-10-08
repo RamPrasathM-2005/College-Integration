@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GraduationCap } from 'lucide-react';
+import { Plus, GraduationCap } from 'lucide-react';
 import { toast, ToastContainer } from 'react-toastify';
 import { api } from '../../../services/authService';
 import SearchBar from './SearchBar';
@@ -114,44 +114,53 @@ const ManageSemesters = () => {
     fetchSemesters();
   };
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <div className="p-6">Loading...</div>;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+    <div className="p-6 bg-gray-50 min-h-screen flex flex-col items-center">
       <ToastContainer position="top-right" autoClose={3000} />
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <GraduationCap className="w-8 h-8 text-blue-600" />
-            <h1 className="text-3xl font-bold text-gray-800">Manage Semesters</h1>
+      <div className="w-full max-w-7xl mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-4">
+          <div className="text-center sm:text-left">
+            <h1 className="text-3xl font-bold text-gray-900">Manage Semesters</h1>
+            <p className="text-gray-600 mt-1">Create and manage semesters for different batches and departments</p>
           </div>
-          <p className="text-gray-600">Create and manage semesters for different batches and departments</p>
+          <div className="flex gap-4 mt-4 sm:mt-0">
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg font-semibold"
+            >
+              <Plus size={20} />
+              Add Semester
+            </button>
+          </div>
         </div>
-
-        {!selectedSemester ? (
-          <>
-            <SearchBar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
-            <SemesterList 
-              semesters={filteredSemesters} 
-              onSemesterClick={setSelectedSemester} 
-              onDelete={handleDeleteSemester} 
-              onRefresh={handleRefresh} // Renamed from onEdit
+        <div className="w-full max-w-7xl shadow-lg rounded-lg p-6 bg-white">
+          {!selectedSemester ? (
+            <>
+              <SearchBar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+              <SemesterList 
+                semesters={filteredSemesters} 
+                onSemesterClick={setSelectedSemester} 
+                onDelete={handleDeleteSemester} 
+                onRefresh={handleRefresh} 
+              />
+              <CreateSemesterForm
+                showCreateForm={showCreateForm}
+                setShowCreateForm={setShowCreateForm}
+                onRefresh={fetchSemesters}
+                branchMap={branchMap}
+              />
+            </>
+          ) : (
+            <SemesterDetails 
+              semester={selectedSemester} 
+              onBack={() => setSelectedSemester(null)} 
+              onDelete={handleDeleteSemester}
+              onRefresh={handleRefresh}
             />
-            <CreateSemesterForm
-              showCreateForm={showCreateForm}
-              setShowCreateForm={setShowCreateForm}
-              onRefresh={fetchSemesters}
-              branchMap={branchMap}
-            />
-          </>
-        ) : (
-          <SemesterDetails 
-            semester={selectedSemester} 
-            onBack={() => setSelectedSemester(null)} 
-            onDelete={handleDeleteSemester}
-            onRefresh={handleRefresh}
-          />
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
