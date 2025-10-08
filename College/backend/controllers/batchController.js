@@ -37,7 +37,6 @@ export const getBatchById = catchAsync(async (req, res) => {
   }
 });
 
-
 export const getBatchByDetails = catchAsync(async (req, res) => {
   const { degree, branch, batch } = req.query;
   if (!degree || !branch || !batch) {
@@ -47,7 +46,7 @@ export const getBatchByDetails = catchAsync(async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const [rows] = await connection.execute(
-      `SELECT batchId, degree, branch, batch, batchYears, createdBy, createdDate, isActive 
+      `SELECT batchId, degree, branch, batch, batchYears, createdBy, createdDate, isActive, regulationId 
        FROM Batch WHERE degree = ? AND branch = ? AND batch = ? AND isActive = 'YES'`,
       [degree, branch, batch]
     );
@@ -56,7 +55,8 @@ export const getBatchByDetails = catchAsync(async (req, res) => {
     }
     res.status(200).json({ status: "success", data: rows[0] });
   } catch (err) {
-    throw err;
+    console.error('Error fetching batch:', err);
+    res.status(500).json({ status: "failure", message: `Server error: ${err.message}` });
   } finally {
     connection.release();
   }
