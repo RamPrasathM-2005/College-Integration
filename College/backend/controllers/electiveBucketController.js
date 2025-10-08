@@ -16,10 +16,12 @@ export const getElectiveBuckets = catchAsync(async (req, res) => {
     );
     for (let bucket of buckets) {
       const [courses] = await connection.execute(
-        `SELECT c.courseCode, c.courseTitle 
+        `SELECT c.courseCode, c.courseTitle, vc.verticalId, v.verticalName
          FROM ElectiveBucketCourse ebc 
          JOIN Course c ON ebc.courseId = c.courseId 
-         WHERE ebc.bucketId = ?`,
+         LEFT JOIN VerticalCourse vc ON c.courseId = vc.regCourseId
+         LEFT JOIN Vertical v ON vc.verticalId = v.verticalId
+         WHERE ebc.bucketId = ? AND c.isActive = 'YES'`,
         [bucket.bucketId]
       );
       bucket.courses = courses;
@@ -42,7 +44,7 @@ export const createElectiveBucket = catchAsync(async (req, res) => {
     const [result] = await connection.execute(
       `INSERT INTO ElectiveBucket (semesterId, bucketNumber, bucketName, createdBy) 
        VALUES (?, ?, ?, ?)`,
-      [semesterId, bucketNumber, `Bucket ${bucketNumber}`, req.user.Userid]
+      [semesterId, bucketNumber, `Elective ${bucketNumber}`, req.user.Userid]
     );
     res.status(201).json({ status: "success", bucketId: result.insertId, bucketNumber });
   } finally {
@@ -119,6 +121,7 @@ export const addCoursesToBucket = catchAsync(async (req, res) => {
         errors.push(`Course ${courseCode} is invalid, not an elective (PEC/OEC), or not active`);
         continue;
       }
+      const courseId = course[0].courseId;
       if (course[0].semesterId !== bucketSemesterId) {
         errors.push(`Course ${courseCode} belongs to semester ${course[0].semesterId}, but bucket requires semester ${bucketSemesterId}`);
         continue;
@@ -126,7 +129,9 @@ export const addCoursesToBucket = catchAsync(async (req, res) => {
 
       // Check if course is already in another bucket
       const [existingBucket] = await connection.execute(
-        `SELECT bucketId FROM ElectiveBucketCourse WHERE courseCode = ? AND bucketId != ?`,
+        `SELECT ebc.bucketId FROM ElectiveBucketCourse ebc 
+         JOIN Course c ON ebc.courseId = c.courseId 
+         WHERE c.courseCode = ? AND ebc.bucketId != ?`,
         [courseCode, bucketId]
       );
       if (existingBucket.length > 0) {
@@ -136,7 +141,9 @@ export const addCoursesToBucket = catchAsync(async (req, res) => {
 
       // Check for existing entry in this bucket
       const [existing] = await connection.execute(
-        `SELECT id FROM ElectiveBucketCourse WHERE bucketId = ? AND courseCode = ?`,
+        `SELECT ebc.id FROM ElectiveBucketCourse ebc 
+         JOIN Course c ON ebc.courseId = c.courseId 
+         WHERE ebc.bucketId = ? AND c.courseCode = ?`,
         [bucketId, courseCode]
       );
       if (existing.length > 0) {
@@ -146,8 +153,8 @@ export const addCoursesToBucket = catchAsync(async (req, res) => {
 
       // Insert course into bucket
       const [result] = await connection.execute(
-        `INSERT INTO ElectiveBucketCourse (bucketId, courseCode) VALUES (?, ?)`,
-        [bucketId, courseCode]
+        `INSERT INTO ElectiveBucketCourse (bucketId, courseId) VALUES (?, ?)`,
+        [bucketId, courseId]
       );
       if (result.affectedRows > 0) {
         addedCourses.push(courseCode);
@@ -196,10 +203,20 @@ export const removeCourseFromBucket = catchAsync(async (req, res) => {
       return res.status(404).json({ status: "failure", message: `Bucket with ID ${bucketId} not found` });
     }
 
+    // Get courseId from courseCode
+    const [courses] = await connection.execute(
+      `SELECT courseId FROM Course WHERE courseCode = ?`,
+      [courseCode]
+    );
+    if (courses.length === 0) {
+      return res.status(404).json({ status: "failure", message: `Course ${courseCode} not found` });
+    }
+    const courseId = courses[0].courseId;
+
     // Check if course exists in the bucket
     const [existing] = await connection.execute(
-      `SELECT id FROM ElectiveBucketCourse WHERE bucketId = ? AND courseCode = ?`,
-      [bucketId, courseCode]
+      `SELECT id FROM ElectiveBucketCourse WHERE bucketId = ? AND courseId = ?`,
+      [bucketId, courseId]
     );
     if (existing.length === 0) {
       return res.status(404).json({ status: "failure", message: `Course ${courseCode} not found in bucket ${bucketId}` });
@@ -207,8 +224,8 @@ export const removeCourseFromBucket = catchAsync(async (req, res) => {
 
     // Remove course from bucket
     const [result] = await connection.execute(
-      `DELETE FROM ElectiveBucketCourse WHERE bucketId = ? AND courseCode = ?`,
-      [bucketId, courseCode]
+      `DELETE FROM ElectiveBucketCourse WHERE bucketId = ? AND courseId = ?`,
+      [bucketId, courseId]
     );
 
     if (result.affectedRows === 0) {

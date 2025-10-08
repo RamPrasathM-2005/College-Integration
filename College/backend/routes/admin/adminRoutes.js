@@ -1,4 +1,4 @@
-
+// Modified adminroutes.js
 import express from "express";
 import {
   addSemester,
@@ -88,7 +88,8 @@ import {
   getVerticalsByRegulation,
   getAvailableCoursesForVertical,
   allocateCoursesToVertical,
-  allocateRegulationToBatch, // Add this import
+  allocateRegulationToBatch,
+  getCoursesByVertical, // Added this import
 } from "../../controllers/regulationController.js";
 import { protect } from "../../controllers/auth/authController.js";
 
@@ -215,6 +216,7 @@ router.route('/regulations/verticals').post(protect, createVertical);
 router.route('/regulations/:regulationId/verticals').get(protect, getVerticalsByRegulation);
 router.route('/regulations/:regulationId/courses/available').get(protect, getAvailableCoursesForVertical);
 router.route('/regulations/verticals/courses').post(protect, allocateCoursesToVertical);
+router.route('/regulations/verticals/:verticalId/courses').get(protect, getCoursesByVertical); // Added this route
 router.route('/regulations/allocate-to-batch').post(protect, allocateRegulationToBatch); // Added this route
 
 export default router;

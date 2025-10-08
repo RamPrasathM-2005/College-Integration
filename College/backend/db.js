@@ -1,4 +1,3 @@
-
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
@@ -18,7 +17,7 @@ const pool = mysql.createPool({
     queueLimit: 0,
     dateStrings: true,
     charset: 'utf8mb4',
-    collation: 'utf8mb4_unicode_ci', 
+    collation: 'utf8mb4_unicode_ci',
 });
 
 // Branch to Department ID mapping
@@ -56,7 +55,23 @@ const initDatabase = async () => {
             )
         `);
 
-        // 2) Users - Stores admin, staff, and students
+        // 2) Regulation - Stores regulation details (MOVED HERE)
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS Regulation (
+                regulationId INT PRIMARY KEY AUTO_INCREMENT,
+                Deptid INT NOT NULL,
+                regulationYear INT NOT NULL,
+                isActive ENUM('YES','NO') DEFAULT 'YES',
+                createdBy VARCHAR(150),
+                updatedBy VARCHAR(150),
+                createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT fk_regulation_dept FOREIGN KEY (Deptid) REFERENCES department(Deptid) ON DELETE RESTRICT,
+                UNIQUE (Deptid, regulationYear)
+            )
+        `);
+
+        // 3) Users - Stores admin, staff, and students
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS users (
                 Userid INT AUTO_INCREMENT PRIMARY KEY,
@@ -81,7 +96,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 3) Student Details - Stores detailed student information
+        // 4) Student Details - Stores detailed student information
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS student_details (
                 id INT PRIMARY KEY AUTO_INCREMENT,
@@ -141,7 +156,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 4) Batch - Stores degree programs (branch as VARCHAR, no Deptid)
+        // 5) Batch - Stores degree programs (MOVED AFTER REGULATION)
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Batch (
                 batchId INT PRIMARY KEY AUTO_INCREMENT,
@@ -149,16 +164,18 @@ const initDatabase = async () => {
                 branch VARCHAR(100) NOT NULL,
                 batch VARCHAR(4) NOT NULL,
                 batchYears VARCHAR(20) NOT NULL,
+                regulationId INT NULL,
                 isActive ENUM('YES','NO') DEFAULT 'YES',
                 createdBy VARCHAR(150),
                 updatedBy VARCHAR(150),
                 createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE KEY uq_batch (degree, branch, batch)
+                UNIQUE KEY uq_batch (degree, branch, batch),
+                CONSTRAINT fk_batch_regulation FOREIGN KEY (regulationId) REFERENCES Regulation(regulationId) ON DELETE SET NULL
             )
         `);
 
-        // 5) Semester - Stores semesters for each batch
+        // 6) Semester - Stores semesters for each batch
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Semester (
                 semesterId INT PRIMARY KEY AUTO_INCREMENT,
@@ -177,7 +194,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 6) Course - Stores course details for each semester
+        // 7) Course - Stores course details for each semester
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Course (
                 courseId INT PRIMARY KEY AUTO_INCREMENT,
@@ -202,22 +219,6 @@ const initDatabase = async () => {
                 CONSTRAINT fk_course_sem FOREIGN KEY (semesterId) REFERENCES Semester(semesterId)
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 UNIQUE (courseCode, semesterId)
-            )
-        `);
-
-        // 7) Regulation - Stores regulation details (moved before RegulationCourse)
-        await connection.execute(`
-            CREATE TABLE IF NOT EXISTS Regulation (
-                regulationId INT PRIMARY KEY AUTO_INCREMENT,
-                Deptid INT NOT NULL,
-                regulationYear INT NOT NULL,
-                isActive ENUM('YES','NO') DEFAULT 'YES',
-                createdBy VARCHAR(150),
-                updatedBy VARCHAR(150),
-                createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                CONSTRAINT fk_regulation_dept FOREIGN KEY (Deptid) REFERENCES department(Deptid) ON DELETE RESTRICT,
-                UNIQUE (Deptid, regulationYear)
             )
         `);
 

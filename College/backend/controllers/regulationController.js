@@ -1,4 +1,4 @@
-
+// Modified regulationController.js
 import pool, { branchMap } from '../db.js';
 
 const determineCourseType = (lectureHours, tutorialHours, practicalHours, experientialHours) => {
@@ -177,140 +177,31 @@ export const getAvailableCoursesForVertical = async (req, res) => {
   }
 };
 
-// export const allocateRegulationToBatch = async (req, res) => {
-//   const { batchId, regulationId } = req.body;
-//   const createdBy = req.user?.username || 'admin';
-//   const updatedBy = createdBy;
+export const getCoursesByVertical = async (req, res) => {
+  const { verticalId } = req.params;
+  const { semesterNumber } = req.query;
 
-//   if (!batchId || !regulationId) {
-//     return res.status(400).json({ status: 'failure', message: 'Batch ID and regulation ID are required' });
-//   }
+  let query = `
+    SELECT rc.regCourseId AS courseId, rc.courseCode, rc.courseTitle, rc.category, rc.semesterNumber
+    FROM RegulationCourse rc
+    JOIN VerticalCourse vc ON rc.regCourseId = vc.regCourseId
+    WHERE vc.verticalId = ? AND rc.isActive = 'YES' AND rc.category IN ('PEC', 'OEC')
+  `;
+  let params = [verticalId];
 
-//   let connection;
-//   try {
-//     connection = await pool.getConnection();
-//     await connection.beginTransaction();
+  if (semesterNumber) {
+    query += ' AND rc.semesterNumber = ?';
+    params.push(semesterNumber);
+  }
 
-//     // Validate batch and regulation compatibility
-//     const [batches] = await connection.execute(
-//       `SELECT branch FROM Batch WHERE batchId = ? AND isActive = 'YES'`,
-//       [batchId]
-//     );
-//     if (batches.length === 0) {
-//       throw new Error('Batch not found or inactive');
-//     }
-//     const branch = batches[0].branch;
-//     const dept = branchMap[branch];
-//     if (!dept) {
-//       throw new Error(`Invalid branch ${branch} in batch`);
-//     }
-//     const deptId = dept.Deptid;
-
-//     const [regulations] = await connection.execute(
-//       `SELECT Deptid FROM Regulation WHERE regulationId = ? AND isActive = 'YES'`,
-//       [regulationId]
-//     );
-//     if (regulations.length === 0) {
-//       throw new Error('Regulation not found or inactive');
-//     }
-//     if (regulations[0].Deptid !== deptId) {
-//       throw new Error(`Regulation department (${regulations[0].Deptid}) does not match batch department (${deptId})`);
-//     }
-
-//     // Fetch regulation courses
-//     const [regCourses] = await connection.execute(
-//       `SELECT * FROM RegulationCourse WHERE regulationId = ? AND isActive = 'YES'`,
-//       [regulationId]
-//     );
-//     if (regCourses.length === 0) {
-//       throw new Error('No active courses found for the regulation');
-//     }
-
-//     // Create all 8 semesters for the batch if they don't exist
-//     const [existingSemesters] = await connection.execute(
-//       `SELECT semesterNumber FROM Semester WHERE batchId = ?`,
-//       [batchId]
-//     );
-//     const existingSemesterNumbers = existingSemesters.map(sem => sem.semesterNumber);
-//     const requiredSemesters = [1, 2, 3, 4, 5, 6, 7, 8];
-//     const missingSemesters = requiredSemesters.filter(num => !existingSemesterNumbers.includes(num));
-
-//     for (const semesterNumber of missingSemesters) {
-//       const startDate = new Date(`${new Date().getFullYear()}-01-01`);
-//       const endDate = new Date(startDate);
-//       endDate.setMonth(startDate.getMonth() + 6);
-
-//       await connection.execute(
-//         `INSERT INTO Semester (batchId, semesterNumber, startDate, endDate, isActive, createdBy, updatedBy)
-//          VALUES (?, ?, ?, ?, 'YES', ?, ?)`,
-//         [batchId, semesterNumber, startDate, endDate, createdBy, updatedBy]
-//       );
-//     }
-
-//     // Fetch updated semesters for the batch
-//     const [semesters] = await connection.execute(
-//       `SELECT semesterId, semesterNumber FROM Semester WHERE batchId = ? AND isActive = 'YES'`,
-//       [batchId]
-//     );
-//     const semesterMap = semesters.reduce((map, sem) => {
-//       map[sem.semesterNumber] = sem.semesterId;
-//       return map;
-//     }, {});
-
-//     // Copy regulation courses to Course table (check for duplicates by courseCode and semesterId)
-//     const courseInserts = regCourses.map(async (regCourse) => {
-//       const semesterId = semesterMap[regCourse.semesterNumber];
-//       if (!semesterId) {
-//         throw new Error(`Semester ${regCourse.semesterNumber} not found for batch ${batchId}`);
-//       }
-
-//       // Check if course already exists for this semester
-//       const [existingCourses] = await connection.execute(
-//         `SELECT courseId FROM Course WHERE courseCode = ? AND semesterId = ?`,
-//         [regCourse.courseCode, semesterId]
-//       );
-//       if (existingCourses.length > 0) {
-//         return; // Skip if already exists
-//       }
-
-//       await connection.execute(
-//         `INSERT INTO Course (
-//           courseCode, semesterId, courseTitle, category, type,
-//           lectureHours, tutorialHours, practicalHours, experientialHours,
-//           totalContactPeriods, credits, minMark, maxMark, createdBy, updatedBy
-//         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-//         [
-//           regCourse.courseCode,
-//           semesterId,
-//           regCourse.courseTitle,
-//           regCourse.category,
-//           regCourse.type,
-//           regCourse.lectureHours,
-//           regCourse.tutorialHours,
-//           regCourse.practicalHours,
-//           regCourse.experientialHours,
-//           regCourse.totalContactPeriods,
-//           regCourse.credits,
-//           regCourse.minMark,
-//           regCourse.maxMark,
-//           createdBy,
-//           updatedBy
-//         ]
-//       );
-//     });
-
-//     await Promise.all(courseInserts);
-//     await connection.commit();
-//     res.json({ status: 'success', message: 'Regulation allocated to batch successfully, all semesters created' });
-//   } catch (err) {
-//     if (connection) await connection.rollback();
-//     console.error('Error allocating regulation to batch:', err);
-//     res.status(500).json({ status: 'failure', message: `Server error: ${err.message}` });
-//   } finally {
-//     if (connection) connection.release();
-//   }
-// };
-
+  try {
+    const [rows] = await pool.execute(query, params);
+    res.json({ status: 'success', data: rows });
+  } catch (err) {
+    console.error('Error fetching courses by vertical:', err);
+    res.status(500).json({ status: 'failure', message: 'Server error: ' + err.message });
+  }
+};
 
 export const allocateRegulationToBatch = async (req, res) => {
   const { batchId, regulationId } = req.body;
@@ -328,7 +219,7 @@ export const allocateRegulationToBatch = async (req, res) => {
 
     // Fetch batch to get branch
     const [batches] = await connection.execute(
-      `SELECT branch FROM Batch WHERE batchId = ? AND isActive = 'YES'`,
+      `SELECT batchId, branch FROM Batch WHERE batchId = ? AND isActive = 'YES'`,
       [batchId]
     );
     if (batches.length === 0) {
@@ -353,6 +244,15 @@ export const allocateRegulationToBatch = async (req, res) => {
     }
     if (regulations[0].Deptid !== Deptid) {
       throw new Error(`Regulation department (${regulations[0].Deptid}) does not match batch department (${Deptid})`);
+    }
+
+    // Update Batch table with regulationId
+    const [updateResult] = await connection.execute(
+      `UPDATE Batch SET regulationId = ?, updatedBy = ?, updatedDate = CURRENT_TIMESTAMP WHERE batchId = ?`,
+      [regulationId, updatedBy, batchId]
+    );
+    if (updateResult.affectedRows === 0) {
+      throw new Error(`Failed to update batch ${batchId} with regulationId ${regulationId}`);
     }
 
     // Fetch regulation courses
@@ -439,7 +339,7 @@ export const allocateRegulationToBatch = async (req, res) => {
 
     await Promise.all(courseInserts);
     await connection.commit();
-    res.json({ status: 'success', message: 'Regulation allocated to batch successfully, all semesters created' });
+    res.json({ status: 'success', message: 'Regulation allocated to batch successfully, all semesters and courses created' });
   } catch (err) {
     if (connection) await connection.rollback();
     console.error('Error allocating regulation to batch:', err);

@@ -1,658 +1,656 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Select, Card, Button, Table, Collapse, Input, Space, Checkbox } from 'antd';
+import { DeleteOutlined } from '@ant-design/icons';
+import { toast } from 'react-toastify';
 import { api } from '../../services/authService';
-import { branchMap, degrees } from '../admin/ManageSemesters/branchMap';
-import { MySwal, showErrorToast, showSuccessToast, showInfoToast, showConfirmToast } from '../../utils/swalConfig';
+import { degrees, branchMap } from '../admin/ManageSemesters/branchMap';
+import AddBucketModal from './AddBucketModal';
+import Swal from 'sweetalert2';
 
-// Simple Error Boundary Component
-class ErrorBoundary extends React.Component {
-  state = { hasError: false, error: null };
-
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="p-6 bg-red-100 border border-red-400 text-red-700 rounded-xl shadow-lg max-w-7xl mx-auto">
-          <h2 className="text-xl font-bold mb-2">Something went wrong!</h2>
-          <p classNa8me="mb-4">{this.state.error?.message || 'An unexpected error occurred.'}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Reload Page
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
+const { Option } = Select;
 
 const CourseRecommendation = () => {
-  const [depts, setDepts] = useState([]);
   const [batches, setBatches] = useState([]);
   const [semesters, setSemesters] = useState([]);
   const [selectedDegree, setSelectedDegree] = useState('');
   const [selectedDept, setSelectedDept] = useState('');
   const [selectedBatch, setSelectedBatch] = useState('');
   const [selectedSemester, setSelectedSemester] = useState('');
-  const [courses, setCourses] = useState([]);
-  const [buckets, setBuckets] = useState([]);
-  const [electives, setElectives] = useState([]);
+  const [selectedSemesterNumber, setSelectedSemesterNumber] = useState('');
+  const [selectedRegulationId, setSelectedRegulationId] = useState('');
   const [pccCourses, setPccCourses] = useState([]);
+  const [electives, setElectives] = useState([]);
+  const [verticals, setVerticals] = useState([]);
+  const [courseInfo, setCourseInfo] = useState({});
+  const [buckets, setBuckets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [expandedBuckets, setExpandedBuckets] = useState({});
-  const selectRefs = useRef({});
-  const inputRefs = useRef({});
+  const [showAddBucketModal, setShowAddBucketModal] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [selectedVerticalPerBucket, setSelectedVerticalPerBucket] = useState({});
+  const [selectedCoursesPerBucket, setSelectedCoursesPerBucket] = useState({});
 
   useEffect(() => {
-    fetchDepts();
-    fetchBatches();
+    console.log('Current state:', {
+      loading,
+      selectedDegree,
+      selectedDept,
+      selectedBatch,
+      selectedSemester,
+      selectedRegulationId,
+      selectedSemesterNumber,
+      semesters,
+    });
+  }, [loading, selectedDegree, selectedDept, selectedBatch, selectedSemester, selectedRegulationId, selectedSemesterNumber, semesters]);
+
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      console.log('Fetching initial data, setting loading to true');
+      setLoading(true);
+      try {
+        const batchRes = await api.get('/admin/batches');
+        console.log('Batches response:', batchRes.data);
+        if (batchRes.data.status === 'success') {
+          setBatches([...new Set(batchRes.data.data.map(b => b.batch))]);
+        } else {
+          throw new Error(batchRes.data.message || 'Failed to fetch batches');
+        }
+      } catch (err) {
+        const errorMessage = `Failed to fetch initial data: ${err.message}`;
+        console.error('Batch fetch error:', err.response?.data || err);
+        setError(errorMessage);
+        toast.error(errorMessage);
+      } finally {
+        console.log('Finished fetching initial data, setting loading to false');
+        setLoading(false);
+      }
+    };
+    fetchInitialData();
   }, []);
 
-  const fetchDepts = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.get('/departments');
-      if (res.data.status === 'success' && Array.isArray(res.data.data)) {
-        setDepts(res.data.data);
-      } else {
-        throw new Error('Unexpected response structure from departments API');
-      }
-    } catch (err) {
-      const errorMessage = err.response?.status === 401
-        ? 'Authentication failed. Please log in again.'
-        : err.message.includes('HTML instead of JSON')
-        ? 'Failed to reach backend server. Please ensure the backend is running at http://localhost:4000.'
-        : `Failed to fetch departments: ${err.message}${err.response?.data?.message ? ` - ${err.response.data.message}` : ''}`;
-      setError(errorMessage);
-      showErrorToast('Error', errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchBatches = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.get('/admin/batches');
-      if (res.data.status === 'success' && Array.isArray(res.data.data)) {
-        const uniqueBatches = [...new Set(res.data.data.map(b => b.batch))];
-        setBatches(uniqueBatches);
-      } else {
-        throw new Error('Unexpected response structure from batches API');
-      }
-    } catch (err) {
-      const errorMessage = err.response?.status === 401
-        ? 'Authentication failed. Please log in again.'
-        : err.message.includes('HTML instead of JSON')
-        ? 'Failed to reach backend server. Please ensure the backend is running at http://localhost:4000.'
-        : `Failed to fetch batches: ${err.message}${err.response?.data?.message ? ` - ${err.response.data.message}` : ''}`;
-      setError(errorMessage);
-      showErrorToast('Error', errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    const fetchSemesters = async () => {
-      if (!selectedDegree || !selectedDept || !selectedBatch) return;
+    if (!selectedDegree || !selectedDept || !selectedBatch) return;
+    const fetchBatchAndSemesters = async () => {
       setLoading(true);
       setError(null);
       try {
-        const branchCode = Object.keys(branchMap).find(key => branchMap[key] === selectedDept) || selectedDept;
-        const params = { degree: selectedDegree, branch: branchCode, batch: selectedBatch };
-        const res = await api.get('/admin/semesters/by-batch-branch', { params });
-        if (res.data.status === 'success' && Array.isArray(res.data.data)) {
-          setSemesters(res.data.data);
-        } else if (res.data.status === 'failure' && res.data.message.includes('No semesters found')) {
-          setSemesters([]);
-          setError(`No semesters found for ${selectedBatch} - ${selectedDept} (Degree: ${selectedDegree}). Please create a semester in Manage Semesters.`);
-          showInfoToast('No Semesters', `No semesters found for ${selectedBatch} - ${selectedDept}`);
+        const batchParams = { degree: selectedDegree, branch: selectedDept, batch: selectedBatch };
+        console.log('Fetching batch with params:', batchParams);
+        const batchRes = await api.get('/admin/batches/find', { params: batchParams });
+        console.log('Batch API response:', batchRes.data);
+        if (batchRes.data.status === 'success') {
+          const regulationId = batchRes.data.data.regulationId;
+          console.log('Selected Regulation ID:', regulationId);
+          if (!regulationId) {
+            console.warn('No regulationId found in batch response');
+            setError('No regulation assigned to this batch. Please assign a regulation.');
+            toast.warn('No regulation assigned to this batch. Some features may be limited.');
+          }
+          setSelectedRegulationId(regulationId || '');
         } else {
-          throw new Error('Unexpected response structure from semesters API');
+          throw new Error(batchRes.data.message || 'Batch not found');
+        }
+
+        const semParams = { degree: selectedDegree, branch: selectedDept, batch: selectedBatch };
+        console.log('Fetching semesters with params:', semParams);
+        const semRes = await api.get('/admin/semesters/by-batch-branch', { params: semParams });
+        console.log('Semester response:', semRes.data);
+        if (semRes.data.status === 'success') {
+          setSemesters(semRes.data.data);
+          console.log('Semesters set:', semRes.data.data);
+          if (semRes.data.data.length === 0) {
+            setError('No semesters found. Please create a semester.');
+            toast.info('No semesters found. Please create a semester.');
+          }
+        } else {
+          throw new Error(semRes.data.message || 'Failed to fetch semesters');
+        }
+
+        if (batchRes.data.data.regulationId) {
+          const verticalRes = await api.get(`/admin/regulations/${batchRes.data.data.regulationId}/verticals`);
+          console.log('Verticals response:', verticalRes.data);
+          if (verticalRes.data.status === 'success') {
+            setVerticals(verticalRes.data.data);
+            const verticalIds = verticalRes.data.data.map(v => v.verticalId);
+            const coursePromises = verticalIds.map(vid =>
+              api.get(`/admin/regulations/verticals/${vid}/courses`, {
+                params: { semesterNumber: selectedSemesterNumber || '1' },
+              })
+            );
+            const courseResponses = await Promise.all(coursePromises);
+            let allCourses = [];
+            verticalRes.data.data.forEach((vert, index) => {
+              const res = courseResponses[index];
+              if (res && res.data.status === 'success') {
+                allCourses.push(
+                  ...res.data.data
+                    .filter(c => ['PEC', 'OEC'].includes(c.category))
+                    .map(c => ({ ...c, verticalId: vert.verticalId, verticalName: vert.verticalName }))
+                );
+              }
+            });
+            setElectives(allCourses);
+            console.log('Electives set:', allCourses);
+          }
         }
       } catch (err) {
-        const errorMessage = err.response?.status === 404
-          ? `No semesters found for ${selectedBatch} - ${selectedDept} (Degree: ${selectedDegree}). Please create a semester in Manage Semesters.`
-          : err.response?.status === 401
-          ? 'Authentication failed. Please log in again.'
-          : err.message.includes('HTML instead of JSON')
-          ? 'Failed to reach backend server. Please ensure the backend is running at http://localhost:4000.'
-          : `Failed to fetch semesters: ${err.message}${err.response?.data?.message ? ` - ${err.response.data.message}` : ''}`;
+        const errorMessage =
+          err.response?.status === 404
+            ? `No batch or semesters found for ${selectedDegree} - ${selectedDept} (${selectedBatch}). Create batch/semester first.`
+            : `Failed to fetch: ${err.response?.data?.message || err.message}`;
+        console.error('Fetch error:', err.response?.data || err);
         setError(errorMessage);
-        if (err.response?.status === 404) {
-          showInfoToast('No Semesters', errorMessage);
-        } else {
-          showErrorToast('Error', errorMessage);
-        }
+        toast.error(errorMessage);
       } finally {
         setLoading(false);
       }
     };
-    fetchSemesters();
+    fetchBatchAndSemesters();
   }, [selectedDegree, selectedDept, selectedBatch]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!selectedSemester) return;
-      setLoading(true);
-      setError(null);
-      try {
-        const resCourses = await api.get(`/admin/semesters/${selectedSemester}/courses`);
-        if (resCourses.data.status === 'success' && Array.isArray(resCourses.data.data)) {
-          const allCourses = resCourses.data.data;
-          const pcc = allCourses.filter(c => c.category === 'PCC');
-          const ele = allCourses.filter(c => ['PEC', 'OEC'].includes(c.category));
-          setPccCourses(pcc);
-          setElectives(ele);
-          setCourses(allCourses);
-        } else {
-          throw new Error('Unexpected response structure from courses API');
-        }
+    console.log('Semester selection:', { selectedSemester, semesters });
+    if (selectedSemester) {
+      const sem = semesters.find(s => s.semesterId === selectedSemester);
+      if (sem) {
+        setSelectedSemesterNumber(sem.semesterNumber.toString());
+        console.log('Selected Semester Number:', sem.semesterNumber);
+      } else {
+        console.warn('No semester found for selectedSemester:', selectedSemester);
+      }
+    }
+  }, [selectedSemester, semesters]);
 
-        const resBuckets = await api.get(`/admin/semesters/${selectedSemester}/buckets`);
-        if (resBuckets.data.status === 'success' && Array.isArray(resBuckets.data.data)) {
-          setBuckets(resBuckets.data.data);
-          // Initialize expanded state for each bucket (default to collapsed)
-          setExpandedBuckets(
-            resBuckets.data.data.reduce((acc, bucket) => ({
-              ...acc,
-              [bucket.bucketId]: false,
-            }), {})
-          );
+  useEffect(() => {
+    if (!selectedSemester) return;
+    const fetchCoursesAndBuckets = async () => {
+      setLoading(true);
+      try {
+        const courseRes = await api.get(`/admin/semesters/${selectedSemester}/courses`);
+        if (courseRes.data.status === 'success') {
+          setPccCourses(courseRes.data.data.filter(c => c.category === 'PCC'));
         } else {
-          throw new Error('Unexpected response structure from buckets API');
+          throw new Error(courseRes.data.message || 'Failed to fetch courses');
+        }
+        const bucketRes = await api.get(`/admin/semesters/${selectedSemester}/buckets`);
+        console.log('Buckets response:', bucketRes.data);
+        if (bucketRes.data.status === 'success') {
+          setBuckets(bucketRes.data.data);
+        } else {
+          throw new Error(bucketRes.data.message || 'Failed to fetch buckets');
         }
       } catch (err) {
-        const errorMessage = err.response?.status === 401
-          ? 'Authentication failed. Please log in again.'
-          : err.message.includes('HTML instead of JSON')
-          ? 'Failed to reach backend server. Please ensure the backend is running at http://localhost:4000.'
-          : `Failed to fetch courses or buckets: ${err.message}${err.response?.data?.message ? ` - ${err.response.data.message}` : ''}`;
+        const errorMessage = `Failed to fetch courses or buckets: ${err.response?.data?.message || err.message}`;
         setError(errorMessage);
-        showErrorToast('Error', errorMessage);
+        toast.error(errorMessage);
       } finally {
         setLoading(false);
       }
     };
-    fetchData();
+    fetchCoursesAndBuckets();
   }, [selectedSemester]);
 
-  const toggleBucket = (bucketId) => {
-    setExpandedBuckets(prev => ({
-      ...prev,
-      [bucketId]: !prev[bucketId],
-    }));
+  useEffect(() => {
+    const info = {};
+    electives.forEach(e => {
+      info[e.courseCode] = {
+        verticalId: e.verticalId,
+        verticalName: e.verticalName,
+        courseTitle: e.courseTitle,
+      };
+    });
+    setCourseInfo(info);
+    console.log('CourseInfo set:', info);
+  }, [electives]);
+
+  const handleAddBucket = () => {
+    console.log('handleAddBucket called', { selectedSemester, selectedRegulationId, selectedSemesterNumber });
+    if (!selectedSemester || !selectedRegulationId || !selectedSemesterNumber) {
+      toast.error('Please select Degree, Department, Batch, and Semester first');
+      return;
+    }
+    console.log('Setting showAddBucketModal to true');
+    setShowAddBucketModal(true);
   };
 
-  const handleAddBucket = async () => {
+  const handleBucketAdded = async () => {
     setLoading(true);
-    setError(null);
     try {
-      const res = await api.post(`/admin/semesters/${selectedSemester}/buckets`);
+      const res = await api.get(`/admin/semesters/${selectedSemester}/buckets`);
+      console.log('Updated buckets response:', res.data);
       if (res.data.status === 'success') {
-        const resBuckets = await api.get(`/admin/semesters/${selectedSemester}/buckets`);
-        if (resBuckets.data.status === 'success' && Array.isArray(resBuckets.data.data)) {
-          setBuckets(resBuckets.data.data);
-          setExpandedBuckets(
-            resBuckets.data.data.reduce((acc, bucket) => ({
-              ...acc,
-              [bucket.bucketId]: false,
-            }), {})
-          );
-          showSuccessToast(`Bucket ${res.data.bucketNumber} created successfully`);
-        } else {
-          throw new Error('Unexpected response structure from buckets API');
-        }
-      } else {
-        throw new Error('Unexpected response structure from add bucket API');
+        setBuckets(res.data.data);
+        toast.success('Bucket created successfully');
       }
     } catch (err) {
-      const errorMessage = err.response?.status === 401
-        ? 'Authentication failed. Please log in again.'
-        : err.message.includes('HTML instead of JSON')
-        ? 'Failed to reach backend server. Please ensure the backend is running at http://localhost:4000.'
-        : `Failed to add bucket: ${err.message}${err.response?.data?.message ? ` - ${err.response.data.message}` : ''}`;
-      setError(errorMessage);
-      showErrorToast('Error', errorMessage);
+      setError(`Failed to fetch updated buckets: ${err.response?.data?.message || err.message}`);
+      toast.error(`Failed to fetch updated buckets: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpdateBucketName = async (bucketId, bucketNumber, newName) => {
+  const handleUpdateBucketName = async (bucketId, newName) => {
     if (!newName.trim()) {
-      setError('Bucket name cannot be empty');
-      showErrorToast('Error', 'Bucket name cannot be empty');
+      toast.error('Bucket name cannot be empty');
       return;
     }
     setLoading(true);
-    setError(null);
     try {
       const res = await api.put(`/admin/buckets/${bucketId}`, { bucketName: newName });
       if (res.data.status === 'success') {
-        const resBuckets = await api.get(`/admin/semesters/${selectedSemester}/buckets`);
-        if (resBuckets.data.status === 'success' && Array.isArray(resBuckets.data.data)) {
-          setBuckets(resBuckets.data.data);
-          showSuccessToast(`Bucket ${bucketNumber} name updated to "${newName}"`);
-        } else {
-          throw new Error('Unexpected response structure from buckets API');
-        }
-      } else {
-        throw new Error('Unexpected response from update bucket API');
+        setBuckets(buckets.map(b => (b.bucketId === bucketId ? { ...b, bucketName: newName } : b)));
+        toast.success('Bucket name updated successfully');
       }
     } catch (err) {
-      const errorMessage = err.response?.status === 401
-        ? 'Authentication failed. Please log in again.'
-        : err.message.includes('HTML instead of JSON')
-        ? 'Failed to reach backend server. Please ensure the backend is running at http://localhost:4000.'
-        : `Failed to update bucket name: ${err.message}${err.response?.data?.message ? ` - ${err.response.data.message}` : ''}`;
-      setError(errorMessage);
-      showErrorToast('Error', errorMessage);
-      if (inputRefs.current[bucketId]) {
-        inputRefs.current[bucketId].value = buckets.find(b => b.bucketId === bucketId)?.bucketName || `Bucket ${bucketNumber}`;
-      }
+      setError(`Failed to update bucket name: ${err.response?.data?.message || err.message}`);
+      toast.error(`Failed to update bucket name: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteBucket = async (bucketId, bucketNumber) => {
-    const result = await showConfirmToast(
-      'Delete Bucket',
-      `Are you sure you want to delete Bucket ${bucketNumber}?`,
-      'warning',
-      'Delete',
-      'Cancel'
-    );
+  const handleDeleteBucket = async (bucketId) => {
+    const result = await Swal.fire({
+      title: 'Delete Bucket',
+      text: 'Are you sure you want to delete this bucket?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Delete',
+      cancelButtonText: 'Cancel',
+    });
     if (!result.isConfirmed) return;
     setLoading(true);
-    setError(null);
     try {
       const res = await api.delete(`/admin/buckets/${bucketId}`);
       if (res.data.status === 'success') {
-        setBuckets(buckets.filter(bucket => bucket.bucketId !== bucketId));
-        setExpandedBuckets(prev => {
-          const newState = { ...prev };
-          delete newState[bucketId];
-          return newState;
-        });
-        showSuccessToast(`Bucket ${bucketNumber} deleted successfully`);
-      } else {
-        throw new Error('Unexpected response from delete bucket API');
+        setBuckets(buckets.filter(b => b.bucketId !== bucketId));
+        toast.success('Bucket deleted successfully');
       }
     } catch (err) {
-      const errorMessage = err.response?.status === 401
-        ? 'Authentication failed. Please log in again.'
-        : err.response?.status === 404
-        ? `Bucket with ID ${bucketId} not found`
-        : err.message.includes('HTML instead of JSON')
-        ? 'Failed to reach backend server. Please ensure the backend is running at http://localhost:4000.'
-        : `Failed to delete bucket: ${err.message}${err.response?.data?.message ? ` - ${err.response.data.message}` : ''}`;
-      setError(errorMessage);
-      showErrorToast('Error', errorMessage);
+      setError(`Failed to delete bucket: ${err.response?.data?.message || err.message}`);
+      toast.error(`Failed to delete bucket: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddCoursesToBucket = async (bucketId) => {
-    const select = selectRefs.current[bucketId];
-    if (!select) {
-      setError('No select element found for this bucket.');
-      showErrorToast('Error', 'No select element found for this bucket.');
-      return;
-    }
-    const selectedOptions = Array.from(select.selectedOptions).map(option => option.value);
-    if (selectedOptions.length === 0) {
-      setError('Please select at least one course to add to the bucket.');
-      showErrorToast('Error', 'Please select at least one course to add to the bucket.');
+  const handleVerticalSelect = (bucketId, value) => {
+    setSelectedVerticalPerBucket(prev => ({ ...prev, [bucketId]: value }));
+    setSelectedCoursesPerBucket(prev => ({ ...prev, [bucketId]: [] }));
+  };
+
+  const handleCourseSelect = (bucketId, checked) => {
+    setSelectedCoursesPerBucket(prev => ({ ...prev, [bucketId]: checked }));
+  };
+
+  const handleAddSelectedCourses = async (bucketId) => {
+    const selected = selectedCoursesPerBucket[bucketId] || [];
+    if (!selected.length) {
+      toast.error('Please select at least one course');
       return;
     }
     setLoading(true);
-    setError(null);
     try {
-      const res = await api.post(`/admin/buckets/${bucketId}/courses`, { courseCodes: selectedOptions });
+      const res = await api.post(`/admin/buckets/${bucketId}/courses`, { courseCodes: selected });
       if (res.data.status === 'success') {
-        const resBuckets = await api.get(`/admin/semesters/${selectedSemester}/buckets`);
-        if (resBuckets.data.status === 'success' && Array.isArray(resBuckets.data.data)) {
-          setBuckets(resBuckets.data.data);
-          const successMsg = res.data.addedCourses?.length
-            ? `Successfully added ${res.data.addedCourses.length} course(s) to bucket`
-            : 'Courses added to bucket successfully';
-          showSuccessToast(successMsg);
-          if (res.data.errors?.length) {
-            setError(`Some courses could not be added: ${res.data.errors.join(', ')}`);
-            showInfoToast('Warning', `Some courses could not be added: ${res.data.errors.join(', ')}`);
-          }
-          select.selectedIndex = -1;
-        } else {
-          throw new Error('Unexpected response structure from buckets API');
+        const bucketRes = await api.get(`/admin/semesters/${selectedSemester}/buckets`);
+        if (bucketRes.data.status === 'success') {
+          setBuckets(bucketRes.data.data);
+          toast.success('Courses added to bucket successfully');
+          setSelectedVerticalPerBucket(prev => ({ ...prev, [bucketId]: undefined }));
+          setSelectedCoursesPerBucket(prev => ({ ...prev, [bucketId]: [] }));
         }
-      } else {
-        throw new Error(`Unexpected response from add courses API: ${res.data.message || 'Unknown error'}`);
       }
     } catch (err) {
-      const errorMessage = err.response?.status === 401
-        ? 'Authentication failed. Please log in again.'
-        : err.response?.status === 400
-        ? `Failed to add courses: ${err.response?.data?.message || err.message}${err.response?.data?.errors ? ` - ${err.response.data.errors.join(', ')}` : ''}`
-        : err.message.includes('HTML instead of JSON')
-        ? 'Failed to reach backend server. Please ensure the backend is running at http://localhost:4000.'
-        : `Failed to add courses to bucket: ${err.message}${err.response?.data?.message ? ` - ${err.response.data.message}` : ''}`;
-      setError(errorMessage);
-      showErrorToast('Error', errorMessage);
+      setError(`Failed to add courses: ${err.response?.data?.message || err.message}`);
+      toast.error(`Failed to add courses: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   const handleRemoveCourseFromBucket = async (bucketId, courseCode) => {
-    const result = await showConfirmToast(
-      'Remove Course',
-      `Are you sure you want to remove course ${courseCode} from the bucket?`,
-      'warning',
-      'Remove',
-      'Cancel'
-    );
+    const result = await Swal.fire({
+      title: 'Remove Course',
+      text: `Are you sure you want to remove ${courseCode} from the bucket?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Remove',
+      cancelButtonText: 'Cancel',
+    });
     if (!result.isConfirmed) return;
     setLoading(true);
-    setError(null);
     try {
       const res = await api.delete(`/admin/buckets/${bucketId}/courses/${courseCode}`);
       if (res.data.status === 'success') {
-        const resBuckets = await api.get(`/admin/semesters/${selectedSemester}/buckets`);
-        if (resBuckets.data.status === 'success' && Array.isArray(resBuckets.data.data)) {
-          setBuckets(resBuckets.data.data);
-          showSuccessToast(`Course ${courseCode} removed from bucket successfully`);
-        } else {
-          throw new Error('Unexpected response structure from buckets API');
+        const bucketRes = await api.get(`/admin/semesters/${selectedSemester}/buckets`);
+        if (bucketRes.data.status === 'success') {
+          setBuckets(bucketRes.data.data);
+          toast.success(`Course ${courseCode} removed successfully`);
         }
-      } else {
-        throw new Error(`Unexpected response from remove course API: ${res.data.message || 'Unknown error'}`);
       }
     } catch (err) {
-      const errorMessage = err.response?.status === 401
-        ? 'Authentication failed. Please log in again.'
-        : err.response?.status === 404
-        ? `Course ${courseCode} or bucket ${bucketId} not found`
-        : err.message.includes('HTML instead of JSON')
-        ? 'Failed to reach backend server. Please ensure the backend is running at http://localhost:4000.'
-        : `Failed to remove course: ${err.message}${err.response?.data?.message ? ` - ${err.response.data.message}` : ''}`;
-      setError(errorMessage);
-      showErrorToast('Error', errorMessage);
+      setError(`Failed to remove course: ${err.response?.data?.message || err.message}`);
+      toast.error(`Failed to remove course: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleSubmitRecommendation = () => {
+    setShowPreview(true);
+  };
+
   const assignedCourses = buckets.flatMap(bucket => bucket.courses.map(c => c.courseCode));
 
-  return (
-    <ErrorBoundary>
-      <div className="p-6 bg-gray-50 min-h-screen flex flex-col items-center">
-        <div className="w-full max-w-7xl">
-          <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
-            <div className="text-center sm:text-left">
-              <h1 className="text-3xl font-bold text-gray-900">Course Recommendation</h1>
-              <p className="text-gray-600 mt-1">Manage course buckets for elective recommendations</p>
-            </div>
-          </div>
-          {error && (
-            <div className="flex items-center text-red-600 mb-4 bg-red-50 p-4 rounded-lg">
-              <p>{error}</p>
-              {error.includes('Authentication failed') && (
-                <button
-                  className="ml-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  onClick={() => window.location.href = '/login'}
-                >
-                  Log In
-                </button>
-              )}
-              {error.includes('Failed to reach backend server') && (
-                <button
-                  className="ml-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  onClick={() => window.location.reload()}
-                >
-                  Retry
-                </button>
-              )}
-              {error.includes('No semesters found') && (
-                <button
-                  className="ml-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  onClick={() => window.location.href = '/manage-semesters'}
-                >
-                  Go to Manage Semesters
-                </button>
-              )}
-            </div>
-          )}
-          {loading && <p className="text-gray-600 mb-4 text-center">Loading...</p>}
-          <div className="bg-white p-4 rounded-lg shadow-sm mb-6">
-            <div className="flex flex-wrap gap-4 items-end justify-center">
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Degree</label>
-                <select
-                  value={selectedDegree}
-                  onChange={e => setSelectedDegree(e.target.value)}
-                  disabled={loading}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                >
-                  <option value="">Select Degree</option>
-                  {degrees.map(deg => (
-                    <option key={deg} value={deg}>
-                      {deg}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                <select
-                  value={selectedDept}
-                  onChange={e => setSelectedDept(e.target.value)}
-                  disabled={loading || !selectedDegree}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                >
-                  <option value="">Select Department</option>
-                  {Array.isArray(depts) && depts.length > 0 ? (
-                    depts.map(d => (
-                      <option key={d.Deptid} value={d.Deptname}>
-                        {d.Deptname}
-                      </option>
-                    ))
-                  ) : (
-                    <option disabled>No departments available</option>
-                  )}
-                </select>
-              </div>
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Batch</label>
-                <select
-                  value={selectedBatch}
-                  onChange={e => setSelectedBatch(e.target.value)}
-                  disabled={loading || !selectedDegree}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                >
-                  <option value="">Select Batch</option>
-                  {Array.isArray(batches) && batches.length > 0 ? (
-                    batches.map(b => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))
-                  ) : (
-                    <option disabled>No batches available</option>
-                  )}
-                </select>
-              </div>
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
-                <select
-                  value={selectedSemester}
-                  onChange={e => setSelectedSemester(e.target.value)}
-                  disabled={loading || !selectedDegree || !selectedDept || !selectedBatch}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                >
-                  <option value="">Select Semester</option>
-                  {Array.isArray(semesters) && semesters.length > 0 ? (
-                    semesters.map(s => (
-                      <option key={s.semesterId} value={s.semesterId}>
-                        Semester {s.semesterNumber}
-                      </option>
-                    ))
-                  ) : (
-                    <option disabled>No semesters available</option>
-                  )}
-                </select>
-              </div>
-            </div>
-          </div>
-          {!loading && selectedSemester && (
-            <div className="space-y-8">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">Core Courses</h2>
-                {Array.isArray(pccCourses) && pccCourses.length > 0 ? (
-                  <div className="bg-white rounded-xl shadow-lg p-6">
-                    <ul className="list-disc pl-5">
-                      {pccCourses.map(c => (
-                        <li key={c.courseCode} className="text-gray-700 py-1">
-                          {c.courseCode} - {c.courseTitle}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="text-gray-600 mb-6 text-center">No Core courses available.</p>
-                )}
-              </div>
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-bold text-gray-900">Elective Buckets</h2>
-                  <button
-                    onClick={handleAddBucket}
-                    disabled={loading || !selectedSemester}
-                    className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                    </svg>
-                    Add Elective Bucket
-                  </button>
-                </div>
-                {Array.isArray(buckets) && buckets.length > 0 ? (
-                  buckets.map(bucket => (
-                    <div key={bucket.bucketId} className="mb-8 bg-white rounded-xl shadow-lg p-6">
-                      <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
-                        <div className="flex items-center gap-2 flex-1">
-                          <button
-                            onClick={() => toggleBucket(bucket.bucketId)}
-                            className="text-gray-600 hover:text-gray-800 transition-colors"
-                          >
-                            <svg
-                              className={`w-5 h-5 transform transition-transform ${expandedBuckets[bucket.bucketId] ? 'rotate-180' : ''}`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </button>
-                          <input
-                            type="text"
-                            defaultValue={bucket.bucketName || `Bucket ${bucket.bucketNumber}`}
-                            className="text-xl font-semibold text-gray-900 px-3 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 flex-1"
-                            ref={el => (inputRefs.current[bucket.bucketId] = el)}
-                          />
-                          <button
-                            onClick={() => handleUpdateBucketName(bucket.bucketId, bucket.bucketNumber, inputRefs.current[bucket.bucketId]?.value)}
-                            className="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                          >
-                            Update
-                          </button>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteBucket(bucket.bucketId, bucket.bucketNumber)}
-                          disabled={loading}
-                          className="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                          Delete Bucket
-                        </button>
-                      </div>
-                      {expandedBuckets[bucket.bucketId] && (
-                        <div className="transition-all duration-300">
-                          {Array.isArray(bucket.courses) && bucket.courses.length > 0 ? (
-                            <ul className="space-y-2 mb-4">
-                              {bucket.courses.map(c => (
-                                <li key={c.courseCode} className="bg-gray-50 p-3 rounded-lg flex justify-between items-center hover:bg-gray-100">
-                                  <span className="text-gray-700">{c.courseCode} - {c.courseTitle}</span>
-                                  <button
-                                    onClick={() => handleRemoveCourseFromBucket(bucket.bucketId, c.courseCode)}
-                                    disabled={loading}
-                                    className="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                    Remove
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-gray-600 mb-4">No courses in this bucket.</p>
-                          )}
-                          <select
-                            multiple
-                            ref={el => (selectRefs.current[bucket.bucketId] = el)}
-                            className="w-full max-w-md h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 mb-4"
-                            disabled={loading || electives.length === 0}
-                          >
-                            {Array.isArray(electives) && electives.length > 0 ? (
-                              electives
-                                .filter(e => !assignedCourses.includes(e.courseCode))
-                                .map(e => (
-                                  <option key={e.courseCode} value={e.courseCode}>
-                                    {e.courseCode} - {e.courseTitle}
-                                  </option>
-                                ))
-                            ) : (
-                              <option disabled>No electives available</option>
-                            )}
-                          </select>
-                          <button
-                            onClick={() => handleAddCoursesToBucket(bucket.bucketId)}
-                            disabled={loading || electives.length === 0}
-                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                            </svg>
-                            Add Selected Courses
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-600 text-center">No buckets created yet. Click "Add Elective Bucket" to get started.</p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+  const pccColumns = [
+    { title: 'Course Code', dataIndex: 'courseCode', key: 'courseCode' },
+    { title: 'Course Title', dataIndex: 'courseTitle', key: 'courseTitle' },
+  ];
+
+  const getGroupedCourses = (courses) => {
+    return courses.reduce((acc, c) => {
+      const v = c.verticalName || 'Unassigned';
+      if (!acc[v]) acc[v] = [];
+      acc[v].push(c);
+      return acc;
+    }, {});
+  };
+
+  const collapseItems = buckets.map(bucket => ({
+    key: bucket.bucketId,
+    label: (
+      <div className="flex justify-between items-center">
+        <Input
+          defaultValue={bucket.bucketName || `Elective ${bucket.bucketNumber}`}
+          onBlur={e => handleUpdateBucketName(bucket.bucketId, e.target.value)}
+          style={{ width: 200, marginRight: 8 }}
+        />
+        <Button
+          danger
+          icon={<DeleteOutlined />}
+          onClick={e => {
+            e.stopPropagation();
+            handleDeleteBucket(bucket.bucketId);
+          }}
+        >
+          Delete
+        </Button>
       </div>
-    </ErrorBoundary>
+    ),
+    children: (
+      <>
+        {bucket.courses.length > 0 ? (
+          Object.entries(getGroupedCourses(bucket.courses)).map(([vertical, courses]) => (
+            <div key={vertical}>
+              <h4 className="font-semibold">{vertical}</h4>
+              <ul className="space-y-2 mb-4">
+                {courses.map(c => (
+                  <li key={c.courseCode} className="flex justify-between">
+                    <span>
+                      {c.courseCode} - {c.courseTitle}
+                    </span>
+                    <Button
+                      danger
+                      size="small"
+                      onClick={() => handleRemoveCourseFromBucket(bucket.bucketId, c.courseCode)}
+                    >
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        ) : (
+          <p>No courses in this bucket.</p>
+        )}
+        <Select
+          placeholder="Select Vertical"
+          style={{ width: '100%', marginBottom: 16 }}
+          value={selectedVerticalPerBucket[bucket.bucketId]}
+          onChange={value => handleVerticalSelect(bucket.bucketId, value)}
+          disabled={loading || verticals.length === 0}
+        >
+          {verticals.map(v => (
+            <Option key={v.verticalId} value={v.verticalId}>
+              {v.verticalName}
+            </Option>
+          ))}
+        </Select>
+        {selectedVerticalPerBucket[bucket.bucketId] && (
+          <div>
+            <Checkbox.Group
+              style={{ width: '100%' }}
+              value={selectedCoursesPerBucket[bucket.bucketId] || []}
+              onChange={checked => handleCourseSelect(bucket.bucketId, checked)}
+            >
+              {electives
+                .filter(
+                  e =>
+                    e.verticalId === selectedVerticalPerBucket[bucket.bucketId] &&
+                    !assignedCourses.includes(e.courseCode)
+                )
+                .map(e => (
+                  <Checkbox
+                    key={e.courseCode}
+                    value={e.courseCode}
+                    style={{ display: 'block', marginBottom: 8 }}
+                  >
+                    {e.courseCode} - {e.courseTitle}
+                  </Checkbox>
+                ))}
+            </Checkbox.Group>
+            <Button
+              type="primary"
+              onClick={() => handleAddSelectedCourses(bucket.bucketId)}
+              disabled={loading || !(selectedCoursesPerBucket[bucket.bucketId]?.length > 0)}
+            >
+              Add Selected Courses
+            </Button>
+          </div>
+        )}
+      </>
+    ),
+  }));
+
+  return (
+    <div className="p-6 bg-gray-50 min-h-screen">
+      <h1 className="text-3xl font-bold mb-4">Course Recommendation</h1>
+      {error && <div className="mb-4 text-red-600">{error}</div>}
+      {loading && <div className="mb-4">Loading...</div>}
+
+      <Card className="mb-6">
+        <Space wrap>
+          <div>
+            <label className="block mb-1">Degree</label>
+            <Select
+              value={selectedDegree}
+              onChange={(value) => {
+                console.log('Selected Degree:', value);
+                setSelectedDegree(value);
+                setSelectedDept('');
+                setSelectedBatch('');
+                setSelectedSemester('');
+                setSelectedRegulationId('');
+                setSelectedSemesterNumber('');
+                setSemesters([]);
+              }}
+              disabled={loading}
+              style={{ width: 200 }}
+              placeholder="Select Degree"
+            >
+              {degrees.map(deg => (
+                <Option key={deg} value={deg}>
+                  {deg}
+                </Option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label className="block mb-1">Department</label>
+            <Select
+              value={selectedDept}
+              onChange={(value) => {
+                console.log('Selected Dept:', value);
+                setSelectedDept(value);
+                setSelectedBatch('');
+                setSelectedSemester('');
+                setSelectedRegulationId('');
+                setSelectedSemesterNumber('');
+                setSemesters([]);
+              }}
+              disabled={loading || !selectedDegree}
+              style={{ width: 200 }}
+              placeholder="Select Department"
+            >
+              {Object.entries(branchMap).map(([acronym, deptname]) => (
+                <Option key={acronym} value={acronym}>
+                  {deptname}
+                </Option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label className="block mb-1">Batch</label>
+            <Select
+              value={selectedBatch}
+              onChange={(value) => {
+                console.log('Selected Batch:', value);
+                setSelectedBatch(value);
+                setSelectedSemester('');
+                setSelectedRegulationId('');
+                setSelectedSemesterNumber('');
+                setSemesters([]);
+              }}
+              disabled={loading || !selectedDegree || !selectedDept}
+              style={{ width: 200 }}
+              placeholder="Select Batch"
+            >
+              {batches.map(b => (
+                <Option key={b} value={b}>
+                  {b}
+                </Option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label className="block mb-1">Semester</label>
+            <Select
+              value={selectedSemester}
+              onChange={(value) => {
+                console.log('Selected Semester:', value);
+                setSelectedSemester(value);
+              }}
+              disabled={loading || !selectedDegree || !selectedDept || !selectedBatch}
+              style={{ width: 200 }}
+              placeholder="Select Semester"
+            >
+              {semesters.map(s => (
+                <Option key={s.semesterId} value={s.semesterId}>
+                  Semester {s.semesterNumber}
+                </Option>
+              ))}
+            </Select>
+          </div>
+        </Space>
+      </Card>
+
+      {selectedSemester && (
+        <>
+          <h2 className="text-2xl font-bold mb-4">Core Courses</h2>
+          <Card className="mb-6">
+            {pccCourses.length > 0 ? (
+              <Table
+                columns={pccColumns}
+                dataSource={pccCourses}
+                rowKey="courseCode"
+                pagination={false}
+              />
+            ) : (
+              <p>No core courses available.</p>
+            )}
+          </Card>
+
+          <div className="flex justify-between mb-4">
+            <h2 className="text-2xl font-bold">Elective Buckets</h2>
+            <Button
+              type="primary"
+              onClick={handleAddBucket}
+              disabled={loading || !selectedSemester || !selectedRegulationId || !selectedSemesterNumber}
+            >
+              Add Elective Bucket
+            </Button>
+          </div>
+          {buckets.length > 0 ? (
+            <Collapse items={collapseItems} />
+          ) : (
+            <p>No buckets created yet. Click "Add Elective Bucket" to start.</p>
+          )}
+
+          <Button
+            type="primary"
+            size="large"
+            onClick={handleSubmitRecommendation}
+            disabled={loading || buckets.length === 0}
+            className="mt-6"
+          >
+            Submit Recommendation
+          </Button>
+
+          {showPreview && (
+            <Card title="Recommendation Preview" className="mt-6">
+              <h3 className="text-xl font-bold">Core Courses</h3>
+              {pccCourses.length > 0 ? (
+                <ul className="list-disc pl-5 mb-4">
+                  {pccCourses.map(c => (
+                    <li key={c.courseCode}>
+                      {c.courseCode} - {c.courseTitle}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No core courses.</p>
+              )}
+              <h3 className="text-xl font-bold">Elective Buckets</h3>
+              {buckets.map(bucket => (
+                <div key={bucket.bucketId} className="mb-4">
+                  <h4 className="font-semibold">{bucket.bucketName || `Elective ${bucket.bucketNumber}`}</h4>
+                  {bucket.courses.length > 0 ? (
+                    Object.entries(getGroupedCourses(bucket.courses)).map(([vertical, courses]) => (
+                      <div key={vertical}>
+                        <h5>{vertical}</h5>
+                        <ul className="list-disc pl-5">
+                          {courses.map(c => (
+                            <li key={c.courseCode}>
+                              {c.courseCode} - {c.courseTitle}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))
+                  ) : (
+                    <p>No courses in this bucket.</p>
+                  )}
+                </div>
+              ))}
+            </Card>
+          )}
+        </>
+      )}
+
+      {showAddBucketModal && (
+        <AddBucketModal
+          semesterId={selectedSemester}
+          regulationId={selectedRegulationId}
+          semesterNumber={selectedSemesterNumber}
+          assignedCourses={assignedCourses}
+          onBucketAdded={handleBucketAdded}
+          setShowAddBucketModal={setShowAddBucketModal}
+        />
+      )}
+    </div>
   );
 };
 
