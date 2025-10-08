@@ -2,9 +2,6 @@ import { useState } from 'react';
 import { showErrorToast, showSuccessToast, showConfirmToast } from '../../../../utils/swalConfig';
 import manageStaffService from '../../../../services/manageStaffService';
 
-// Simple in-memory cache for sections (shared with useManageStaffData.js)
-const sectionCache = new Map();
-
 const useManageStaffHandlers = ({
   selectedStaff,
   setSelectedStaff,
@@ -16,6 +13,8 @@ const useManageStaffHandlers = ({
   setSelectedStaffCourse,
   selectedCourseStudents,
   setSelectedCourseStudents,
+  selectedCourseCode,
+  setSelectedCourseCode, // Added to receive the setter
   courses,
   fetchData,
 }) => {
@@ -28,6 +27,7 @@ const useManageStaffHandlers = ({
   const [expandedCourses, setExpandedCourses] = useState([]);
   const [operationFromModal, setOperationFromModal] = useState(false);
   const [newBatchForm, setNewBatchForm] = useState({ numberOfBatches: 1 });
+  const [courseRefreshKey, setCourseRefreshKey] = useState(0);
 
   const handleStaffClick = (staff) => {
     setSelectedStaff(staff);
@@ -44,27 +44,18 @@ const useManageStaffHandlers = ({
     setOperationLoading(true);
     try {
       const numberOfBatches = parseInt(newBatchForm.numberOfBatches) || 1;
-      console.log('Adding sections:', { courseId: selectedCourse.courseId, numberOfBatches });
       const res = await manageStaffService.addSections(selectedCourse.courseId, numberOfBatches);
-      console.log('Add sections response:', res);
       if (res.status === 201) {
-        sectionCache.delete(`sections_${selectedCourse.courseId}`);
-        console.log(`Cleared cache for course ${selectedCourse.courseId}`);
         setShowAddBatchModal(false);
         setNewBatchForm({ numberOfBatches: 1 });
         await fetchData();
-        const updatedCourse = courses.find(c => c.courseId === selectedCourse.courseId);
-        if (updatedCourse) {
-          setSelectedCourse(updatedCourse);
-          console.log('Updated selectedCourse:', updatedCourse);
-        }
+        setCourseRefreshKey(prev => prev + 1);
         setShowAllocateCourseModal(true);
         showSuccessToast(`Added ${numberOfBatches} batch${numberOfBatches > 1 ? 'es' : ''} successfully`);
       } else {
         showErrorToast('Error', `Failed to add batches: ${res.data?.message || 'Unknown error'}`);
       }
     } catch (err) {
-      console.error('Add sections error:', err.response || err.message);
       showErrorToast('Error', `Error adding batches: ${err.response?.data?.message || err.message}`);
     } finally {
       setOperationLoading(false);
@@ -112,9 +103,7 @@ const useManageStaffHandlers = ({
       let res;
       if (isUpdate) {
         const payload = { sectionId: selectedSectionId };
-        console.log('Updating course allocation:', { staffCourseId, payload });
         res = await manageStaffService.updateCourseAllocation(staffCourseId, payload);
-        console.log('Update course allocation response:', res);
       } else {
         const staffId = parseInt(selectedStaff.staffId, 10);
         if (isNaN(staffId)) {
@@ -126,14 +115,12 @@ const useManageStaffHandlers = ({
           sectionId: selectedSectionId,
           departmentId: selectedStaff.departmentId,
         };
-        console.log('Allocating course with payload:', payload);
         res = await manageStaffService.allocateCourse(
           staffId,
           selectedCourse.courseId,
           selectedSectionId,
           selectedStaff.departmentId
         );
-        console.log('Allocate course response:', res);
       }
 
       if (res.status === 201 || res.status === 200) {
@@ -141,6 +128,7 @@ const useManageStaffHandlers = ({
         setSelectedCourse(null);
         setSelectedSectionId('');
         setExpandedCourses(prev => prev.includes(selectedStaff.id) ? prev : [...prev, selectedStaff.id]);
+        setCourseRefreshKey(prev => prev + 1);
         showSuccessToast(`Course ${selectedCourse.code} ${isUpdate ? 'updated' : 'allocated'} successfully`);
       } else {
         setSelectedStaff(prev => {
@@ -155,7 +143,6 @@ const useManageStaffHandlers = ({
         showErrorToast('Error', `Failed to ${isUpdate ? 'update' : 'allocate'} course: ${res.data?.message || 'Unknown error'}`);
       }
     } catch (err) {
-      console.error('Allocate course error:', err.response || err.message);
       setSelectedStaff(prev => {
         if (!prev) return prev;
         return {
@@ -213,6 +200,7 @@ const useManageStaffHandlers = ({
         if (!operationFromModal) {
           setExpandedCourses(prev => prev.includes(selectedStaff.id) ? prev : [...prev, selectedStaff.id]);
         }
+        setCourseRefreshKey(prev => prev + 1);
         showSuccessToast(`Section updated for course ${selectedStaffCourse.courseCode}`);
       } else {
         setSelectedStaff(prev => {
@@ -225,7 +213,6 @@ const useManageStaffHandlers = ({
         showErrorToast('Error', `Failed to update section: ${res.data?.message || 'Unknown error'}`);
       }
     } catch (err) {
-      console.error('Error updating section:', err.response || err.message);
       setSelectedStaff(prev => {
         if (!prev) return prev;
         return {
@@ -281,6 +268,7 @@ const useManageStaffHandlers = ({
           setSelectedCourse(null);
           setSelectedSectionId('');
           setExpandedCourses(prev => prev.includes(staff.id) ? prev : [...prev, staff.id]);
+          setCourseRefreshKey(prev => prev + 1);
           showSuccessToast(`Course ${courseToRemove.courseCode} removed successfully`);
         } else {
           setSelectedStaff(prev => {
@@ -312,6 +300,7 @@ const useManageStaffHandlers = ({
     try {
       const students = await manageStaffService.getEnrolledStudents(courseCode, sectionId);
       setSelectedCourseStudents(students);
+      setSelectedCourseCode(courseCode); // Now properly defined
       setShowStudentsModal(true);
     } catch (err) {
       showErrorToast('Error', `Error fetching students: ${err.response?.data?.message || err.message}`);
@@ -344,6 +333,7 @@ const useManageStaffHandlers = ({
     setOperationFromModal,
     newBatchForm,
     setNewBatchForm,
+    courseRefreshKey,
   };
 };
 

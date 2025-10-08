@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
-import manageStaffService from '../../../../services/manageStaffService';
-
-// Simple in-memory cache for sections
-const sectionCache = new Map();
+import { useLocation } from 'react-router-dom';
+import manageStaffService, { clearSectionCache } from '../../../../services/manageStaffService';
 
 const useManageStaffData = () => {
   const [staffList, setStaffList] = useState([]);
@@ -19,9 +17,13 @@ const useManageStaffData = () => {
   const [selectedCourseStudents, setSelectedCourseStudents] = useState([]);
   const [selectedCourseCode, setSelectedCourseCode] = useState('');
 
+  const location = useLocation();
+
   const fetchData = async () => {
     setLoading(true);
     try {
+      console.log('Triggering cache clear before fetching data');
+      clearSectionCache();
       const departmentsData = await manageStaffService.getDepartments();
       const formattedDepartments = departmentsData.map(dept => ({
         departmentId: dept.Deptid,
@@ -72,13 +74,9 @@ const useManageStaffData = () => {
 
       const coursesWithDetails = await Promise.all(
         Array.isArray(coursesData) ? coursesData.map(async course => {
-          const cacheKey = `sections_${course.courseId}`;
-          let sections = sectionCache.get(cacheKey);
-          if (!sections) {
-            sections = await manageStaffService.getCourseSections(course.courseId);
-            sectionCache.set(cacheKey, sections);
-          }
-          console.log(`Fetched sections for course ${course.courseId} (${course.courseCode}):`, sections);
+          console.log(`Fetching sections for course ${course.courseId}`);
+          const sections = await manageStaffService.getCourseSections(course.courseId);
+          console.log(`Fetched sections for course ${course.courseId}:`, sections);
           const semester = semestersData.find(s => s.semesterId === course.semesterId) || {};
           const batch = batchesData.find(b => b.batchId === semester.batchId) || {};
           return {
@@ -97,7 +95,7 @@ const useManageStaffData = () => {
           };
         }) : []
       );
-      console.log('Updated courses with sections:', coursesWithDetails);
+      console.log('Courses updated:', coursesWithDetails);
       setCourses(coursesWithDetails);
     } catch (err) {
       setError(`Failed to fetch data: ${err.message}`);
@@ -108,8 +106,9 @@ const useManageStaffData = () => {
   };
 
   useEffect(() => {
+    console.log('Route changed, triggering fresh fetch');
     fetchData();
-  }, []);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (selectedStaff && staffList.length > 0) {
@@ -130,6 +129,27 @@ const useManageStaffData = () => {
       }
     }
   }, [staffList, selectedStaff]);
+
+  useEffect(() => {
+    if (selectedCourse && courses.length > 0) {
+      const updatedCourse = courses.find(c => c.courseId === selectedCourse.courseId);
+      if (updatedCourse) {
+        const oldSections = selectedCourse.sections || [];
+        const newSections = updatedCourse.sections || [];
+        const hasDifference = oldSections.length !== newSections.length ||
+          newSections.some((newS, idx) => {
+            const oldS = oldSections[idx];
+            return !oldS || newS.sectionId !== oldS.sectionId || newS.sectionName !== oldS.sectionName;
+          });
+        if (hasDifference) {
+          setSelectedCourse({ ...updatedCourse });
+        }
+      } else {
+        setSelectedCourse(null);
+        setSelectedSectionId('');
+      }
+    }
+  }, [courses, selectedCourse, setSelectedCourse, setSelectedSectionId]);
 
   return {
     staffList,

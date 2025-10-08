@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getCOsForCourse, getStudentsForCourse, getToolsForCO, getStudentMarksForTool ,exportCourseWiseCsv } from '../services/staffService'; // Ensure getToolsForCO is imported
+import { getCOsForCourse, getStudentsForCourse, getToolsForCO, getStudentMarksForTool, exportCourseWiseCsv } from '../services/staffService';
 import { calculateInternalMarks as calcInternalMarks } from '../utils/calculations';
 
 const useInternalMarks = (courseCode) => {
@@ -9,8 +9,9 @@ const useInternalMarks = (courseCode) => {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!courseCode || courseCode.startsWith('course-')) {
-        setError('Invalid course selected');
+      if (!courseCode || courseCode.startsWith('course-') || !courseCode.match(/^[A-Za-z0-9]+$/)) {
+        console.error('Invalid courseCode:', courseCode);
+        setError('Invalid course code provided');
         return;
       }
       try {
@@ -26,12 +27,12 @@ const useInternalMarks = (courseCode) => {
         const cosWithTools = await Promise.all(
           cos.map(async (co) => {
             try {
-              const tools = await getToolsForCO(co.coId); // Use imported getToolsForCO
+              const tools = await getToolsForCO(co.coId);
               console.log(`getToolsForCO response for coId ${co.coId}:`, tools);
               return { ...co, tools: tools || [] };
             } catch (err) {
               console.warn(`Error fetching tools for coId ${co.coId}:`, err);
-              return { ...co, tools: [] }; // Fallback to empty tools array
+              return { ...co, tools: [] };
             }
           })
         );
@@ -40,7 +41,7 @@ const useInternalMarks = (courseCode) => {
         console.log('getStudentsForCourse response:', studentsData);
         if (!Array.isArray(studentsData) || studentsData.length === 0) {
           console.warn('No students found for course:', courseCode);
-          setError('No students enrolled in this course section');
+          setError(studentsData?.debug ? `Course not found or not assigned to you. Debug: ${JSON.stringify(studentsData.debug)}` : 'No students enrolled in this course or course not found');
           setStudents([]);
           return;
         }
@@ -51,7 +52,7 @@ const useInternalMarks = (courseCode) => {
               for (const tool of co.tools || []) {
                 try {
                   const marksData = await getStudentMarksForTool(tool.toolId);
-                  const studentMark = marksData.find((m) => m.rollnumber === student.rollnumber);
+                  const studentMark = marksData.find((m) => m.regno === student.regno);
                   marks[tool.toolId] = studentMark ? studentMark.marksObtained : 0;
                 } catch (err) {
                   console.warn('Error fetching marks for tool:', tool.toolId, err);
@@ -66,7 +67,7 @@ const useInternalMarks = (courseCode) => {
         setStudents(studentsWithMarks);
       } catch (err) {
         console.error('Error fetching data in useInternalMarks:', err);
-        setError(err.message || 'Failed to fetch data');
+        setError(err.response?.data?.message || 'Failed to fetch course data');
       }
     };
     fetchData();

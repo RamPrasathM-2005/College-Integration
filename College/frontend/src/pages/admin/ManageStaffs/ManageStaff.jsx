@@ -77,6 +77,7 @@ const ManageStaff = () => {
     setOperationFromModal,
     newBatchForm,
     setNewBatchForm,
+    courseRefreshKey,
   } = useManageStaffHandlers({
     selectedStaff,
     setSelectedStaff,
@@ -86,10 +87,10 @@ const ManageStaff = () => {
     setSelectedSectionId,
     selectedStaffCourse,
     setSelectedStaffCourse,
-    selectedCourseCode,
-    setSelectedCourseCode,
     selectedCourseStudents,
     setSelectedCourseStudents,
+    selectedCourseCode,
+    setSelectedCourseCode, // Pass the setter to the handlers
     courses,
     fetchData,
   });
@@ -177,6 +178,7 @@ const ManageStaff = () => {
           batches={batches}
           operationLoading={operationLoading}
           handleRemoveCourse={handleRemoveCourse}
+          courseRefreshKey={courseRefreshKey}
         />
       )}
       {showAddBatchModal && selectedStaff && selectedCourse && (

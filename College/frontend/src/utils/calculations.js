@@ -3,27 +3,31 @@ export const calculateCOMarks = (student, co, students) => {
     console.warn(`No valid tools for coId ${co?.coId}:`, co?.tools);
     return 0;
   }
-  const studentData = students.find(s => s.rollnumber === student.rollnumber);
+  const studentData = students.find(s => s.regno === student.regno);
   if (!studentData) {
-    console.warn(`Student not found: ${student.rollnumber}`);
+    console.warn(`Student not found for regno: ${student.regno}`);
     return 0;
   }
   let mark = 0;
+  let totalToolWeight = 0;
   co.tools.forEach((tool) => {
     const studentMark = studentData?.marks?.[tool.toolId] || 0;
-    const maxMarks = Number(tool.maxMarks) || 100; // Ensure number, fallback to 100
-    const weightage = Number(tool.weightage) || 100; // Ensure number, fallback to 100
+    const maxMarks = Number(tool.maxMarks) || 100;
+    const weightage = Number(tool.weightage) || 100;
     if (maxMarks === 0) {
       console.warn(`Invalid maxMarks for toolId ${tool.toolId}:`, maxMarks);
       return;
     }
+    console.log(`Calculating CO mark for toolId ${tool.toolId}: studentMark=${studentMark}, maxMarks=${maxMarks}, weightage=${weightage}`);
     mark += (studentMark / maxMarks) * (weightage / 100);
+    totalToolWeight += weightage / 100;
   });
-  const coMark = mark * 100;
-  return isNaN(coMark) ? 0 : coMark; // Prevent NaN
+  const coMark = totalToolWeight > 0 ? (mark / totalToolWeight) * 100 : 0;
+  console.log(`CO mark for coId ${co.coId}, regno ${student.regno}: ${coMark}`);
+  return isNaN(coMark) ? 0 : coMark;
 };
 
-export const calculateInternalMarks = (rollnumber, courseOutcomes, students) => {
+export const calculateInternalMarks = (regno, courseOutcomes, students) => {
   let theorySum = 0,
     theoryCount = 0,
     pracSum = 0,
@@ -33,9 +37,8 @@ export const calculateInternalMarks = (rollnumber, courseOutcomes, students) => 
   const marks = {};
   const coMarks = [];
 
-  // Validate inputs
-  if (!rollnumber || !Array.isArray(courseOutcomes) || !students) {
-    console.error('Invalid inputs:', { rollnumber, courseOutcomes, students });
+  if (!regno || !Array.isArray(courseOutcomes) || !students) {
+    console.error('Invalid inputs:', { regno, courseOutcomes, students });
     return {
       ...marks,
       avgTheory: '0.00',
@@ -45,11 +48,12 @@ export const calculateInternalMarks = (rollnumber, courseOutcomes, students) => 
     };
   }
 
-  // Calculate CO marks and partition sums
   courseOutcomes.forEach((co) => {
-    const coMark = calculateCOMarks({ rollnumber }, co, students);
-    marks[co.coId] = isNaN(coMark) ? 0 : coMark; // Prevent NaN
-    coMarks.push({ mark: coMark, weight: Number(co.weightage) || 100, type: co.coType || 'THEORY' });
+    const coMark = calculateCOMarks({ regno }, co, students);
+    marks[co.coId] = isNaN(coMark) ? 0 : coMark;
+    const defaultWeight = courseOutcomes.length > 0 ? 100 / courseOutcomes.length : 100; // Equal weight for COs
+    coMarks.push({ mark: coMark, weight: defaultWeight, type: co.coType || 'THEORY' });
+    console.log(`CO ${co.coNumber} (coId: ${co.coId}, type: ${co.coType}): mark=${coMark}, weight=${defaultWeight}`);
     if (co.coType === 'THEORY') {
       theorySum += coMark;
       theoryCount++;
@@ -62,12 +66,10 @@ export const calculateInternalMarks = (rollnumber, courseOutcomes, students) => 
     }
   });
 
-  // Calculate averages for each partition
   const avgTheory = theoryCount ? theorySum / theoryCount : 0;
   const avgPractical = pracCount ? pracSum / pracCount : 0;
   const avgExperiential = expCount ? expSum / expCount : 0;
 
-  // Calculate finalAvg using only active partitions
   const activePartitions = [
     { count: theoryCount, type: 'THEORY' },
     { count: pracCount, type: 'PRACTICAL' },
@@ -83,6 +85,14 @@ export const calculateInternalMarks = (rollnumber, courseOutcomes, students) => 
       .filter((cm) => activePartitions.some((p) => p.type === cm.type))
       .reduce((sum, cm) => sum + cm.mark * (cm.weight / 100) / (totalWeight || 1), 0);
   }
+
+  console.log(`Internal marks for regno ${regno}:`, {
+    marks,
+    avgTheory,
+    avgPractical,
+    avgExperiential,
+    finalAvg,
+  });
 
   return {
     ...marks,

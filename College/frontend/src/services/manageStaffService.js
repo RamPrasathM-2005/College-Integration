@@ -5,6 +5,12 @@ const API_BASE = 'http://localhost:4000/api';
 // Simple in-memory cache for sections
 const sectionCache = new Map();
 
+// Clear the entire section cache
+export const clearSectionCache = () => {
+  console.log('Clearing entire section cache');
+  sectionCache.clear();
+};
+
 const manageStaffService = {
   getDepartments: async () => {
     try {

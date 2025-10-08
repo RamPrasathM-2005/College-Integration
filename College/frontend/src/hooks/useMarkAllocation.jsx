@@ -35,43 +35,68 @@ const useMarkAllocation = (courseCode, sectionId) => {
   const [coCollapsed, setCoCollapsed] = useState({});
   const [error, setError] = useState('');
   const [tempTools, setTempTools] = useState([]);
+  const [loading, setLoading] = useState(true); // Added loading state
 
   useEffect(() => {
     const fetchData = async () => {
       if (!courseCode || !sectionId) {
         console.error('Error: Invalid courseCode or sectionId:', courseCode, sectionId);
         setError('Invalid course or section selected. Please select a valid course and section.');
+        setLoading(false);
         return;
       }
       try {
         setError('');
+        setLoading(true);
+
+        // Fetch partitions
         const parts = await getCoursePartitions(courseCode);
+        console.log('getCoursePartitions response:', parts);
         setPartitions(parts);
         setNewPartition(parts);
         setShowPartitionModal(!parts.partitionId);
+
+        // Fetch course outcomes
         const cos = await getCOsForCourse(courseCode);
         console.log('getCOsForCourse response:', cos);
         if (!Array.isArray(cos)) {
           console.error('Error: getCOsForCourse did not return an array:', cos);
-          setError('No course outcomes found for this course');
+          setError(
+            cos?.debug
+              ? `Course '${courseCode}' ${cos.debug.courseOnly.length > 0 ? 'exists' : 'not found'}. User assignment: ${cos.debug.staffCourseCheck.length > 0 ? 'found' : 'not found'}.`
+              : 'No course outcomes found for this course'
+          );
           setCourseOutcomes([]);
+          setLoading(false);
           return;
         }
+
+        // Fetch tools for each CO
         const cosWithTools = await Promise.all(
           cos.map(async (co) => {
             const tools = await getToolsForCO(co.coId);
-            return { ...co, tools };
+            console.log(`getToolsForCO response for coId ${co.coId}:`, tools);
+            return { ...co, tools: tools || [] };
           })
         );
         setCourseOutcomes(cosWithTools);
+
+        // Fetch students
         const studentsData = await getStudentsForSection(courseCode, sectionId);
         console.log('getStudentsForSection response:', studentsData);
         if (!Array.isArray(studentsData)) {
           console.error('Error: getStudentsForSection did not return an array:', studentsData);
-          setError('No students found for this course section');
+          setError(
+            studentsData?.debug
+              ? `Course '${courseCode}' ${studentsData.debug.courseOnly.length > 0 ? 'exists' : 'not found'}. User assignment for section ${sectionId}: ${studentsData.debug.staffCourseCheck.length > 0 ? 'found' : 'not found'}.`
+              : 'No students found for this course section'
+          );
           setStudents([]);
+          setLoading(false);
           return;
         }
+
+        // Fetch marks for each student and tool
         const studentsWithMarks = await Promise.all(
           studentsData.map(async (student) => {
             const marks = {};
@@ -79,25 +104,99 @@ const useMarkAllocation = (courseCode, sectionId) => {
               for (const tool of co.tools || []) {
                 try {
                   const marksData = await getStudentMarksForTool(tool.toolId);
+                  console.log(`Marks for tool ${tool.toolId}:`, marksData); // Debug log
                   const studentMark = marksData.find((m) => m.regno === student.regno);
-                  marks[tool.toolId] = studentMark ? studentMark.marksObtained : 0;
+                  marks[tool.toolId] = studentMark ? Number(studentMark.marksObtained) : 0;
                 } catch (markErr) {
-                  console.warn('Error fetching marks for tool:', tool.toolId, markErr);
+                  console.warn(`Error fetching marks for tool ${tool.toolId}:`, markErr);
                   marks[tool.toolId] = 0;
                 }
               }
             }
+            console.log(`Marks for student ${student.regno}:`, marks); // Debug log
             return { ...student, marks };
           })
         );
+        console.log('Processed students with marks:', studentsWithMarks);
         setStudents(studentsWithMarks);
+        setLoading(false);
       } catch (err) {
         console.error('Error fetching data:', err);
-        setError(err.response?.data?.message || err.message || 'Failed to fetch data');
+        setError(
+          err.response?.data?.message +
+            (err.response?.data?.debug
+              ? `. Debug: Course '${courseCode}' ${err.response.data.debug.courseOnly.length > 0 ? 'exists' : 'not found'}. User assignment: ${err.response.data.debug.staffCourseCheck.length > 0 ? 'found' : 'not found'}.`
+              : '') || 'Failed to fetch data'
+        );
+        setLoading(false);
       }
     };
     fetchData();
   }, [courseCode, sectionId]);
+
+  const calculateInternalMarks = (regno) => {
+    const student = students.find((s) => s.regno === regno);
+    if (!student || !student.marks || !courseOutcomes.length) {
+      console.warn(`No student, marks, or course outcomes found for regno ${regno}`);
+      return {
+        avgTheory: '0.00',
+        avgPractical: '0.00',
+        avgExperiential: '0.00',
+        finalAvg: '0.00',
+      };
+    }
+
+    const result = { avgTheory: 0, avgPractical: 0, avgExperiential: 0, finalAvg: 0 };
+    let theorySum = 0, theoryCount = 0, pracSum = 0, pracCount = 0, expSum = 0, expCount = 0;
+
+    courseOutcomes.forEach((co) => {
+      let coMark = 0;
+      let totalToolWeight = 0;
+      (co.tools || []).forEach((tool) => {
+        const marksObtained = student.marks[tool.toolId] || 0;
+        const weight = Number(tool.weightage) || 100;
+        const maxMarks = Number(tool.maxMarks) || 1;
+        coMark += (marksObtained / maxMarks) * (weight / 100);
+        totalToolWeight += weight / 100;
+      });
+      coMark = totalToolWeight > 0 ? (coMark / totalToolWeight) * 100 : 0;
+      result[co.coNumber] = coMark.toFixed(2);
+
+      if (co.coType === 'THEORY') {
+        theorySum += coMark;
+        theoryCount++;
+      } else if (co.coType === 'PRACTICAL') {
+        pracSum += coMark;
+        pracCount++;
+      } else if (co.coType === 'EXPERIENTIAL') {
+        expSum += coMark;
+        expCount++;
+      }
+    });
+
+    result.avgTheory = theoryCount ? (theorySum / theoryCount).toFixed(2) : '0.00';
+    result.avgPractical = pracCount ? (pracSum / pracCount).toFixed(2) : '0.00';
+    result.avgExperiential = expCount ? (expSum / expCount).toFixed(2) : '0.00';
+
+    const activePartitions = [
+      { count: theoryCount, type: 'THEORY' },
+      { count: pracCount, type: 'PRACTICAL' },
+      { count: expCount, type: 'EXPERIENTIAL' },
+    ].filter((p) => p.count > 0);
+
+    if (activePartitions.length > 0) {
+      const totalCOWeight = courseOutcomes.length;
+      result.finalAvg = courseOutcomes
+        .filter((co) => activePartitions.some((p) => p.type === co.coType))
+        .reduce((sum, co) => sum + parseFloat(result[co.coNumber]) / totalCOWeight, 0)
+        .toFixed(2);
+    } else {
+      result.finalAvg = '0.00';
+    }
+
+    console.log(`calculateInternalMarks for ${regno}:`, result); // Debug log
+    return result;
+  };
 
   const toggleCoCollapse = (coId) => {
     setCoCollapsed((prev) => ({ ...prev, [coId]: !prev[coId] }));
@@ -271,36 +370,26 @@ const useMarkAllocation = (courseCode, sectionId) => {
     }
   };
 
-  const updateStudentMark = async (toolId, regno, marks) => {
-  // Optimistically update the local state
-  const previousStudents = [...students]; // Store previous state for rollback
-  setStudents((prev) =>
-    prev.map((s) =>
-      s.regno === regno ? { ...s, marks: { ...s.marks, [toolId]: marks } } : s
-    )
-  );
-
-  try {
-    setError('');
-    // Call the backend API to validate and save the mark
-    const response = await saveStudentMarksForTool(toolId, {
-      marks: [{ regno, marksObtained: marks }],
-    });
-    return { success: true, message: response.message || 'Mark updated successfully' };
-  } catch (err) {
-    console.error('Error updating mark:', err);
-    // Roll back the optimistic update
-    setStudents(previousStudents);
-    const errMsg =
-      err.response?.data?.message ||
-      err.message ||
-      'Failed to update mark';
-    setError(errMsg);
-    return { success: false, error: errMsg };
-  }
-};
+  const updateStudentMark = (toolId, regno, marks) => {
+    setStudents((prev) =>
+      prev.map((s) =>
+        s.regno === regno ? { ...s, marks: { ...s.marks, [toolId]: marks } } : s
+      )
+    );
+  };
 
   const handleSaveToolMarks = async (toolId, marks) => {
+    if (!toolId) {
+      const errMsg = 'Tool ID is required';
+      setError(errMsg);
+      return { success: false, error: errMsg };
+    }
+    if (!Array.isArray(marks) || marks.length === 0) {
+      const errMsg = 'Marks array is required and cannot be empty';
+      setError(errMsg);
+      return { success: false, error: errMsg };
+    }
+
     try {
       setError('');
       await saveStudentMarksForTool(toolId, { marks });
@@ -312,7 +401,7 @@ const useMarkAllocation = (courseCode, sectionId) => {
             ...student,
             marks: {
               ...student.marks,
-              [toolId]: studentMark ? studentMark.marksObtained : student.marks[toolId] || 0,
+              [toolId]: studentMark ? Number(studentMark.marksObtained) : student.marks[toolId] || 0,
             },
           };
         })
@@ -340,7 +429,7 @@ const useMarkAllocation = (courseCode, sectionId) => {
             ...student,
             marks: {
               ...student.marks,
-              [toolId]: studentMark ? studentMark.marksObtained : student.marks[toolId] || 0,
+              [toolId]: studentMark ? Number(studentMark.marksObtained) : student.marks[toolId] || 0,
             },
           };
         })
@@ -415,8 +504,10 @@ const useMarkAllocation = (courseCode, sectionId) => {
     handleImportMarks,
     handleExportCoWiseCsv,
     exportCourseWiseCsv: handleExportCourseWiseCsv,
+    calculateInternalMarks,
     error,
     setError,
+    loading, // Expose loading state
   };
 };
 
