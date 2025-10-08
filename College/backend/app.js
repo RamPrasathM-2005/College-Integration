@@ -6,6 +6,8 @@ import adminRoutes from './routes/admin/adminRoutes.js';
 import authRoutes from './routes/auth/authRoutes.js';
 import departmentRoutes from './routes/departmentRoutes.js';
 import staffRoutes from './routes/staff/staffRoutes.js';
+import attendanceRoutes from './routes/staff/staffattendanceroutes.js';
+import adminattendance  from './routes/admin/adminattendanceroutes.js';
 
 dotenv.config({ path: './config.env' });
 
@@ -26,6 +28,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/staff', staffRoutes);
+app.use('/api/staff/attendance', attendanceRoutes);
+app.use('/api/admin/attendance', adminattendance);
 
 // Health check
 app.get('/api/health', (req, res) => {

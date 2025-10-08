@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Home, Book, Users, Calendar, X, Menu, LogOut, Settings, BookImage } from 'lucide-react';
+import { Home, Book, Users, Calendar, X, Menu, LogOut, Settings, BookImage, User } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { logout } from '../../services/authService'; // Import logout function
 
@@ -26,7 +26,8 @@ const AdminSidebar = () => {
     { to: "/admin/timetable", icon: Calendar, label: "Timetable" },
     { to: '/admin/consolidated-marks', icon: Book, label: 'Consolidated Marks' },
     { to: "/admin/subjectwise-marks", icon: Book, label: "Subjectwise Marks" },
-    { to: "/admin/course-recommendation", icon: BookImage, label: "Course Recommendation"}
+    { to: "/admin/course-recommendation", icon: BookImage, label: "Course Recommendation"},
+    { to: "/admin/adminattendance", icon: User, label: "Attendance"}
   ];
 
   const handleLogout = async () => {

@@ -1,379 +1,1468 @@
 import React, { useState, useEffect } from "react";
-import {
-  ChevronDown,
-  ChevronLeft,
-  ChevronUp,
-  Download,
-  Calendar,
-  Users,
-  TrendingUp,
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-} from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
-import Swal from "sweetalert2";
-import withReactContent from "sweetalert2-react-content";
+import axios from "axios";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
-const MySwal = withReactContent(Swal);
+const API_BASE_URL = "http://localhost:4000";
 
-// Custom hook for toastr alerts
-const useToastr = () => {
-  const showToast = (title, text, icon = "success") => {
-    MySwal.fire({
-      icon,
-      title,
-      text,
-      toast: true,
-      position: "top-end",
-      showConfirmButton: false,
-      timer: 3000,
-      timerProgressBar: true,
-      didOpen: (toast) => {
-        toast.addEventListener("mouseenter", MySwal.stopTimer);
-        toast.addEventListener("mouseleave", MySwal.resumeTimer);
-      },
+export default function AttendanceGenerator() {
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [timetable, setTimetable] = useState({});
+  const [students, setStudents] = useState([]);
+  const [nextPeriodStudents, setNextPeriodStudents] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [degrees, setDegrees] = useState([]);
+  const [batches, setBatches] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [semesters, setSemesters] = useState([]);
+  const [selectedDegree, setSelectedDegree] = useState("");
+  const [selectedBatch, setSelectedBatch] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [selectedSemester, setSelectedSemester] = useState("");
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [skippedStudents, setSkippedStudents] = useState([]);
+  const [nextPeriodSkippedStudents, setNextPeriodSkippedStudents] = useState(
+    []
+  );
+  const [appendPeriods, setAppendPeriods] = useState({});
+  const [isAppendMode, setIsAppendMode] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    } else {
+      setError("No authentication token found. Please log in.");
+    }
+
+    if (!fromDate) {
+      const today = new Date();
+      const formattedToday = today.toISOString().split("T")[0];
+      setFromDate(formattedToday);
+      const nextWeek = new Date(today);
+      nextWeek.setDate(today.getDate() + 6);
+      setToDate(nextWeek.toISOString().split("T")[0]);
+    }
+
+    try {
+      const userData = JSON.parse(localStorage.getItem("user") || "{}");
+      setUserProfile(userData);
+    } catch (err) {
+      console.error("Failed to load user profile", err);
+      setError("Failed to load user profile");
+    }
+  }, [fromDate]);
+
+  useEffect(() => {
+    const fetchDegreesAndBatches = async () => {
+      try {
+        const response = await axios.get(
+          `${API_BASE_URL}/api/admin/timetable/batches`
+        );
+        console.log("Batches API response:", response.data);
+        if (
+          response.data?.status === "success" &&
+          Array.isArray(response.data.data)
+        ) {
+          const uniqueDegrees = [
+            ...new Set(response.data.data.map((batch) => batch.degree)),
+          ];
+          setDegrees(uniqueDegrees);
+          setBatches(response.data.data);
+          setError(null);
+        } else {
+          throw new Error("Invalid response structure: data is not an array");
+        }
+      } catch (error) {
+        console.error("Error fetching degrees and batches:", error);
+        setError(
+          error.response?.data?.message || "Failed to load degrees and batches."
+        );
+        setDegrees([]);
+        setBatches([]);
+      }
+    };
+    fetchDegreesAndBatches();
+  }, []);
+
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      try {
+        const response = await axios.get(
+          `${API_BASE_URL}/api/admin/timetable/departments`
+        );
+        console.log("Departments API response:", response.data);
+        if (
+          response.data?.status === "success" &&
+          Array.isArray(response.data.data)
+        ) {
+          const mappedDepartments = response.data.data.map((dept) => ({
+            departmentId: dept.Deptid,
+            departmentCode: dept.deptCode,
+            departmentName: dept.Deptname,
+          }));
+          setDepartments(mappedDepartments);
+          setError(null);
+        } else {
+          throw new Error("Invalid response structure: data is not an array");
+        }
+      } catch (error) {
+        console.error("Error fetching departments:", error);
+        setError(
+          error.response?.data?.message || "Failed to load departments."
+        );
+        setDepartments([]);
+      }
+    };
+    fetchDepartments();
+  }, []);
+
+  useEffect(() => {
+    if (selectedDegree && selectedBatch && selectedDepartment) {
+      const fetchSemesters = async () => {
+        try {
+          const selectedBatchData = batches.find(
+            (batch) => batch.batchId === parseInt(selectedBatch)
+          );
+          if (!selectedBatchData) {
+            throw new Error("Selected batch not found");
+          }
+          const response = await axios.get(
+            `${API_BASE_URL}/api/admin/semesters/by-batch-branch`,
+            {
+              params: {
+                degree: selectedDegree,
+                batch: selectedBatchData.batch,
+                branch: selectedBatchData.branch,
+              },
+            }
+          );
+          console.log("Semesters API response:", response.data);
+          if (
+            response.data?.status === "success" &&
+            Array.isArray(response.data.data)
+          ) {
+            setSemesters(response.data.data);
+            setError(null);
+          } else {
+            throw new Error("Invalid response structure: data is not an array");
+          }
+        } catch (error) {
+          console.error("Error fetching semesters:", error);
+          setError(
+            error.response?.data?.message || "Failed to load semesters."
+          );
+          setSemesters([]);
+        }
+      };
+      fetchSemesters();
+    } else {
+      setSemesters([]);
+    }
+  }, [selectedDegree, selectedBatch, selectedDepartment, batches]);
+
+  useEffect(() => {
+    const identifyConsecutivePeriods = () => {
+      const append = {};
+      Object.keys(timetable).forEach((date) => {
+        const periods = timetable[date] || [];
+        periods.sort((a, b) => a.periodNumber - b.periodNumber);
+        for (let i = 0; i < periods.length - 1; i++) {
+          const current = periods[i];
+          const next = periods[i + 1];
+          if (
+            next.periodNumber === current.periodNumber + 1 &&
+            current.courseCode === next.courseCode &&
+            current.sectionId === next.sectionId &&
+            current.staffId === next.staffId
+          ) {
+            const key = `${date}-${current.periodNumber}-${current.courseCode}-${current.sectionId}`;
+            append[key] = {
+              nextPeriodNumber: next.periodNumber,
+              nextDayOfWeek: new Date(date)
+                .toLocaleDateString("en-US", { weekday: "short" })
+                .toUpperCase(),
+              nextCourseCode: next.courseCode,
+              nextSectionId: next.sectionId,
+            };
+          }
+        }
+      });
+      console.log("Append Periods:", JSON.stringify(append, null, 2));
+      setAppendPeriods(append);
+    };
+
+    if (Object.keys(timetable).length > 0) {
+      identifyConsecutivePeriods();
+    }
+  }, [timetable]);
+
+  const generateDates = () => {
+    if (!fromDate || !toDate) return [];
+    const dates = [];
+    let currentDate = new Date(fromDate);
+    const endDate = new Date(toDate);
+    endDate.setDate(endDate.getDate() + 1);
+    while (currentDate < endDate) {
+      dates.push(currentDate.toISOString().split("T")[0]);
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    return dates;
+  };
+
+  const generateTimeSlots = () => {
+    return [
+      { periodNumber: 1, time: "9:00–10:00" },
+      { periodNumber: 2, time: "10:00–11:00" },
+      { periodNumber: 3, time: "11:00–12:00" },
+      { periodNumber: 4, time: "12:00–1:00" },
+      { periodNumber: 5, time: "1:30–2:30" },
+      { periodNumber: 6, time: "2:30–3:30" },
+      { periodNumber: 7, time: "3:30–4:30" },
+      { periodNumber: 8, time: "4:30–5:30" },
+    ];
+  };
+
+  const handleGenerate = async () => {
+    setError(null);
+    setSelectedCourse(null);
+    setStudents([]);
+    setNextPeriodStudents([]);
+    setTimetable({});
+    setSkippedStudents([]);
+    setNextPeriodSkippedStudents([]);
+    setAppendPeriods({});
+    setIsAppendMode(false);
+
+    if (!fromDate || !toDate) {
+      setError("Please select both dates");
+      toast.error("Please select both dates", { position: "top-right" });
+      return;
+    }
+    if (
+      !selectedDegree ||
+      !selectedBatch ||
+      !selectedDepartment ||
+      !selectedSemester
+    ) {
+      setError("Please select degree, batch, department, and semester");
+      toast.error("Please select degree, batch, department, and semester", {
+        position: "top-right",
+      });
+      return;
+    }
+    if (new Date(fromDate) > new Date(toDate)) {
+      setError("From date must be before or equal to to date");
+      toast.error("From date must be before or equal to to date", {
+        position: "top-right",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const selectedBatchData = batches.find(
+        (batch) => batch.batchId === parseInt(selectedBatch)
+      );
+      if (!selectedBatchData) {
+        throw new Error("Selected batch not found");
+      }
+      const res = await axios.get(
+        `${API_BASE_URL}/api/staff/attendance/timetable`,
+        {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+          params: {
+            startDate: fromDate,
+            endDate: toDate,
+            degree: selectedDegree,
+            batch: selectedBatchData.batch,
+            branch: selectedBatchData.branch,
+            Deptid: selectedDepartment,
+            semesterId: selectedSemester,
+          },
+        }
+      );
+      console.log("Timetable Response:", res.data);
+      if (!res.data.data?.timetable) {
+        setError("No timetable data received for the selected filters.");
+        toast.error("No timetable data received for the selected filters.", {
+          position: "top-right",
+        });
+      } else {
+        setTimetable(res.data.data.timetable);
+        toast.success("Timetable generated successfully!", {
+          position: "top-right",
+        });
+      }
+    } catch (err) {
+      console.error("API Error in handleGenerate:", err.response?.data || err);
+      const errorMessage = err.response?.data?.message || err.message;
+      setError(`Error generating timetable: ${errorMessage}`);
+      toast.error(`Error generating timetable: ${errorMessage}`, {
+        position: "top-right",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCourseClick = async (
+    courseCode,
+    sectionId,
+    date,
+    periodNumber
+  ) => {
+    setError(null);
+    setStudents([]);
+    setNextPeriodStudents([]);
+    setSelectedCourse(null);
+    setBulkStatus("");
+    setSkippedStudents([]);
+    setNextPeriodSkippedStudents([]);
+    setIsAppendMode(false);
+
+    const safeSectionId =
+      sectionId && !isNaN(parseInt(sectionId)) ? parseInt(sectionId) : null;
+
+    try {
+      const dayOfWeek = new Date(date)
+        .toLocaleDateString("en-US", { weekday: "short" })
+        .toUpperCase();
+
+      console.log("Calling getStudentsForPeriod with:", {
+        courseCode,
+        sectionId: safeSectionId,
+        dayOfWeek,
+        periodNumber,
+        date,
+      });
+
+      const res = await axios.get(
+        `${API_BASE_URL}/api/staff/attendance/students/${courseCode}/${safeSectionId}/${dayOfWeek}/${periodNumber}`,
+        {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+          params: { date },
+        }
+      );
+
+      console.log("Students Response:", JSON.stringify(res.data, null, 2));
+
+      if (!res.data.data) {
+        setError("No student data received.");
+        toast.error("No student data received.", { position: "top-right" });
+        return;
+      }
+
+      const updatedStudents = res.data.data.map((student) => ({
+        ...student,
+        status: student.status || "",
+      }));
+      setStudents(updatedStudents);
+      setSelectedCourse({
+        courseCode,
+        sectionId: safeSectionId,
+        date,
+        periodNumber,
+        dayOfWeek,
+      });
+
+      try {
+        const skippedRes = await axios.get(
+          `${API_BASE_URL}/api/staff/attendance/skipped/${courseCode}/${safeSectionId}/${dayOfWeek}/${periodNumber}`,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+            params: { date },
+          }
+        );
+        console.log(
+          "Skipped Students Response:",
+          JSON.stringify(skippedRes.data, null, 2)
+        );
+        if (
+          skippedRes.data.status === "success" &&
+          Array.isArray(skippedRes.data.data)
+        ) {
+          setSkippedStudents(skippedRes.data.data);
+          if (skippedRes.data.data.length > 0) {
+            toast.warn(
+              `Found ${skippedRes.data.data.length} skipped student(s) for period ${periodNumber}`,
+              { position: "top-right", autoClose: 5000 }
+            );
+          }
+        }
+      } catch (skipErr) {
+        console.error("Error fetching skipped students:", skipErr);
+      }
+
+      const key = `${date}-${periodNumber}-${courseCode}-${safeSectionId}`;
+      const appendData = appendPeriods[key];
+      console.log(
+        "Checking for append period with key:",
+        key,
+        "appendData:",
+        appendData
+      );
+      if (appendData) {
+        try {
+          const nextRes = await axios.get(
+            `${API_BASE_URL}/api/staff/attendance/students/${appendData.nextCourseCode}/${appendData.nextSectionId}/${appendData.nextDayOfWeek}/${appendData.nextPeriodNumber}`,
+            {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+              },
+              params: { date },
+            }
+          );
+          console.log(
+            "Next Period Students Response:",
+            JSON.stringify(nextRes.data, null, 2)
+          );
+          if (
+            nextRes.data.status === "success" &&
+            Array.isArray(nextRes.data.data)
+          ) {
+            setNextPeriodStudents(
+              nextRes.data.data.map((student) => ({
+                ...student,
+                status: student.status || "",
+              }))
+            );
+            const nextSkippedRes = await axios.get(
+              `${API_BASE_URL}/api/staff/attendance/skipped/${appendData.nextCourseCode}/${appendData.nextSectionId}/${appendData.nextDayOfWeek}/${appendData.nextPeriodNumber}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${localStorage.getItem("token")}`,
+                },
+                params: { date },
+              }
+            );
+            console.log(
+              "Next Period Skipped Students Response:",
+              JSON.stringify(nextSkippedRes.data, null, 2)
+            );
+            if (
+              nextSkippedRes.data.status === "success" &&
+              Array.isArray(nextSkippedRes.data.data)
+            ) {
+              setNextPeriodSkippedStudents(nextSkippedRes.data.data);
+              if (nextSkippedRes.data.data.length > 0) {
+                toast.warn(
+                  `Found ${nextSkippedRes.data.data.length} skipped student(s) for period ${appendData.nextPeriodNumber}`,
+                  { position: "top-right", autoClose: 5000 }
+                );
+              }
+            }
+          } else {
+            console.warn("No students found for next period:", appendData);
+          }
+        } catch (nextErr) {
+          console.error("Error fetching next period students:", nextErr);
+          setError(
+            `Failed to load students for period ${
+              appendData.nextPeriodNumber
+            }: ${nextErr.response?.data?.message || nextErr.message}`
+          );
+          toast.error(
+            `Failed to load students for period ${appendData.nextPeriodNumber}`,
+            { position: "top-right" }
+          );
+        }
+      } else {
+        console.log("No consecutive period found for key:", key);
+      }
+
+      toast.success("Students loaded successfully!", { position: "top-right" });
+    } catch (err) {
+      console.error("Error in handleCourseClick:", err);
+      const errorMessage = err.response?.data?.message || err.message;
+      setError(`Error fetching students: ${errorMessage}`);
+      toast.error(`Error fetching students: ${errorMessage}`, {
+        position: "top-right",
+      });
+    }
+  };
+
+  const handleAttendanceChange = (rollnumber, status) => {
+    setStudents((prev) =>
+      prev.map((student) =>
+        student.rollnumber === rollnumber ? { ...student, status } : student
+      )
+    );
+    if (isAppendMode) {
+      setNextPeriodStudents((prev) =>
+        prev.map((student) =>
+          student.rollnumber === rollnumber ? { ...student, status } : student
+        )
+      );
+    }
+  };
+
+  const handleNextPeriodAttendanceChange = (rollnumber, status) => {
+    setNextPeriodStudents((prev) =>
+      prev.map((student) =>
+        student.rollnumber === rollnumber ? { ...student, status } : student
+      )
+    );
+  };
+
+  const handleBulkStatusChange = (status) => {
+    console.log("handleBulkStatusChange called with status:", status);
+    setBulkStatus(status);
+    const newAppendMode = status === "APPEND";
+    setIsAppendMode(newAppendMode);
+    if (status && status !== "APPEND") {
+      setStudents((prev) =>
+        prev.map((student) => {
+          const isSkipped = skippedStudents.some(
+            (skipped) => skipped.rollnumber === student.rollnumber
+          );
+          return isSkipped ? student : { ...student, status };
+        })
+      );
+      setNextPeriodStudents((prev) =>
+        prev.map((student) => {
+          const isSkipped = nextPeriodSkippedStudents.some(
+            (skipped) => skipped.rollnumber === student.rollnumber
+          );
+          return isSkipped ? student : { ...student, status };
+        })
+      );
+      toast.success(
+        `Non-skipped students marked as ${
+          status === "P" ? "Present" : status === "A" ? "Absent" : "On Duty"
+        }!`,
+        { position: "top-right" }
+      );
+    }
+    console.log("isAppendMode set to:", newAppendMode);
+  };
+
+  const handleSave = async () => {
+    console.log("handleSave called with state:", {
+      studentsCount: students.length,
+      selectedCourse,
+      isAppendMode,
+      appendPeriodsKeys: Object.keys(appendPeriods),
+      nextPeriodStudentsCount: nextPeriodStudents.length,
+      skippedStudentsCount: skippedStudents.length,
+      nextPeriodSkippedStudentsCount: nextPeriodSkippedStudents.length,
     });
-  };
-  return showToast;
-};
 
-const AttendancePage = () => {
-  const navigate = useNavigate();
-  const { courseId } = useParams();
-  const showToast = useToastr();
+    if (!students.length) {
+      setError("No students to save.");
+      toast.error("No students to save.", { position: "top-right" });
+      return;
+    }
 
-  const [selectedDate, setSelectedDate] = useState("2025-01-15");
-  const [bulkAction, setBulkAction] = useState("");
-  const [isExpanded, setIsExpanded] = useState(true);
+    if (!selectedCourse) {
+      setError("Course data missing.");
+      toast.error("Course data missing.", { position: "top-right" });
+      return;
+    }
 
-  // Sample students data
-  const [students, setStudents] = useState([
-    { id: 1, rollNo: "2312063", name: "Ram Prasath M", attendance: "Present", avatar: "RP" },
-    { id: 2, rollNo: "2312053", name: "Joel A", attendance: "Present", avatar: "JA" },
-    { id: 3, rollNo: "2312061", name: "Saravankumar", attendance: "Absent", avatar: "SK" },
-    { id: 4, rollNo: "2312077", name: "Praveen kumar S", attendance: "Present", avatar: "PK" },
-    { id: 5, rollNo: "2312078", name: "Balakrishna T", attendance: "OD", avatar: "BT" },
-    { id: 6, rollNo: "2312080", name: "Mydeen Haan H", attendance: "Present", avatar: "MH" },
-    { id: 7, rollNo: "2312085", name: "Aisha Patel", attendance: "Present", avatar: "AP" },
-    { id: 8, rollNo: "2312090", name: "Ravi Shankar", attendance: "Absent", avatar: "RS" },
-  ]);
+    const validStatuses = ["P", "A", "OD"];
+    const invalidStudents = students.filter(
+      (student) =>
+        !skippedStudents.some(
+          (skipped) => skipped.rollnumber === student.rollnumber
+        ) && !validStatuses.includes(student.status)
+    );
+    if (invalidStudents.length > 0) {
+      console.log("Invalid students for first period:", invalidStudents);
+      setError(
+        "All non-skipped students must have a valid attendance status (Present, Absent, or On Duty)."
+      );
+      toast.error(
+        "All non-skipped students must have a valid attendance status.",
+        {
+          position: "top-right",
+        }
+      );
+      return;
+    }
 
-  // Sample timetable dates for the subject
-  const timetableDates = [
-    { value: "2025-01-06", label: "Monday, January 6, 2025" },
-    { value: "2025-01-08", label: "Wednesday, January 8, 2025" },
-    { value: "2025-01-10", label: "Friday, January 10, 2025" },
-    { value: "2025-01-13", label: "Monday, January 13, 2025" },
-    { value: "2025-01-15", label: "Wednesday, January 15, 2025" },
-    { value: "2025-01-17", label: "Friday, January 17, 2025" },
-    { value: "2025-01-20", label: "Monday, January 20, 2025" },
-    { value: "2025-01-22", label: "Wednesday, January 22, 2025" },
-  ];
+    const key = `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseCode}-${selectedCourse.sectionId}`;
+    const appendData = appendPeriods[key];
+    console.log("appendData for key", key, ":", appendData);
 
-  const handleBulkAction = (action) => {
-    if (action && action !== "") {
-      setStudents(students.map((s) => ({ ...s, attendance: action })));
-      setBulkAction("");
+    if (isAppendMode && appendData && nextPeriodStudents.length > 0) {
+      const invalidNextStudents = nextPeriodStudents.filter(
+        (student) =>
+          !nextPeriodSkippedStudents.some(
+            (skipped) => skipped.rollnumber === student.rollnumber
+          ) && !validStatuses.includes(student.status)
+      );
+      if (invalidNextStudents.length > 0) {
+        console.log("Invalid students for next period:", invalidNextStudents);
+        setError(
+          "All non-skipped students in the next period must have a valid attendance status."
+        );
+        toast.error(
+          "All non-skipped students in the next period must have a valid attendance status.",
+          {
+            position: "top-right",
+          }
+        );
+        return;
+      }
+    } else if (
+      isAppendMode &&
+      (!appendData || nextPeriodStudents.length === 0)
+    ) {
+      console.warn(
+        "Append mode is active but no appendData or nextPeriodStudents:",
+        {
+          isAppendMode,
+          appendData,
+          nextPeriodStudentsCount: nextPeriodStudents.length,
+        }
+      );
+      setError("Cannot append: No consecutive period or students found.");
+      toast.error("Cannot append: No consecutive period or students found.", {
+        position: "top-right",
+      });
+      setIsAppendMode(false);
+      // Proceed with saving only the first period
+    }
+
+    setSaving(true);
+    try {
+      const payload = students
+        .filter(
+          (student) =>
+            !skippedStudents.some(
+              (skipped) => skipped.rollnumber === student.rollnumber
+            )
+        )
+        .map((student) => ({
+          rollnumber: student.rollnumber,
+          status: student.status,
+        }));
+
+      const requests = [];
+      requests.push({
+        period: `P${selectedCourse.periodNumber}`,
+        promise: axios.post(
+          `${API_BASE_URL}/api/staff/attendance/mark/${selectedCourse.courseCode}/${selectedCourse.sectionId}/${selectedCourse.dayOfWeek}/${selectedCourse.periodNumber}`,
+          { date: selectedCourse.date, attendances: payload },
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+          }
+        ),
+      });
+
+      if (isAppendMode && appendData && nextPeriodStudents.length > 0) {
+        const nextPayload = nextPeriodStudents
+          .filter(
+            (student) =>
+              !nextPeriodSkippedStudents.some(
+                (skipped) => skipped.rollnumber === student.rollnumber
+              )
+          )
+          .map((student) => ({
+            rollnumber: student.rollnumber,
+            status: student.status,
+          }));
+        console.log("Adding request for appended period:", {
+          period: `P${appendData.nextPeriodNumber}`,
+          nextPayload,
+        });
+        requests.push({
+          period: `P${appendData.nextPeriodNumber}`,
+          promise: axios.post(
+            `${API_BASE_URL}/api/staff/attendance/mark/${appendData.nextCourseCode}/${appendData.nextSectionId}/${appendData.nextDayOfWeek}/${appendData.nextPeriodNumber}`,
+            { date: selectedCourse.date, attendances: nextPayload },
+            {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+              },
+            }
+          ),
+        });
+      } else {
+        console.log("Not adding appended period request:", {
+          isAppendMode,
+          hasAppendData: !!appendData,
+          nextPeriodStudentsCount: nextPeriodStudents.length,
+        });
+      }
+
+      console.log("Sending attendance payloads:", {
+        firstPeriod: {
+          courseCode: selectedCourse.courseCode,
+          sectionId: selectedCourse.sectionId,
+          dayOfWeek: selectedCourse.dayOfWeek,
+          periodNumber: selectedCourse.periodNumber,
+          date: selectedCourse.date,
+          attendances: payload,
+        },
+        nextPeriod:
+          isAppendMode && appendData && nextPeriodStudents.length > 0
+            ? {
+                courseCode: appendData.nextCourseCode,
+                sectionId: appendData.nextSectionId,
+                dayOfWeek: appendData.nextDayOfWeek,
+                periodNumber: appendData.nextPeriodNumber,
+                date: selectedCourse.date,
+                attendances: nextPayload,
+              }
+            : null,
+      });
+
+      const responses = await Promise.allSettled(
+        requests.map((req) => req.promise)
+      );
+      const results = responses.map((result, index) => ({
+        period: requests[index].period,
+        status: result.status,
+        data: result.status === "fulfilled" ? result.value.data : null,
+        error: result.status === "rejected" ? result.reason : null,
+      }));
+
+      console.log(
+        "Save Attendance Responses:",
+        JSON.stringify(results, null, 2)
+      );
+
+      const errors = results.filter((r) => r.status === "rejected");
+      if (errors.length > 0) {
+        const errorMessages = errors
+          .map(
+            (err) =>
+              `Failed to save attendance for ${err.period}: ${
+                err.error.response?.data?.message || err.error.message
+              }`
+          )
+          .join("; ");
+        throw new Error(errorMessages);
+      }
+
+      const processedPeriods = results.map((r) => r.period).join(" and ");
+      toast.success(`Attendance saved successfully for ${processedPeriods}`, {
+        position: "top-right",
+        autoClose: 3000,
+      });
+      setError(null);
+      setStudents((prev) =>
+        prev.map((student) => ({ ...student, status: "" }))
+      );
+      setNextPeriodStudents((prev) =>
+        prev.map((student) => ({ ...student, status: "" }))
+      );
+      setBulkStatus("");
+      setIsAppendMode(false);
+
+      results.forEach((result, index) => {
+        if (result.data?.data?.skippedStudents?.length > 0) {
+          const adminSkipped = result.data.data.skippedStudents.filter(
+            (s) => s.reason === "Attendance marked by admin"
+          );
+          if (adminSkipped.length > 0) {
+            toast.warn(
+              `Skipped ${adminSkipped.length} student(s) marked by admin for ${result.period} on ${selectedCourse.date}`,
+              { position: "top-right", autoClose: 5000 }
+            );
+          }
+          if (index === 0) {
+            setSkippedStudents(result.data.data.skippedStudents);
+          } else {
+            setNextPeriodSkippedStudents(result.data.data.skippedStudents);
+          }
+        }
+      });
+    } catch (err) {
+      console.error("Error in handleSave:", err);
+      const errorMessage = err.message || "Failed to save attendance";
+      setError(`Error saving attendance: ${errorMessage}`);
+      toast.error(`Error saving attendance: ${errorMessage}`, {
+        position: "top-right",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
-  const updateStudentAttendance = (id, attendance) => {
-    setStudents(students.map((s) => (s.id === id ? { ...s, attendance } : s)));
-  };
+  const attendanceSummary = students.reduce(
+    (acc, student) => {
+      if (student.status === "P") acc.present += 1;
+      else if (student.status === "A") acc.absent += 1;
+      else if (student.status === "OD") acc.onDuty += 1;
+      return acc;
+    },
+    { present: 0, absent: 0, onDuty: 0 }
+  );
 
-  const calculateAttendancePercentage = () => {
-    const presentCount = Math.floor(Math.random() * 15) + 10;
-    const totalClasses = 25;
-    return Math.round((presentCount / totalClasses) * 100);
-  };
+  const nextPeriodAttendanceSummary = nextPeriodStudents.reduce(
+    (acc, student) => {
+      if (student.status === "P") acc.present += 1;
+      else if (student.status === "A") acc.absent += 1;
+      else if (student.status === "OD") acc.onDuty += 1;
+      return acc;
+    },
+    { present: 0, absent: 0, onDuty: 0 }
+  );
 
-  const downloadAttendanceReport = () => {
-    const report = students.map((s) => ({
-      "Roll No": s.rollNo,
-      "Student Name": s.name,
-      "Attendance Percentage": `${calculateAttendancePercentage(s)}%`,
-      "Current Status": s.attendance,
-      Date: selectedDate,
-    }));
-
-    const csvContent = [
-      Object.keys(report[0]).join(","),
-      ...report.map((row) => Object.values(row).join(",")),
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `attendance-report-${selectedDate}.csv`;
-    link.click();
-    showToast("Report Exported!", "The attendance report has been downloaded successfully.");
-  };
-
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case "Present":
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case "Absent":
-        return <XCircle className="w-4 h-4 text-red-500" />;
-      case "OD":
-        return <AlertCircle className="w-4 h-4 text-orange-500" />;
-      default:
-        return null;
-    }
-  };
-
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case "Present":
-        return "bg-green-50 text-green-700 border-green-200";
-      case "Absent":
-        return "bg-red-50 text-red-700 border-red-200";
-      case "OD":
-        return "bg-orange-50 text-orange-700 border-orange-200";
-      default:
-        return "bg-gray-50 text-gray-700 border-gray-200";
-    }
-  };
-
-  const presentCount = students.filter((s) => s.attendance === "Present").length;
-  const absentCount = students.filter((s) => s.attendance === "Absent").length;
-  const odCount = students.filter((s) => s.attendance === "OD").length;
-  const attendanceRate = Math.round(((presentCount + odCount) / students.length) * 100);
-
-  const saveAttendance = () => {
-    showToast("Attendance Saved!", "The attendance data has been successfully saved to the database.");
-  };
+  const dates = generateDates();
+  const timeSlots = generateTimeSlots();
+  const hasDatesSelected = fromDate && toDate && dates.length > 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Header */}
-      <div className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-sm sticky top-0 z-10">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between flex-wrap">
-            <div className="flex items-center space-x-4 mb-4 sm:mb-0">
-              <button
-                onClick={() => navigate(`/staff/options/${courseId}`)}
-                className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5 text-gray-600" />
-              </button>
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl">
-                  <Users className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Attendance Management</h1>
-                  <p className="text-sm text-gray-500">Web Framework using Python - DVK Batch</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end space-y-4 sm:space-y-0 sm:space-x-4">
-              <div className="flex items-center space-x-2 bg-white rounded-xl shadow-sm border border-gray-200 px-4 py-2 w-full sm:w-auto">
-                <Calendar className="w-4 h-4 text-gray-500" />
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="border-0 bg-transparent text-sm font-medium focus:outline-none text-gray-700 w-full"
-                />
-              </div>
-              <div className="flex items-center space-x-2 bg-white rounded-xl shadow-sm border border-gray-200 px-4 py-2 w-full sm:w-auto">
-                <CheckCircle className="w-4 h-4 text-gray-500" />
-                <select
-                  value={bulkAction}
-                  onChange={(e) => {
-                    setBulkAction(e.target.value);
-                    handleBulkAction(e.target.value);
-                  }}
-                  className="border-0 bg-transparent text-sm font-medium focus:outline-none text-gray-700 w-full"
+    <div className="p-6 max-w-7xl mx-auto bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-lg">
+      <h1 className="text-4xl font-bold mb-8 text-center text-blue-900">
+        Attendance Management
+      </h1>
+
+      {error && (
+        <div className="mb-6 p-4 bg-red-100 border-l-4 border-red-500 text-red-800 rounded-lg shadow">
+          {error}
+          <button
+            onClick={() => setError(null)}
+            className="ml-4 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-4 justify-center mb-8">
+        <div className="flex flex-col">
+          <label className="text-sm text-blue-700 mb-1">Degree</label>
+          <select
+            value={selectedDegree}
+            onChange={(e) => {
+              setSelectedDegree(e.target.value);
+              setSelectedBatch("");
+              setSelectedDepartment("");
+              setSelectedSemester("");
+              setError(null);
+              setSkippedStudents([]);
+              setNextPeriodSkippedStudents([]);
+            }}
+            className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="">Select Degree</option>
+            {degrees.length > 0 ? (
+              degrees.map((degree) => (
+                <option key={degree} value={degree}>
+                  {degree}
+                </option>
+              ))
+            ) : (
+              <option value="" disabled>
+                No degrees available
+              </option>
+            )}
+          </select>
+        </div>
+
+        <div className="flex flex-col">
+          <label className="text-sm text-blue-700 mb-1">Batch</label>
+          <select
+            value={selectedBatch}
+            onChange={(e) => {
+              setSelectedBatch(e.target.value);
+              setSelectedDepartment("");
+              setSelectedSemester("");
+              setError(null);
+              setSkippedStudents([]);
+              setNextPeriodSkippedStudents([]);
+            }}
+            disabled={!selectedDegree}
+            className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-blue-50"
+          >
+            <option value="">Select Batch</option>
+            {batches
+              .filter((batch) => batch.degree === selectedDegree)
+              .map((batch) => (
+                <option key={batch.batchId} value={batch.batchId}>
+                  {batch.branch} ({batch.batch})
+                </option>
+              ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col">
+          <label className="text-sm text-blue-700 mb-1">Department</label>
+          <select
+            value={selectedDepartment}
+            onChange={(e) => {
+              setSelectedDepartment(e.target.value);
+              setSelectedSemester("");
+              setError(null);
+              setSkippedStudents([]);
+              setNextPeriodSkippedStudents([]);
+            }}
+            disabled={!selectedBatch}
+            className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-blue-50"
+          >
+            <option value="">Select Department</option>
+            {departments
+              .filter((dept) =>
+                batches.some(
+                  (batch) =>
+                    batch.degree === selectedDegree &&
+                    batch.batchId === parseInt(selectedBatch) &&
+                    batch.branch.toUpperCase() ===
+                      dept.departmentCode.toUpperCase()
+                )
+              )
+              .map((dept) => (
+                <option key={dept.departmentId} value={dept.departmentId}>
+                  {dept.departmentName} ({dept.departmentCode})
+                </option>
+              ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col">
+          <label className="text-sm text-blue-700 mb-1">Semester</label>
+          <select
+            value={selectedSemester}
+            onChange={(e) => {
+              setSelectedSemester(e.target.value);
+              setError(null);
+              setSkippedStudents([]);
+              setNextPeriodSkippedStudents([]);
+            }}
+            disabled={!selectedDepartment}
+            className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-blue-50"
+          >
+            <option value="">Select Semester</option>
+            {semesters.length > 0 ? (
+              semesters.map((sem) => (
+                <option key={sem.semesterId} value={sem.semesterId}>
+                  Semester {sem.semesterNumber}
+                </option>
+              ))
+            ) : (
+              <option value="" disabled>
+                No semesters available
+              </option>
+            )}
+          </select>
+        </div>
+
+        <div className="flex flex-col">
+          <label className="text-sm text-blue-700 mb-1">From Date</label>
+          <input
+            type="date"
+            className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+          />
+        </div>
+
+        <div className="flex flex-col">
+          <label className="text-sm text-blue-700 mb-1">To Date</label>
+          <input
+            type="date"
+            className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            min={fromDate}
+          />
+        </div>
+
+        <div className="flex items-end">
+          <button
+            onClick={handleGenerate}
+            disabled={loading}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg shadow-md disabled:opacity-50 transition-colors duration-200"
+          >
+            {loading ? (
+              <span className="flex items-center">
+                <svg
+                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
                 >
-                  <option value="">Mark All As</option>
-                  <option value="Present">Present</option>
-                  <option value="Absent">Absent</option>
-                  <option value="OD">On Duty</option>
-                </select>
-              </div>
-              <button
-                onClick={downloadAttendanceReport}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2.5 rounded-xl font-medium hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 flex items-center justify-center sm:justify-start space-x-2 shadow-lg hover:shadow-xl w-full sm:w-auto"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download Report</span>
-              </button>
-            </div>
-          </div>
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Generating...
+              </span>
+            ) : (
+              "View Timetable"
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-6 space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white/70 rounded-2xl border border-gray-200/50 p-6 shadow-lg hover:shadow-xl transition-all">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Present</p>
-                <p className="text-3xl font-bold text-green-600 mt-1">{presentCount}</p>
-              </div>
-              <div className="p-3 bg-green-100 rounded-xl">
-                <CheckCircle className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
-          </div>
-          <div className="bg-white/70 rounded-2xl border border-gray-200/50 p-6 shadow-lg hover:shadow-xl transition-all">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Absent</p>
-                <p className="text-3xl font-bold text-red-600 mt-1">{absentCount}</p>
-              </div>
-              <div className="p-3 bg-red-100 rounded-xl">
-                <XCircle className="w-6 h-6 text-red-600" />
-              </div>
-            </div>
-          </div>
-          <div className="bg-white/70 rounded-2xl border border-gray-200/50 p-6 shadow-lg hover:shadow-xl transition-all">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">On Duty</p>
-                <p className="text-3xl font-bold text-orange-600 mt-1">{odCount}</p>
-              </div>
-              <div className="p-3 bg-orange-100 rounded-xl">
-                <AlertCircle className="w-6 h-6 text-orange-600" />
-              </div>
-            </div>
-          </div>
-          <div className="bg-white/70 rounded-2xl border border-gray-200/50 p-6 shadow-lg hover:shadow-xl transition-all">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Attendance Rate</p>
-                <p className="text-3xl font-bold text-blue-600 mt-1">{attendanceRate}%</p>
-              </div>
-              <div className="p-3 bg-blue-100 rounded-xl">
-                <TrendingUp className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-          </div>
-        </div>
+      {hasDatesSelected && (
+        <div className="mb-8">
+          <h2 className="text-2xl font-semibold mb-4 text-blue-800">
+            Staff Timetable
+            {userProfile && (
+              <span className="text-base font-normal ml-2 text-blue-600">
+                ({userProfile.username} - {userProfile.staffId})
+              </span>
+            )}
+          </h2>
 
-        <div className="bg-white/70 rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-4">
-                  <h2 className="text-2xl font-bold">Daily Attendance</h2>
-                  <button
-                    onClick={() => setIsExpanded(!isExpanded)}
-                    className="text-white/80 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/20"
-                  >
-                    {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                  </button>
-                </div>
-                <div className="flex items-center space-x-6 mt-3 text-blue-100">
-                  <div className="flex items-center space-x-2">
-                    <Calendar className="w-4 h-4" />
-                    <span className="text-sm">Course Code: CS101</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Clock className="w-4 h-4" />
-                    <span className="text-sm">
-                      {new Date(selectedDate).toLocaleDateString("en-US", {
-                        weekday: "long",
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </span>
-                  </div>
-                </div>
-              </div>
+          {Object.keys(timetable).length === 0 && !loading && (
+            <div className="text-center text-blue-500 italic">
+              No timetable data available for the selected filters.
             </div>
-          </div>
+          )}
 
-          {isExpanded && (
-            <div className="p-6">
-              <div className="overflow-hidden rounded-xl border border-gray-200">
-                <div className="bg-gray-50/80">
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-4 px-6 py-4 text-sm font-semibold text-gray-700">
-                    <div>Student</div>
-                    <div>Roll Number</div>
-                    <div className="text-center hidden sm:block">Attendance %</div>
-                    <div className="text-center">Current Status</div>
-                    <div className="text-center hidden sm:block">Action</div>
-                  </div>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  {students.map((s, index) => (
-                    <div
-                      key={s.id}
-                      className={`grid grid-cols-3 sm:grid-cols-5 gap-4 px-6 py-4 hover:bg-blue-50/50 transition-colors ${
-                        index % 2 === 0 ? "bg-white" : "bg-gray-50/30"
-                      }`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-                          {s.avatar}
-                        </div>
-                        <p className="font-medium text-gray-900 truncate">{s.name}</p>
-                      </div>
-                      <span className="text-gray-600 font-mono text-sm">{s.rollNo}</span>
-                      <div className="hidden sm:flex justify-center items-center">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-12 h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full"
-                              style={{ width: `${calculateAttendancePercentage(s)}%` }}
-                            ></div>
-                          </div>
-                          <span className="text-sm font-medium text-gray-700">
-                            {calculateAttendancePercentage(s)}%
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex justify-center items-center">
-                        <div
-                          className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg border text-sm font-medium ${getStatusBadge(
-                            s.attendance
-                          )}`}
-                        >
-                          {getStatusIcon(s.attendance)}
-                          <span>{s.attendance}</span>
-                        </div>
-                      </div>
-                      <div className="hidden sm:flex justify-center items-center">
-                        <div className="relative">
-                          <select
-                            value={s.attendance}
-                            onChange={(e) => updateStudentAttendance(s.id, e.target.value)}
-                            className="appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="Present">Present</option>
-                            <option value="Absent">Absent</option>
-                            <option value="OD">On Duty</option>
-                          </select>
-                          <ChevronDown className="absolute right-2 top-2.5 w-4 h-4 text-gray-400" />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="flex justify-end mt-6">
-                <button
-                  onClick={saveAttendance}
-                  className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-3 rounded-xl font-medium hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl"
-                >
-                  Save Attendance for{" "}
-                  {new Date(selectedDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                </button>
-              </div>
+          {Object.keys(timetable).length > 0 && (
+            <div className="overflow-x-auto rounded-lg shadow-md">
+              <table className="w-full border-collapse">
+                <thead className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
+                  <tr>
+                    <th className="border border-blue-300 p-3 text-left">
+                      Date
+                    </th>
+                    <th className="border border-blue-300 p-3 text-left">
+                      Day
+                    </th>
+                    {timeSlots.map(({ periodNumber, time }) => (
+                      <th
+                        key={periodNumber}
+                        className="border border-blue-300 p-3 text-center"
+                      >
+                        Period {periodNumber}
+                        <br />
+                        <span className="text-xs font-normal">{time}</span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dates.map((date) => {
+                    const dayName = new Date(date).toLocaleDateString("en-US", {
+                      weekday: "long",
+                    });
+                    const periods = (timetable[date] || []).reduce((acc, p) => {
+                      acc[p.periodNumber] = p;
+                      return acc;
+                    }, {});
+
+                    return (
+                      <tr
+                        key={date}
+                        className="hover:bg-blue-50 transition-colors duration-150"
+                      >
+                        <td className="border border-blue-200 p-3 font-medium text-blue-900">
+                          {date}
+                        </td>
+                        <td className="border border-blue-200 p-3 text-blue-900">
+                          {dayName}
+                        </td>
+                        {timeSlots.map(({ periodNumber }) => {
+                          const period = periods[periodNumber];
+                          const key = period
+                            ? `${date}-${periodNumber}-${period.courseCode}-${period.sectionId}`
+                            : `${date}-${periodNumber}`;
+                          const canAppend = !!appendPeriods[key];
+
+                          return (
+                            <td
+                              key={`${date}-${periodNumber}`}
+                              className={`border border-blue-200 p-3 text-center ${
+                                period ? "bg-blue-50" : "bg-blue-100"
+                              }`}
+                            >
+                              {period ? (
+                                <button
+                                  onClick={() =>
+                                    handleCourseClick(
+                                      period.courseCode,
+                                      period.sectionId,
+                                      date,
+                                      period.periodNumber
+                                    )
+                                  }
+                                  className="text-md font-semibold text-blue-700 hover:text-blue-900 hover:underline transition-colors duration-150 py-1 px-2 rounded"
+                                >
+                                  {period.courseTitle || period.courseCode}
+                                  {canAppend && (
+                                    <span className="text-xs font-normal ml-1 text-green-600">
+                                      (Append to P{period.periodNumber + 1})
+                                    </span>
+                                  )}
+                                  <br />
+                                  <span className="text-xs font-normal">
+                                    Sec: {period.sectionName || "N/A"}
+                                  </span>
+                                </button>
+                              ) : (
+                                <span className="text-sm text-blue-400 italic">
+                                  No period
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
-      </div>
+      )}
+
+      {selectedCourse && (
+        <div className="mt-8 bg-white p-6 rounded-xl shadow-md">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-semibold text-blue-800">
+              Attendance for {selectedCourse.courseCode}
+            </h2>
+            <div className="text-sm text-blue-600">
+              <p>Date: {selectedCourse.date}</p>
+              <p>Period: {selectedCourse.periodNumber}</p>
+              <p>
+                Section:{" "}
+                {(timetable[selectedCourse.date] || []).find(
+                  (p) =>
+                    p.courseCode === selectedCourse.courseCode &&
+                    p.sectionId === selectedCourse.sectionId
+                )?.sectionName || "N/A"}
+              </p>
+              {appendPeriods[
+                `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseCode}-${selectedCourse.sectionId}`
+              ] && (
+                <p className="text-green-600 font-semibold">
+                  Can append to Period {selectedCourse.periodNumber + 1}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <select
+              value={bulkStatus}
+              onChange={(e) => handleBulkStatusChange(e.target.value)}
+              className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Select Status for All</option>
+              <option value="P">Mark as Present</option>
+              <option value="A">Mark as Absent</option>
+              <option value="OD">Mark as On Duty</option>
+              {appendPeriods[
+                `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseCode}-${selectedCourse.sectionId}`
+              ] && (
+                <option value="APPEND">
+                  Append to Period {selectedCourse.periodNumber + 1}
+                </option>
+              )}
+            </select>
+          </div>
+
+          <div className="flex flex-col lg:flex-row gap-6">
+            <div className="flex-1 overflow-x-auto rounded-lg shadow-md">
+              <h3 className="text-lg font-semibold mb-2 text-blue-800">
+                Period {selectedCourse.periodNumber}
+              </h3>
+              <table className="w-full border-collapse">
+                <thead className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
+                  <tr>
+                    <th className="border border-blue-300 p-3 text-center">
+                      Roll No
+                    </th>
+                    <th className="border border-blue-300 p-3 text-center">
+                      Name
+                    </th>
+                    <th className="border border-blue-300 p-3 text-center">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.length > 0 ? (
+                    students.map((student, idx) => {
+                      const isSkipped = skippedStudents.some(
+                        (skipped) => skipped.rollnumber === student.rollnumber
+                      );
+                      return (
+                        <tr
+                          key={idx}
+                          className="even:bg-blue-50 odd:bg-white hover:bg-blue-100 transition-colors duration-150"
+                        >
+                          <td className="border border-blue-200 p-3 text-center text-blue-900">
+                            {student.rollnumber}
+                          </td>
+                          <td className="border border-blue-200 p-3 text-center text-blue-900">
+                            {student.name}
+                          </td>
+                          <td className="border border-blue-200 p-3 text-center">
+                            {isSkipped ? (
+                              <span className="text-blue-800 font-semibold">
+                                {student.status === "P"
+                                  ? "Present"
+                                  : student.status === "A"
+                                  ? "Absent"
+                                  : "On Duty"}
+                              </span>
+                            ) : (
+                              <select
+                                value={student.status}
+                                onChange={(e) =>
+                                  handleAttendanceChange(
+                                    student.rollnumber,
+                                    e.target.value
+                                  )
+                                }
+                                className={`border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-blue-800 ${
+                                  student.status === "P"
+                                    ? "bg-green-100 border-green-300"
+                                    : student.status === "A"
+                                    ? "bg-red-100 border-red-300"
+                                    : student.status === "OD"
+                                    ? "bg-yellow-100 border-yellow-300"
+                                    : "bg-gray-100 border-gray-300"
+                                }`}
+                                aria-label={`Attendance status for ${student.name}`}
+                                disabled={saving}
+                              >
+                                <option value="">Status</option>
+                                <option value="P">Present</option>
+                                <option value="A">Absent</option>
+                                <option value="OD">On Duty</option>
+                              </select>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan="3"
+                        className="border border-blue-200 p-5 text-center text-blue-500"
+                      >
+                        No students found for this course section.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                {students.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-blue-100">
+                      <td
+                        colSpan="3"
+                        className="border border-blue-200 p-3 text-center text-blue-900 font-semibold"
+                      >
+                        Total: {students.length} students | Present:{" "}
+                        {attendanceSummary.present} | Absent:{" "}
+                        {attendanceSummary.absent} | On Duty:{" "}
+                        {attendanceSummary.onDuty}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+
+            {nextPeriodStudents.length > 0 && (
+              <div className="flex-1 overflow-x-auto rounded-lg shadow-md">
+                <h3 className="text-lg font-semibold mb-2 text-blue-800">
+                  Period{" "}
+                  {
+                    appendPeriods[
+                      `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseCode}-${selectedCourse.sectionId}`
+                    ].nextPeriodNumber
+                  }
+                </h3>
+                <table className="w-full border-collapse">
+                  <thead className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
+                    <tr>
+                      <th className="border border-blue-300 p-3 text-center">
+                        Roll No
+                      </th>
+                      <th className="border border-blue-300 p-3 text-center">
+                        Name
+                      </th>
+                      <th className="border border-blue-300 p-3 text-center">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nextPeriodStudents.map((student, idx) => {
+                      const isSkipped = nextPeriodSkippedStudents.some(
+                        (skipped) => skipped.rollnumber === student.rollnumber
+                      );
+                      return (
+                        <tr
+                          key={idx}
+                          className="even:bg-blue-50 odd:bg-white hover:bg-blue-100 transition-colors duration-150"
+                        >
+                          <td className="border border-blue-200 p-3 text-center text-blue-900">
+                            {student.rollnumber}
+                          </td>
+                          <td className="border border-blue-200 p-3 text-center text-blue-900">
+                            {student.name}
+                          </td>
+                          <td className="border border-blue-200 p-3 text-center">
+                            {isSkipped ? (
+                              <span className="text-blue-800 font-semibold">
+                                {student.status === "P"
+                                  ? "Present"
+                                  : student.status === "A"
+                                  ? "Absent"
+                                  : "On Duty"}
+                              </span>
+                            ) : (
+                              <select
+                                value={student.status}
+                                onChange={(e) =>
+                                  handleNextPeriodAttendanceChange(
+                                    student.rollnumber,
+                                    e.target.value
+                                  )
+                                }
+                                className={`border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-blue-800 ${
+                                  student.status === "P"
+                                    ? "bg-green-100 border-green-300"
+                                    : student.status === "A"
+                                    ? "bg-red-100 border-red-300"
+                                    : student.status === "OD"
+                                    ? "bg-yellow-100 border-yellow-300"
+                                    : "bg-gray-100 border-gray-300"
+                                }`}
+                                aria-label={`Attendance status for ${student.name} (next period)`}
+                                disabled={saving || !isAppendMode}
+                              >
+                                <option value="">Status</option>
+                                <option value="P">Present</option>
+                                <option value="A">Absent</option>
+                                <option value="OD">On Duty</option>
+                              </select>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-blue-100">
+                      <td
+                        colSpan="3"
+                        className="border border-blue-200 p-3 text-center text-blue-900 font-semibold"
+                      >
+                        Total: {nextPeriodStudents.length} students | Present:{" "}
+                        {nextPeriodAttendanceSummary.present} | Absent:{" "}
+                        {nextPeriodAttendanceSummary.absent} | On Duty:{" "}
+                        {nextPeriodAttendanceSummary.onDuty}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {skippedStudents.length > 0 && (
+            <div className="mt-6 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 rounded-lg shadow">
+              <h3 className="text-lg font-semibold mb-2">
+                Skipped Students for Period {selectedCourse.periodNumber} (
+                {skippedStudents.length})
+              </h3>
+              <ul className="list-disc pl-5">
+                {skippedStudents.map((student, idx) => (
+                  <li key={idx}>
+                    Roll No: {student.rollnumber} - {student.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {nextPeriodSkippedStudents.length > 0 && (
+            <div className="mt-6 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 rounded-lg shadow">
+              <h3 className="text-lg font-semibold mb-2">
+                Skipped Students for Period{" "}
+                {
+                  appendPeriods[
+                    `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseCode}-${selectedCourse.sectionId}`
+                  ]?.nextPeriodNumber
+                }{" "}
+                ({nextPeriodSkippedStudents.length})
+              </h3>
+              <ul className="list-disc pl-5">
+                {nextPeriodSkippedStudents.map((student, idx) => (
+                  <li key={idx}>
+                    Roll No: {student.rollnumber} - {student.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="text-center mt-6">
+            <button
+              onClick={handleSave}
+              disabled={saving || !students.length}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg shadow-md disabled:opacity-50 transition-colors duration-200"
+            >
+              {saving ? (
+                <span className="flex items-center justify-center">
+                  <svg
+                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Saving...
+                </span>
+              ) : (
+                `Save Attendance${isAppendMode ? " (with Append)" : ""}`
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
     </div>
   );
-};
-
-export default AttendancePage;
+}

@@ -24,6 +24,7 @@ import OverallConsolidatedMarks from "./pages/admin/OverallConsolidatedMarks";
 import SubjectWiseMarks from "./pages/admin/SubjectWiseMarks";
 import CourseRecommendation from './pages/admin/CourseRecommendation';
 import BatchRegulationAllocation from "./pages/admin/BatchRegulationAllocation";
+import AdminAttendance from "./pages/admin/AttendanceAdmin";
 
 // Staff Pages
 import StaffDashboard from "./pages/staff/Dashboard";
@@ -74,6 +75,7 @@ const routes = [
       { path: "consolidated-marks", element: <OverallConsolidatedMarks /> },
       { path: "subjectWise-marks", element: <SubjectWiseMarks /> },
       { path: "course-recommendation", element: <CourseRecommendation/>},
+      { path: "adminattendance", element: <AdminAttendance /> },
       { path: "*", element: <NotFound /> },
     ],
   },

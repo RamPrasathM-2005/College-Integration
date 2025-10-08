@@ -438,8 +438,9 @@ const initDatabase = async () => {
                 dayOfWeek ENUM('MON','TUE','WED','THU','FRI','SAT') NOT NULL,
                 periodNumber INT NOT NULL CHECK (periodNumber BETWEEN 1 AND 8),
                 attendanceDate DATE NOT NULL,
-                status ENUM('P','A') NOT NULL,
+                status ENUM('P','A','OD') NOT NULL,
                 Deptid INT NOT NULL,
+                updatedBy VARCHAR(150) NOT NULL,
                 UNIQUE (regno, courseId, sectionId, attendanceDate, periodNumber),
                 CONSTRAINT fk_pa_student FOREIGN KEY (regno) REFERENCES student_details(regno)
                     ON UPDATE CASCADE ON DELETE CASCADE,
