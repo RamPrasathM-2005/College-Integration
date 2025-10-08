@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Upload } from 'lucide-react';
-import { toast } from 'react-toastify';
+import { Plus, Upload, Download, FileSpreadsheet } from 'lucide-react';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import Swal from 'sweetalert2';
 import { api, getDepartments } from '../../services/authService.js';
 import * as XLSX from 'xlsx';
 import AddVerticalModal from './AddVerticalModal.jsx';
@@ -131,26 +133,46 @@ const ManageRegulations = () => {
   };
 
   const downloadTemplate = () => {
-    const ws = XLSX.utils.json_to_sheet([
-      {
-        'S. No': '',
-        'Semester No': '',
-        'Course Code': '',
-        'Course Title': '',
-        Category: '',
-        L: '',
-        T: '',
-        P: '',
-        E: '',
-        'Total Contact Periods': '',
-        Credits: '',
-        'Min Marks': '',
-        'Max Marks': '',
-      },
-    ]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'CourseTemplate');
-    XLSX.write(wb, 'course_import_template.xlsx');
+    try {
+      const templateData = [
+        {
+          'S. No': '',
+          'Semester No': '',
+          'Course Code': '',
+          'Course Title': '',
+          Category: '',
+          L: '',
+          T: '',
+          P: '',
+          E: '',
+          'Total Contact Periods': '',
+          Credits: '',
+          'Min Marks': '',
+          'Max Marks': '',
+        },
+      ];
+
+      const ws = XLSX.utils.json_to_sheet(templateData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'CourseTemplate');
+
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'course_import_template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error generating template:', err);
+      toast.error('Failed to generate template: ' + err.message);
+    }
   };
 
   const handleImport = async () => {
@@ -158,11 +180,11 @@ const ManageRegulations = () => {
     console.log('Selected file:', file);
 
     if (!selectedRegulation) {
-      toast.error('Please select a regulation');
+      toast.error('Please select a regulation', { toastId: 'no-regulation-selected' });
       return;
     }
     if (!file) {
-      toast.error('Please select a file');
+      toast.error('Please select a file', { toastId: 'no-file-selected' });
       return;
     }
 
@@ -173,12 +195,21 @@ const ManageRegulations = () => {
     const validExtensions = ['.xls', '.xlsx'];
     const fileExtension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
     if (!validTypes.includes(file.type) && !validExtensions.includes(fileExtension)) {
-      toast.error('Please upload a valid Excel file (.xls or .xlsx)');
+      toast.error('Please upload a valid Excel file (.xls or .xlsx)', { toastId: 'invalid-file-type' });
       return;
     }
 
     setIsImporting(true);
-    toast.info('Processing Excel file and creating semesters if needed...');
+    toast.info('Processing Excel file and creating semesters if needed...', {
+      toastId: 'import-processing',
+      position: 'top-right',
+      autoClose: 5000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+      theme: 'light',
+    });
 
     try {
       const reader = new FileReader();
@@ -209,7 +240,9 @@ const ManageRegulations = () => {
           const expectedHeadersLower = expectedHeaders.map(h => h.toLowerCase());
           if (!headers.every((header, index) => header === expectedHeadersLower[index])) {
             console.log('Actual headers:', headers);
-            toast.error('Invalid Excel format. Please ensure column headers match: ' + expectedHeaders.join(', '));
+            toast.error('Invalid Excel format. Please ensure column headers match: ' + expectedHeaders.join(', '), {
+              toastId: 'invalid-excel-format',
+            });
             return;
           }
 
@@ -292,11 +325,12 @@ const ManageRegulations = () => {
                 >
                   view details
                 </button>.
-              </>
+              </>,
+              { toastId: 'invalid-courses-warning' }
             );
           }
           if (validCourses.length === 0) {
-            toast.error('No valid courses to import.');
+            toast.error('No valid courses to import.', { toastId: 'no-valid-courses' });
             return;
           }
 
@@ -305,15 +339,32 @@ const ManageRegulations = () => {
             courses: validCourses,
             regulationId: selectedRegulation,
           });
-          console.log('API response:', response.data);
-          toast.success(response.data.message);
-          setFile(null);
-          if (selectedVertical && selectedVertical !== 'add') {
-            fetchAvailableCourses(selectedRegulation);
+          console.log('API response:', response);
+          console.log('Response status:', response.status);
+          console.log('Response data:', response.data);
+          console.log('Success message:', response.data?.message || 'Courses added to regulation successfully');
+
+          // Verify successful status code
+          if (response.status < 200 || response.status >= 300) {
+            throw new Error(`API request failed with status ${response.status}`);
           }
+
+          // Show SweetAlert2 success popup
+          await Swal.fire({
+            icon: 'success',
+            title: 'Success',
+            text: response.data?.message || 'Courses added to regulation successfully',
+            timer: 3000,
+            timerProgressBar: true,
+            showConfirmButton: false,
+            position: 'center',
+          });
+
+          setFile(null);
+          await fetchAvailableCourses(selectedRegulation);
         } catch (err) {
           console.error('XLSX processing error:', err);
-          toast.error('Failed to process Excel file: ' + err.message);
+          toast.error('Failed to process Excel file: ' + (err.message || 'Unknown error'), { toastId: 'import-error' });
         } finally {
           setIsImporting(false);
         }
@@ -321,7 +372,7 @@ const ManageRegulations = () => {
       reader.readAsArrayBuffer(file);
     } catch (err) {
       console.error('File reading error:', err);
-      toast.error('Error reading Excel file: ' + err.message);
+      toast.error('Error reading Excel file: ' + (err.message || 'Unknown error'), { toastId: 'file-read-error' });
       setIsImporting(false);
     }
   };
@@ -343,183 +394,239 @@ const ManageRegulations = () => {
     );
   };
 
-const handleAllocateCourses = async () => {
-  if (!selectedVertical || selectedVertical === 'add') {
-    toast.error('Please select a valid vertical');
-    return;
-  }
-  if (selectedCourses.length === 0) {
-    toast.error('Please select at least one course');
-    return;
-  }
+  const handleAllocateCourses = async () => {
+    if (!selectedVertical || selectedVertical === 'add') {
+      toast.error('Please select a valid vertical', { toastId: 'invalid-vertical' });
+      return;
+    }
+    if (selectedCourses.length === 0) {
+      toast.error('Please select at least one course', { toastId: 'no-courses-selected' });
+      return;
+    }
 
-  try {
-    const response = await api.post(`${API_BASE}/regulations/verticals/courses`, {
-      verticalId: selectedVertical,
-      regCourseIds: selectedCourses, // Changed to regCourseIds
-    });
-    toast.success(response.data.message);
-    setSelectedCourses([]);
-    fetchAvailableCourses(selectedRegulation);
-  } catch (err) {
-    toast.error(err.response?.data?.message || 'Error allocating courses');
-  }
-};
+    try {
+      const response = await api.post(`${API_BASE}/regulations/verticals/courses`, {
+        verticalId: selectedVertical,
+        regCourseIds: selectedCourses,
+      });
+      toast.success(response.data.message, { toastId: 'allocate-success' });
+      setSelectedCourses([]);
+      await fetchAvailableCourses(selectedRegulation);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Error allocating courses', { toastId: 'allocate-error' });
+    }
+  };
+
   if (loading) return <div className="p-6 text-center">Loading...</div>;
   if (error) return <div className="p-6 text-red-500 text-center">{error}</div>;
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen flex flex-col items-center">
-      <div className="w-full max-w-7xl mb-6">
-        <div className="flex flex-col sm:flex-row justify-between items-center mb-4">
-          <div className="text-center sm:text-left">
-            <h1 className="text-3xl font-bold text-gray-900">Manage Regulations</h1>
-            <p className="text-gray-600 mt-1">Import courses and manage verticals for regulations</p>
+    <>
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
+      <div className="p-6 bg-gray-50 min-h-screen">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Manage Regulations</h1>
+              <p className="text-gray-600 mt-1">Import courses and manage verticals for regulations</p>
+            </div>
+            <button
+              onClick={() => setShowAddVerticalModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 transition-colors font-medium shadow-sm"
+            >
+              <Plus size={18} />
+              Add Vertical
+            </button>
           </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow-sm mb-6">
-          <div className="flex flex-wrap gap-4 items-end justify-center">
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-              <select
-                value={selectedDept}
-                onChange={handleDeptChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              >
-                <option value="">Select Department</option>
-                {departments.map(dept => (
-                  <option key={dept.Deptid} value={dept.Deptid}>
-                    {dept.Deptname} ({dept.deptCode})
-                  </option>
-                ))}
-              </select>
+
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Department</label>
+                <select
+                  value={selectedDept}
+                  onChange={handleDeptChange}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                >
+                  <option value="">Select Department</option>
+                  {departments.map(dept => (
+                    <option key={dept.Deptid} value={dept.Deptid}>
+                      {dept.Deptname} ({dept.deptCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Regulation</label>
+                <select
+                  value={selectedRegulation}
+                  onChange={handleRegulationChange}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  disabled={!selectedDept}
+                >
+                  <option value="">Select Regulation</option>
+                  {regulations.map(reg => (
+                    <option key={reg.regulationId} value={reg.regulationId}>
+                      {reg.Deptacronym} - {reg.regulationYear}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Regulation</label>
-              <select
-                value={selectedRegulation}
-                onChange={handleRegulationChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                disabled={!selectedDept}
-              >
-                <option value="">Select Regulation</option>
-                {regulations.map(reg => (
-                  <option key={reg.regulationId} value={reg.regulationId}>
-                    {reg.Deptacronym} - {reg.regulationYear}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Upload Excel File</label>
-              <div className="flex items-center justify-center w-full">
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <Upload size={24} className="text-gray-500 mb-2" />
-                    <p className="mb-2 text-sm text-gray-500">
-                      <span className="font-semibold">Click to upload</span> or drag and drop
-                    </p>
-                    <p className="text-xs text-gray-500">XLS or XLSX</p>
-                  </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Import Courses</h2>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-end">
+              <div className="lg:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Upload Excel File</label>
+                <div className="relative">
                   <input
                     type="file"
                     accept=".xls,.xlsx"
                     onChange={handleFileChange}
                     className="hidden"
+                    id="file-upload"
                   />
-                </label>
+                  <label
+                    htmlFor="file-upload"
+                    className="flex items-center justify-center w-full px-4 py-8 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="text-center">
+                      <FileSpreadsheet className="mx-auto h-10 w-10 text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-600">
+                        {file ? (
+                          <span className="font-medium text-blue-600">{file.name}</span>
+                        ) : (
+                          <>
+                            <span className="font-medium text-gray-700">Click to upload</span>
+                            <span className="text-gray-500"> or drag and drop</span>
+                          </>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">XLS or XLSX files only</p>
+                    </div>
+                  </label>
+                </div>
               </div>
-              {file && <p className="mt-2 text-sm text-green-600">Selected file: {file.name}</p>}
-            </div>
-            <div className="flex gap-4">
-              <button
-                onClick={downloadTemplate}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg"
-              >
-                Download Template
-              </button>
-              <button
-                onClick={handleImport}
-                className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg font-semibold"
-                disabled={!selectedRegulation || !file || isImporting}
-              >
-                <Upload size={20} />
-                {isImporting ? 'Importing...' : 'Import Courses'}
-              </button>
-            </div>
-          </div>
-        </div>
-        {selectedRegulation && (
-          <div className="bg-white p-6 rounded-lg shadow-sm mb-6">
-            <div className="flex flex-wrap gap-4 items-end justify-center">
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Vertical</label>
-                <select
-                  value={selectedVertical}
-                  onChange={handleVerticalChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={downloadTemplate}
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors font-medium"
                 >
-                  <option value="">Select Vertical</option>
-                  {verticals.map(vertical => (
-                    <option key={vertical.verticalId} value={vertical.verticalId}>
-                      {vertical.verticalName}
-                    </option>
-                  ))}
-                  <option value="add">Add New Vertical</option>
-                </select>
+                  <Download size={18} />
+                  Download Template
+                </button>
+                <button
+                  onClick={handleImport}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  disabled={!selectedRegulation || !file || isImporting}
+                >
+                  <Upload size={18} />
+                  {isImporting ? 'Importing...' : 'Import Courses'}
+                </button>
               </div>
-              <button
-                onClick={handleAllocateCourses}
-                className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg font-semibold"
-                disabled={!selectedVertical || selectedCourses.length === 0 || selectedVertical === 'add'}
-              >
-                <Plus size={20} />
-                Allocate Courses
-              </button>
             </div>
-            {selectedVertical && selectedVertical !== 'add' && (
-              <div className="mt-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Available PEC/OEC Courses
-                </h3>
-                {availableCourses.length === 0 ? (
-                  <p className="text-gray-500 italic">No available PEC/OEC courses for this regulation.</p>
-                ) : (
-                  <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
-                    {availableCourses.map(course => (
-                      <div
-                        key={course.courseId}
-                        className="flex items-center p-3 bg-gray-50 rounded-lg mb-2 hover:bg-gray-100"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedCourses.includes(course.courseId)}
-                          onChange={() => handleCourseSelection(course.courseId)}
-                          className="mr-3 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <span className="text-sm text-gray-800">
-                          {course.courseCode} - {course.courseTitle} (Semester {course.semesterNumber}, {course.category})
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
+
+          {selectedRegulation && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Allocate Courses to Vertical</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Select Vertical</label>
+                  <select
+                    value={selectedVertical}
+                    onChange={handleVerticalChange}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  >
+                    <option value="">Select Vertical</option>
+                    {verticals.map(vertical => (
+                      <option key={vertical.verticalId} value={vertical.verticalId}>
+                        {vertical.verticalName}
+                      </option>
+                    ))}
+                    <option value="add">Add New Vertical</option>
+                  </select>
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    onClick={handleAllocateCourses}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    disabled={!selectedVertical || selectedCourses.length === 0 || selectedVertical === 'add'}
+                  >
+                    <Plus size={18} />
+                    Allocate Courses ({selectedCourses.length})
+                  </button>
+                </div>
+              </div>
+
+              {selectedVertical && selectedVertical !== 'add' && (
+                <div>
+                  <h3 className="text-base font-medium text-gray-900 mb-3">
+                    Available PEC/OEC Courses
+                  </h3>
+                  {availableCourses.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-gray-200">
+                      No available PEC/OEC courses for this regulation.
+                    </div>
+                  ) : (
+                    <div className="max-h-80 overflow-y-auto border border-gray-200 rounded-lg">
+                      {availableCourses.map(course => (
+                        <label
+                          key={course.courseId}
+                          className="flex items-center p-4 hover:bg-gray-50 transition-colors cursor-pointer border-b border-gray-100 last:border-b-0"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedCourses.includes(course.courseId)}
+                            onChange={() => handleCourseSelection(course.courseId)}
+                            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                          />
+                          <span className="ml-3 text-sm text-gray-800">
+                            <span className="font-medium">{course.courseCode}</span> - {course.courseTitle}
+                            <span className="text-gray-500 ml-2">
+                              (Semester {course.semesterNumber}, {course.category})
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {(showAddVerticalModal || selectedVertical === 'add') && (
+          <AddVerticalModal
+            regulationId={selectedRegulation}
+            setShowAddVerticalModal={setShowAddVerticalModal}
+            onVerticalAdded={() => {
+              fetchVerticals(selectedRegulation);
+              setSelectedVertical('');
+            }}
+          />
         )}
       </div>
-      {(showAddVerticalModal || selectedVertical === 'add') && (
-        <AddVerticalModal
-          regulationId={selectedRegulation}
-          setShowAddVerticalModal={setShowAddVerticalModal}
-          onVerticalAdded={() => {
-            fetchVerticals(selectedRegulation);
-            setSelectedVertical('');
-          }}
-        />
-      )}
-    </div>
+    </>
   );
 };
 
