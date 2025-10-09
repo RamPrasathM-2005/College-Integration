@@ -1,3 +1,4 @@
+// Updated attendanceController.js
 import pool from "../db.js";
 
 // Helper to generate dates between two dates (inclusive)
@@ -55,7 +56,13 @@ export async function getDepartments(req, res, next) {
     const [departments] = await pool.query(
       `SELECT Deptid, Deptacronym, Deptname FROM department ORDER BY Deptacronym`
     );
-    res.json({ status: "success", data: departments });
+    // Map to match frontend expectations
+    const mappedDepartments = departments.map((dept) => ({
+      Deptid: dept.Deptid,
+      deptCode: dept.Deptacronym,
+      Deptname: dept.Deptname,
+    }));
+    res.json({ status: "success", data: mappedDepartments });
   } catch (err) {
     console.error("Error in getDepartments:", err);
     res
@@ -138,8 +145,22 @@ export async function getSemestersByBatchBranch(req, res, next) {
   }
 }
 
+// Helper function to get Userid from staffId
+async function getUserIdFromStaffId(staffId, connection = null) {
+  const conn = connection || pool;
+  const [user] = await conn.query(
+    "SELECT Userid FROM users WHERE staffId = ?",
+    [staffId]
+  );
+  if (user.length === 0) {
+    throw new Error("Staff user not found");
+  }
+  return user[0].Userid;
+}
+
 // Fetch timetable for staff
 export async function getTimetable(req, res, next) {
+  const connection = await pool.getConnection();
   try {
     const { startDate, endDate, degree, batch, branch, Deptid, semesterId } =
       req.query;
@@ -162,11 +183,14 @@ export async function getTimetable(req, res, next) {
       });
     }
 
-    const [periods] = await pool.query(
+    const userId = await getUserIdFromStaffId(staffId, connection);
+
+    const [periods] = await connection.query(
       `
       SELECT 
         t.timetableId, 
-        t.courseCode, 
+        t.courseId, 
+        c.courseCode,
         COALESCE(t.sectionId, NULL) as sectionId, 
         t.dayOfWeek, 
         t.periodNumber, 
@@ -174,18 +198,15 @@ export async function getTimetable(req, res, next) {
         s.sectionName, 
         t.semesterId, 
         t.Deptid,
-        d.Deptacronym as departmentCode,
-        sc.staffId
+        d.Deptacronym as departmentCode
       FROM Timetable t
-      JOIN Course c ON t.courseCode = c.courseCode
-      JOIN StaffCourse sc ON t.courseCode = sc.courseCode AND (t.sectionId = sc.sectionId OR t.sectionId IS NULL)
+      JOIN Course c ON t.courseId = c.courseId
+      JOIN StaffCourse sc ON t.courseId = sc.courseId AND (t.sectionId = sc.sectionId OR t.sectionId IS NULL)
       LEFT JOIN Section s ON t.sectionId = s.sectionId
       JOIN department d ON t.Deptid = d.Deptid
-      JOIN users u ON sc.staffId = u.staffId
       JOIN Semester sm ON t.semesterId = sm.semesterId
       JOIN Batch b ON sm.batchId = b.batchId
-      WHERE sc.staffId = ? 
-        AND u.role = 'Staff'
+      WHERE sc.Userid = ? 
         AND t.isActive = 'YES'
         AND c.isActive = 'YES'
         AND sc.Deptid = t.Deptid
@@ -196,10 +217,10 @@ export async function getTimetable(req, res, next) {
         AND t.semesterId = ?
       ORDER BY FIELD(t.dayOfWeek, 'MON','TUE','WED','THU','FRI','SAT'), t.periodNumber;
       `,
-      [staffId, degree, batch, branch, Deptid, semesterId]
+      [userId, degree, batch, branch, Deptid, semesterId]
     );
 
-    console.log("Fetched Timetable for Staff ID:", staffId);
+    console.log("Fetched Timetable for Staff ID:", staffId, "User ID:", userId);
     console.log("Filters:", {
       startDate,
       endDate,
@@ -246,19 +267,22 @@ export async function getTimetable(req, res, next) {
       status: "error",
       message: err.message || "Failed to fetch timetable",
     });
+  } finally {
+    connection.release();
   }
 }
 
 // Fetch students for a specific period
 export async function getStudentsForPeriod(req, res, next) {
+  const connection = await pool.getConnection();
   try {
-    const { courseCode, sectionId, dayOfWeek, periodNumber } = req.params;
+    const { courseId, sectionId, dayOfWeek, periodNumber } = req.params;
     const date = req.query.date || new Date().toISOString().split("T")[0];
     const staffId = req.user.staffId;
     const deptId = req.user.Deptid || null;
 
     console.log("Input Parameters:", {
-      courseCode,
+      courseId,
       sectionId,
       dayOfWeek,
       periodNumber,
@@ -267,13 +291,15 @@ export async function getStudentsForPeriod(req, res, next) {
       deptId,
     });
 
-    if (!courseCode || !dayOfWeek || !periodNumber) {
+    if (!courseId || !dayOfWeek || !periodNumber) {
       return res.status(400).json({
         status: "error",
         message:
-          "Missing required parameters: courseCode, dayOfWeek, periodNumber",
+          "Missing required parameters: courseId, dayOfWeek, periodNumber",
       });
     }
+
+    const userId = await getUserIdFromStaffId(staffId, connection);
 
     const safeSectionId =
       sectionId && !isNaN(parseInt(sectionId)) ? parseInt(sectionId) : null;
@@ -283,17 +309,17 @@ export async function getStudentsForPeriod(req, res, next) {
       ? `
         SELECT COUNT(*) as count
         FROM StaffCourse 
-        WHERE staffId = ? AND courseCode = ? AND sectionId = ?
+        WHERE Userid = ? AND courseId = ? AND sectionId = ?
         `
       : `
         SELECT COUNT(*) as count
         FROM StaffCourse 
-        WHERE staffId = ? AND courseCode = ?
+        WHERE Userid = ? AND courseId = ?
         `;
     const assignmentParams = safeSectionId
-      ? [staffId, courseCode, safeSectionId]
-      : [staffId, courseCode];
-    const [courseAssignment] = await pool.query(
+      ? [userId, courseId, safeSectionId]
+      : [userId, courseId];
+    const [courseAssignment] = await connection.query(
       assignmentQuery,
       assignmentParams
     );
@@ -315,17 +341,18 @@ export async function getStudentsForPeriod(req, res, next) {
       FROM StudentCourse sc
       JOIN student_details sd ON sc.regno = sd.regno
       JOIN users u ON sd.Userid = u.Userid
-      JOIN Course c ON sc.courseCode = c.courseCode
+      JOIN Course c ON sc.courseId = c.courseId
       JOIN Semester sem ON c.semesterId = sem.semesterId
       JOIN Batch bat ON sem.batchId = bat.batchId
       LEFT JOIN PeriodAttendance pa ON sc.regno = pa.regno 
-        AND pa.courseCode = sc.courseCode 
+        AND pa.courseId = sc.courseId 
         AND pa.sectionId = sc.sectionId
         AND pa.dayOfWeek = ? 
         AND pa.periodNumber = ? 
         AND pa.attendanceDate = ?
-      WHERE sc.courseCode = ? 
-        AND sc.sectionId IN (SELECT sectionId FROM StaffCourse WHERE staffId = ? AND courseCode = ?)
+        AND pa.staffId = ?
+      WHERE sc.courseId = ? 
+        AND sc.sectionId IN (SELECT sectionId FROM StaffCourse WHERE Userid = ? AND courseId = ?)
         ${safeSectionId ? "AND sc.sectionId = ?" : ""}
         AND sd.batch = CAST(bat.batch AS UNSIGNED)
         ${deptId ? "AND sd.Deptid = ?" : ""}
@@ -336,17 +363,18 @@ export async function getStudentsForPeriod(req, res, next) {
       dayOfWeek,
       periodNumber,
       date,
-      courseCode,
-      staffId,
-      courseCode,
+      userId,
+      courseId,
+      userId,
+      courseId,
     ];
     if (safeSectionId) params.push(safeSectionId);
     if (deptId) params.push(deptId);
 
-    const [students] = await pool.query(baseQuery, params);
+    const [students] = await connection.query(baseQuery, params);
 
     console.log("Fetched Students for Period:", {
-      courseCode,
+      courseId,
       sectionId: safeSectionId,
       date,
       dayOfWeek,
@@ -364,18 +392,21 @@ export async function getStudentsForPeriod(req, res, next) {
       status: "error",
       message: err.message || "Internal server error",
     });
+  } finally {
+    connection.release();
   }
 }
 
 // Fetch skipped students for a specific period
 export async function getSkippedStudents(req, res, next) {
+  const connection = await pool.getConnection();
   try {
-    const { courseCode, sectionId, dayOfWeek, periodNumber } = req.params;
+    const { courseId, sectionId, dayOfWeek, periodNumber } = req.params;
     const { date } = req.query;
     const staffId = req.user.staffId;
 
     console.log("Input Parameters for getSkippedStudents:", {
-      courseCode,
+      courseId,
       sectionId,
       dayOfWeek,
       periodNumber,
@@ -383,13 +414,15 @@ export async function getSkippedStudents(req, res, next) {
       staffId,
     });
 
-    if (!courseCode || !dayOfWeek || !periodNumber || !date) {
+    if (!courseId || !dayOfWeek || !periodNumber || !date) {
       return res.status(400).json({
         status: "error",
         message:
-          "Missing required parameters: courseCode, dayOfWeek, periodNumber, or date",
+          "Missing required parameters: courseId, dayOfWeek, periodNumber, or date",
       });
     }
+
+    const userId = await getUserIdFromStaffId(staffId, connection);
 
     const safeSectionId =
       sectionId && !isNaN(parseInt(sectionId)) ? parseInt(sectionId) : null;
@@ -399,17 +432,17 @@ export async function getSkippedStudents(req, res, next) {
       ? `
         SELECT COUNT(*) as count
         FROM StaffCourse 
-        WHERE staffId = ? AND courseCode = ? AND sectionId = ?
+        WHERE Userid = ? AND courseId = ? AND sectionId = ?
         `
       : `
         SELECT COUNT(*) as count
         FROM StaffCourse 
-        WHERE staffId = ? AND courseCode = ?
+        WHERE Userid = ? AND courseId = ?
         `;
     const assignmentParams = safeSectionId
-      ? [staffId, courseCode, safeSectionId]
-      : [staffId, courseCode];
-    const [courseAssignment] = await pool.query(
+      ? [userId, courseId, safeSectionId]
+      : [userId, courseId];
+    const [courseAssignment] = await connection.query(
       assignmentQuery,
       assignmentParams
     );
@@ -431,11 +464,11 @@ export async function getSkippedStudents(req, res, next) {
       FROM PeriodAttendance pa
       JOIN student_details sd ON pa.regno = sd.regno
       JOIN users u ON sd.Userid = u.Userid
-      JOIN Course c ON pa.courseCode = c.courseCode
+      JOIN Course c ON pa.courseId = c.courseId
       JOIN Semester sem ON c.semesterId = sem.semesterId
       JOIN Batch bat ON sem.batchId = bat.batchId
-      WHERE pa.courseCode = ?
-        AND pa.sectionId IN (SELECT sectionId FROM StaffCourse WHERE staffId = ? AND courseCode = ?)
+      WHERE pa.courseId = ?
+        AND pa.sectionId IN (SELECT sectionId FROM StaffCourse WHERE Userid = ? AND courseId = ?)
         ${safeSectionId ? "AND pa.sectionId = ?" : ""}
         AND pa.dayOfWeek = ?
         AND pa.periodNumber = ?
@@ -445,14 +478,14 @@ export async function getSkippedStudents(req, res, next) {
       ORDER BY pa.regno
     `;
 
-    const params = [courseCode, staffId, courseCode];
+    const params = [courseId, userId, courseId];
     if (safeSectionId) params.push(safeSectionId);
     params.push(dayOfWeek, periodNumber, date);
 
-    const [skippedStudents] = await pool.query(baseQuery, params);
+    const [skippedStudents] = await connection.query(baseQuery, params);
 
     console.log("Fetched Skipped Students:", {
-      courseCode,
+      courseId,
       sectionId: safeSectionId,
       dayOfWeek,
       periodNumber,
@@ -470,21 +503,22 @@ export async function getSkippedStudents(req, res, next) {
       status: "error",
       message: err.message || "Failed to fetch skipped students",
     });
+  } finally {
+    connection.release();
   }
 }
 
 // Mark attendance for a period
 export async function markAttendance(req, res, next) {
   const connection = await pool.getConnection();
-
   try {
-    const { courseCode, sectionId, dayOfWeek, periodNumber } = req.params;
+    const { courseId, sectionId, dayOfWeek, periodNumber } = req.params;
     const { date, attendances } = req.body;
     const staffId = req.user.staffId;
     const deptId = req.user.Deptid || 1;
 
     console.log("markAttendance Input:", {
-      courseCode,
+      courseId,
       sectionId,
       dayOfWeek,
       periodNumber,
@@ -509,29 +543,31 @@ export async function markAttendance(req, res, next) {
         .json({ status: "error", message: "Date is required" });
     }
 
-    if (!courseCode || !dayOfWeek || !periodNumber) {
+    if (!courseId || !dayOfWeek || !periodNumber) {
       return res.status(400).json({
         status: "error",
         message:
-          "Missing required parameters: courseCode, dayOfWeek, periodNumber",
+          "Missing required parameters: courseId, dayOfWeek, periodNumber",
       });
     }
+
+    const userId = await getUserIdFromStaffId(staffId, connection);
 
     // Check staff assignment to course (any section if safeSectionId null, or specific)
     const assignmentQuery = safeSectionId
       ? `
         SELECT COUNT(*) as count
         FROM StaffCourse 
-        WHERE staffId = ? AND courseCode = ? AND sectionId = ?
+        WHERE Userid = ? AND courseId = ? AND sectionId = ?
         `
       : `
         SELECT COUNT(*) as count
         FROM StaffCourse 
-        WHERE staffId = ? AND courseCode = ?
+        WHERE Userid = ? AND courseId = ?
         `;
     const assignmentParams = safeSectionId
-      ? [staffId, courseCode, safeSectionId]
-      : [staffId, courseCode];
+      ? [userId, courseId, safeSectionId]
+      : [userId, courseId];
     const [courseAssignment] = await connection.query(
       assignmentQuery,
       assignmentParams
@@ -540,7 +576,7 @@ export async function markAttendance(req, res, next) {
     if (courseAssignment[0].count === 0) {
       return res.status(403).json({
         status: "error",
-        message: `You are not authorized to mark attendance for course ${courseCode}${
+        message: `You are not authorized to mark attendance for course ${courseId}${
           safeSectionId ? ` section ${safeSectionId}` : ""
         }`,
       });
@@ -550,15 +586,15 @@ export async function markAttendance(req, res, next) {
       `
       SELECT COUNT(*) as count
       FROM Timetable
-      WHERE courseCode = ? AND dayOfWeek = ? AND periodNumber = ?
+      WHERE courseId = ? AND dayOfWeek = ? AND periodNumber = ?
       `,
-      [courseCode, dayOfWeek, periodNumber]
+      [courseId, dayOfWeek, periodNumber]
     );
 
     if (timetableCheck[0].count === 0) {
       return res.status(400).json({
         status: "error",
-        message: `Invalid period: courseCode ${courseCode}, dayOfWeek ${dayOfWeek}, periodNumber ${periodNumber} not found in Timetable`,
+        message: `Invalid period: courseId ${courseId}, dayOfWeek ${dayOfWeek}, periodNumber ${periodNumber} not found in Timetable`,
       });
     }
 
@@ -568,13 +604,13 @@ export async function markAttendance(req, res, next) {
       `SELECT c.semesterId, s.semesterNumber 
        FROM Course c 
        JOIN Semester s ON c.semesterId = s.semesterId
-       WHERE c.courseCode = ?`,
-      [courseCode]
+       WHERE c.courseId = ?`,
+      [courseId]
     );
 
     if (!courseInfo[0]) {
       throw new Error(
-        `Course ${courseCode} not found or invalid semester information`
+        `Course ${courseId} not found or invalid semester information`
       );
     }
     const semesterNumber = courseInfo[0].semesterNumber;
@@ -596,17 +632,17 @@ export async function markAttendance(req, res, next) {
       const [studentCourse] = await connection.query(
         `SELECT sectionId, COUNT(*) as count 
          FROM StudentCourse 
-         WHERE regno = ? AND courseCode = ?
+         WHERE regno = ? AND courseId = ?
          GROUP BY sectionId
          HAVING count = 1`, // Ensure enrolled in exactly one section for course
-        [att.rollnumber, courseCode]
+        [att.rollnumber, courseId]
       );
 
       if (studentCourse.length === 0 || studentCourse[0].count !== 1) {
         console.log("Student not enrolled or multi-section:", att.rollnumber);
         skippedStudents.push({
           rollnumber: att.rollnumber,
-          reason: `Not enrolled in course ${courseCode} (or enrolled in multiple sections)`,
+          reason: `Not enrolled in course ${courseId} (or enrolled in multiple sections)`,
         });
         continue;
       }
@@ -626,8 +662,8 @@ export async function markAttendance(req, res, next) {
       const [staffSectionCheck] = await connection.query(
         `SELECT COUNT(*) as count 
          FROM StaffCourse 
-         WHERE staffId = ? AND courseCode = ? AND sectionId = ?`,
-        [staffId, courseCode, thisStudentSectionId]
+         WHERE Userid = ? AND courseId = ? AND sectionId = ?`,
+        [userId, courseId, thisStudentSectionId]
       );
 
       if (staffSectionCheck[0].count === 0) {
@@ -642,10 +678,10 @@ export async function markAttendance(req, res, next) {
         `
         SELECT updatedBy 
         FROM PeriodAttendance 
-        WHERE regno = ? AND courseCode = ? AND sectionId = ? 
+        WHERE regno = ? AND courseId = ? AND sectionId = ? 
           AND attendanceDate = ? AND periodNumber = ?
         `,
-        [att.rollnumber, courseCode, thisStudentSectionId, date, periodNumber]
+        [att.rollnumber, courseId, thisStudentSectionId, date, periodNumber]
       );
 
       if (existingRecord[0]?.updatedBy === "admin") {
@@ -661,7 +697,7 @@ export async function markAttendance(req, res, next) {
       await connection.query(
         `
         INSERT INTO PeriodAttendance 
-        (regno, staffId, courseCode, sectionId, semesterNumber, dayOfWeek, periodNumber, attendanceDate, status, Deptid, updatedBy)
+        (regno, staffId, courseId, sectionId, semesterNumber, dayOfWeek, periodNumber, attendanceDate, status, Deptid, updatedBy)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE 
           status = ?,
@@ -669,8 +705,8 @@ export async function markAttendance(req, res, next) {
         `,
         [
           att.rollnumber,
-          staffId,
-          courseCode,
+          userId,
+          courseId,
           thisStudentSectionId,
           semesterNumber,
           dayOfWeek,
@@ -694,7 +730,7 @@ export async function markAttendance(req, res, next) {
     await connection.commit();
 
     console.log("Attendance Marked Successfully:", {
-      courseCode,
+      courseId,
       sectionId: safeSectionId,
       date,
       periodNumber,
@@ -712,7 +748,7 @@ export async function markAttendance(req, res, next) {
     console.error("Error in markAttendance:", {
       message: err.message,
       stack: err.stack,
-      courseCode: req.params.courseCode,
+      courseId: req.params.courseId,
       sectionId: req.params.sectionId,
       periodNumber: req.params.periodNumber,
       date: req.body.date,
@@ -721,7 +757,7 @@ export async function markAttendance(req, res, next) {
       status: "error",
       message:
         err.message ||
-        `Failed to mark attendance for course ${req.params.courseCode} period ${req.params.periodNumber}`,
+        `Failed to mark attendance for course ${req.params.courseId} period ${req.params.periodNumber}`,
     });
   } finally {
     connection.release();

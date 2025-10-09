@@ -196,6 +196,7 @@ const Timetable = () => {
   }, [selectedSem]);
 
   const handleCellClick = (day, periodId, periodType) => {
+    console.log(day, periodId, periodType);
     if (periodType !== 'class' || !editMode || !selectedSem) return;
     setSelectedCell({ day, periodId });
     setAllocationMode('');
@@ -215,7 +216,10 @@ const Timetable = () => {
       if (!backendPeriodNumber) {
         throw new Error('Invalid period number');
       }
-      const selectedCourse = allocationMode === 'select' ? courses.find(c => c.courseCode === courseValue) : null;
+     const selectedCourse =
+       allocationMode === "select"
+         ? courses.find((c) => String(c.courseId) === String(courseValue))
+         : null;
       await axios.post(`${API_BASE_URL}/api/admin/timetable/entry`, {
         courseId: allocationMode === 'select' ? selectedCourse.courseId : courseValue,
         courseTitle: allocationMode === 'manual' ? courseValue : undefined,
@@ -304,10 +308,10 @@ const Timetable = () => {
           <div className="h-full flex flex-col justify-between text-left">
             <div>
               <div className="font-semibold text-xs text-gray-900 mb-1 truncate">
-                {cellData.courseCode || 'N/A'}
+                {cellData.courseId || 'N/A'}
               </div>
-              <div className="text-xs text-gray-600 truncate" title={cellData.courseTitle || cellData.courseCode || 'N/A'}>
-                {cellData.courseTitle || cellData.courseCode || 'N/A'}
+              <div className="text-xs text-gray-600 truncate" title={cellData.courseTitle || cellData.courseId || 'N/A'}>
+                {cellData.courseTitle || cellData.courseId || 'N/A'}
                 {cellData.sectionName ? ` (${cellData.sectionName})` : ''}
               </div>
             </div>
@@ -587,8 +591,8 @@ const Timetable = () => {
                   <option value="" disabled>Select a course...</option>
                   {courses.length > 0 ? (
                     courses.map(course => (
-                      <option key={course.courseId} value={course.courseCode}>
-                        {course.courseCode} - {course.courseTitle}
+                      <option key={course.courseId} value={course.courseId}>
+                        {course.courseId} - {course.courseTitle}
                       </option>
                     ))
                   ) : (
@@ -633,7 +637,7 @@ const Timetable = () => {
                 const scheduleCount = timetableData.filter(entry => entry.courseId === course.courseId).length;
                 return (
                   <div key={course.courseId} className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow bg-white">
-                    <div className="font-semibold text-gray-900">{course.courseCode}</div>
+                    <div className="font-semibold text-gray-900">{course.courseId}</div>
                     <div className="text-sm text-gray-600 mb-1">{course.courseTitle}</div>
                     <div className={`flex items-center gap-2 text-xs font-medium p-2 rounded-md ${scheduleCount > 0 ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
                       <Clock className="w-3.5 h-3.5" />
@@ -652,8 +656,8 @@ const Timetable = () => {
               .filter(entry => !courses.some(course => course.courseId === entry.courseId))
               .map(entry => (
                 <div key={entry.timetableId} className="p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow bg-white">
-                  <div className="font-semibold text-gray-900">{entry.courseCode}</div>
-                  <div className="text-sm text-gray-600 mb-1">{entry.courseTitle || entry.courseCode}</div>
+                  <div className="font-semibold text-gray-900">{entry.courseId}</div>
+                  <div className="text-sm text-gray-600 mb-1">{entry.courseTitle || entry.courseId}</div>
                   <div className="text-xs text-gray-600">
                     {entry.dayOfWeek}, {getPeriodName(entry.periodNumber)}
                     {entry.sectionName ? ` (${entry.sectionName})` : ''}

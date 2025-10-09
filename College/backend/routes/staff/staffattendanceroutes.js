@@ -1,3 +1,4 @@
+// Updated staffattendanceroutes.js
 import express from "express";
 import {
   getTimetable,
@@ -14,15 +15,15 @@ router.use(protect);
 
 router.get("/timetable", getTimetable);
 router.get(
-  "/students/:courseCode/:sectionId/:dayOfWeek/:periodNumber",
+  "/students/:courseId/:sectionId/:dayOfWeek/:periodNumber",
   getStudentsForPeriod
 );
 router.get(
-  "/skipped/:courseCode/:sectionId/:dayOfWeek/:periodNumber",
+  "/skipped/:courseId/:sectionId/:dayOfWeek/:periodNumber",
   getSkippedStudents
 );
 router.post(
-  "/mark/:courseCode/:sectionId/:dayOfWeek/:periodNumber",
+  "/mark/:courseId/:sectionId/:dayOfWeek/:periodNumber",
   markAttendance
 );
 

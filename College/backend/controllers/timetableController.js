@@ -124,11 +124,11 @@ export const getTimetable = catchAsync(async (req, res) => {
 
     const [rows] = await connection.execute(
       `
-      SELECT t.timetableId, c.courseCode, 
+      SELECT t.timetableId, c.courseId, 
              COALESCE(t.sectionId, 0) AS sectionId, 
              UPPER(COALESCE(t.dayOfWeek, '')) AS dayOfWeek, 
              t.periodNumber, 
-             COALESCE(c.courseTitle, c.courseCode) AS courseTitle, 
+             COALESCE(c.courseTitle, c.courseId) AS courseTitle, 
              COALESCE(s.sectionName, 'No Section') AS sectionName
       FROM Timetable t
       LEFT JOIN Course c ON t.courseId = c.courseId AND c.isActive = "YES"
@@ -209,11 +209,11 @@ export const getTimetableByFilters = catchAsync(async (req, res) => {
 
     const [rows] = await connection.execute(
       `
-      SELECT t.timetableId, c.courseCode, 
+      SELECT t.timetableId, c.courseId, 
              COALESCE(t.sectionId, 0) AS sectionId, 
              UPPER(COALESCE(t.dayOfWeek, '')) AS dayOfWeek, 
              t.periodNumber, 
-             COALESCE(c.courseTitle, c.courseCode) AS courseTitle, 
+             COALESCE(c.courseTitle, c.courseId) AS courseTitle, 
              COALESCE(s.sectionName, 'No Section') AS sectionName
       FROM Timetable t
       LEFT JOIN Course c ON t.courseId = c.courseId AND c.isActive = "YES"
@@ -322,7 +322,7 @@ export const createTimetableEntry = catchAsync(async (req, res) => {
     // Validate courseId and courseTitle
     let finalCourseTitle = courseTitle;
     const [courseRows] = await connection.execute(
-      'SELECT courseId, courseTitle, courseCode FROM Course WHERE courseId = ? AND isActive = "YES"',
+      'SELECT courseId, courseTitle FROM Course WHERE courseId = ? AND isActive = "YES"',
       [courseId]
     );
     if (courseRows.length > 0) {
@@ -357,7 +357,7 @@ export const createTimetableEntry = catchAsync(async (req, res) => {
       message: 'Timetable entry created successfully',
       data: {
         timetableId: result.insertId,
-        courseCode: courseRows.length > 0 ? courseRows[0].courseCode : courseId,
+        courseId: courseRows.length > 0 ? courseRows[0].courseId : courseId,
         courseTitle: finalCourseTitle,
         sectionId: sectionId || null,
         dayOfWeek,

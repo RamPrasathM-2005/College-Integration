@@ -1,11 +1,5 @@
+// attendancecontroller.js - Fixed SQL syntax by removing invalid // comments
 import pool from "../db.js";
-
-// Note: To enable admins to mark attendance, run the following SQL to modify the schema:
-// ALTER TABLE PeriodAttendance
-//   CHANGE COLUMN staffId markedBy INT NOT NULL,
-//   DROP FOREIGN KEY fk_pa_staff,
-//   ADD CONSTRAINT fk_pa_markedBy FOREIGN KEY (markedBy) REFERENCES users(Userid) ON UPDATE CASCADE ON DELETE CASCADE;
-// This changes the reference to Userid instead of staffId, allowing admins (who may not have staffId) to mark attendance.
 
 // Helper to generate dates between two dates (inclusive)
 function generateDates(start, end) {
@@ -43,22 +37,23 @@ export async function getTimetableAdmin(req, res, next) {
       });
     }
 
-    // Fetch all periods for the selected filters (no staff filter for admin)
+    // Fetch all periods for the selected filters (use LEFT JOIN for Course to detect nulls)
     const [periods] = await pool.query(
       `
 SELECT 
     t.timetableId, 
-    t.courseCode, 
+    t.courseId, 
     COALESCE(t.sectionId, NULL) as sectionId, 
     t.dayOfWeek, 
     t.periodNumber, 
     c.courseTitle, 
+    c.courseCode AS courseCode,
     s.sectionName, 
     t.semesterId, 
     t.Deptid,
     d.Deptacronym as departmentCode
 FROM Timetable t
-JOIN Course c ON t.courseCode = c.courseCode
+LEFT JOIN Course c ON t.courseId = c.courseId
 LEFT JOIN Section s ON t.sectionId = s.sectionId
 JOIN department d ON t.Deptid = d.Deptid
 JOIN Semester sm ON t.semesterId = sm.semesterId
@@ -70,13 +65,18 @@ WHERE
   AND t.Deptid = ?
   AND t.semesterId = ?
   AND t.isActive = 'YES'
-  AND c.isActive = 'YES'
+  AND (c.isActive = 'YES' OR c.courseId IS NULL)
 ORDER BY FIELD(t.dayOfWeek, 'MON','TUE','WED','THU','FRI','SAT'), t.periodNumber;
       `,
       [degree, batch, branch, Deptid, semesterId]
     );
 
-    // Log the fetched periods
+    // Filter out periods where courseId is null (invalid timetable entries)
+    const validPeriods = periods.filter(
+      (p) => p.courseId != null && p.courseId !== null
+    );
+
+    // Log the fetched periods and any null courseId issues
     console.log("Fetched Timetable for Admin");
     console.log("Filters:", {
       startDate,
@@ -87,7 +87,14 @@ ORDER BY FIELD(t.dayOfWeek, 'MON','TUE','WED','THU','FRI','SAT'), t.periodNumber
       Deptid,
       semesterId,
     });
-    console.log("Periods:", JSON.stringify(periods, null, 2));
+    if (validPeriods.length < periods.length) {
+      console.warn(
+        `Filtered out ${
+          periods.length - validPeriods.length
+        } periods with null courseId`
+      );
+    }
+    console.log("Valid Periods:", JSON.stringify(validPeriods, null, 2));
 
     // Generate dates between startDate and endDate
     const dates = generateDates(startDate, endDate);
@@ -109,7 +116,7 @@ ORDER BY FIELD(t.dayOfWeek, 'MON','TUE','WED','THU','FRI','SAT'), t.periodNumber
       const dayOfWeekStr = dayMap[dayOfWeekNum];
       let periodsForDay = [];
       if (dayOfWeekStr) {
-        periodsForDay = periods
+        periodsForDay = validPeriods
           .filter((row) => row.dayOfWeek === dayOfWeekStr)
           .map((period) => ({
             ...period,
@@ -133,14 +140,14 @@ ORDER BY FIELD(t.dayOfWeek, 'MON','TUE','WED','THU','FRI','SAT'), t.periodNumber
 
 export async function getStudentsForPeriodAdmin(req, res, next) {
   try {
-    const { courseCode, sectionId, dayOfWeek, periodNumber } = req.params;
+    const { courseId, sectionId, dayOfWeek, periodNumber } = req.params;
     const date = req.query.date || new Date().toISOString().split("T")[0];
     const userId = req.user.Userid;
     const deptId = req.user.Deptid || null;
 
     // Log input parameters for debugging
     console.log("Input Parameters:", {
-      courseCode,
+      courseId,
       sectionId,
       dayOfWeek,
       periodNumber,
@@ -150,11 +157,11 @@ export async function getStudentsForPeriodAdmin(req, res, next) {
     });
 
     // Validate params
-    if (!courseCode || !dayOfWeek || !periodNumber) {
+    if (!courseId || !dayOfWeek || !periodNumber) {
       return res.status(400).json({
         status: "error",
         message:
-          "Missing required parameters: courseCode, dayOfWeek, periodNumber",
+          "Missing required parameters: courseId, dayOfWeek, periodNumber",
       });
     }
 
@@ -171,7 +178,7 @@ export async function getStudentsForPeriodAdmin(req, res, next) {
       SELECT 
         sd.regno AS rollnumber, 
         u.username AS name, 
-        COALESCE(pa.status, 'P') AS status,
+        COALESCE(pa.status, '') AS status,
         sc.sectionId,
         s.sectionName
       FROM StudentCourse sc
@@ -179,29 +186,38 @@ export async function getStudentsForPeriodAdmin(req, res, next) {
       JOIN users u ON sd.Userid = u.Userid
       LEFT JOIN Section s ON sc.sectionId = s.sectionId
       LEFT JOIN PeriodAttendance pa ON sc.regno = pa.regno 
-        AND pa.courseCode = ? 
+        AND pa.courseId = ? 
         AND pa.sectionId = sc.sectionId
         AND pa.dayOfWeek = ? 
         AND pa.periodNumber = ? 
         AND pa.attendanceDate = ?
-      WHERE sc.courseCode = ? 
+      WHERE sc.courseId = ? 
         ${deptId ? "AND sd.Deptid = ?" : ""}
       ORDER BY sd.regno
       `,
       deptId
-        ? [courseCode, dayOfWeek, periodNumber, date, courseCode, deptId]
-        : [courseCode, dayOfWeek, periodNumber, date, courseCode]
+        ? [courseId, dayOfWeek, periodNumber, date, courseId, deptId]
+        : [courseId, dayOfWeek, periodNumber, date, courseId]
     );
 
-    // Log the fetched students
+    // Log the fetched students (including if no students enrolled)
     console.log("Fetched Students for Period (Admin):", {
-      courseCode,
+      courseId,
       sectionId: "all",
       date,
       dayOfWeek,
       periodNumber,
       totalStudents: students.length,
+      hasEnrollments: students.length > 0,
     });
+
+    if (students.length === 0) {
+      console.log(
+        "No students enrolled for courseId:",
+        courseId,
+        "- Check StudentCourse table for enrollments."
+      );
+    }
 
     res.json({ status: "success", data: students || [] });
   } catch (err) {
@@ -221,19 +237,19 @@ export async function markAttendanceAdmin(req, res, next) {
   const connection = await pool.getConnection();
 
   try {
-    const { courseCode, sectionId, dayOfWeek, periodNumber } = req.params;
+    const { courseId, sectionId, dayOfWeek, periodNumber } = req.params;
     const { date, attendances } = req.body;
-    const staffId = req.user.staffId; // Use Userid for admin
+    const markedBy = req.user.Userid; // Use Userid for admin
     const deptId = req.user.Deptid || 1;
 
     // Log input for debugging
     console.log("markAttendanceAdmin Input:", {
-      courseCode,
+      courseId,
       sectionId,
       dayOfWeek,
       periodNumber,
       date,
-      staffId,
+      markedBy,
       deptId,
       attendances,
     });
@@ -253,11 +269,11 @@ export async function markAttendanceAdmin(req, res, next) {
       });
     }
 
-    if (!courseCode || !dayOfWeek || !periodNumber) {
+    if (!courseId || !dayOfWeek || !periodNumber) {
       return res.status(400).json({
         status: "error",
         message:
-          "Missing required parameters: courseCode, dayOfWeek, periodNumber",
+          "Missing required parameters: courseId, dayOfWeek, periodNumber",
       });
     }
 
@@ -266,9 +282,9 @@ export async function markAttendanceAdmin(req, res, next) {
       `
       SELECT COUNT(*) as count
       FROM Timetable
-      WHERE courseCode = ? AND dayOfWeek = ? AND periodNumber = ?
+      WHERE courseId = ? AND dayOfWeek = ? AND periodNumber = ?
       `,
-      [courseCode, dayOfWeek, periodNumber]
+      [courseId, dayOfWeek, periodNumber]
     );
 
     if (timetableCheck[0].count === 0) {
@@ -285,8 +301,8 @@ export async function markAttendanceAdmin(req, res, next) {
       `SELECT c.semesterId, s.semesterNumber 
        FROM Course c 
        JOIN Semester s ON c.semesterId = s.semesterId
-       WHERE c.courseCode = ?`,
-      [courseCode]
+       WHERE c.courseId = ?`,
+      [courseId]
     );
 
     if (!courseInfo[0]) {
@@ -311,8 +327,8 @@ export async function markAttendanceAdmin(req, res, next) {
 
       // Fetch the student's sectionId for this course
       const [studentCourse] = await connection.query(
-        `SELECT sectionId FROM StudentCourse WHERE regno = ? AND courseCode = ?`,
-        [att.rollnumber, courseCode]
+        `SELECT sectionId FROM StudentCourse WHERE regno = ? AND courseId = ?`,
+        [att.rollnumber, courseId]
       );
 
       if (studentCourse.length === 0) {
@@ -327,21 +343,21 @@ export async function markAttendanceAdmin(req, res, next) {
       const studentSectionId = studentCourse[0].sectionId;
       const statusToSave = att.status === "OD" ? "OD" : att.status;
 
-      // Insert or update PeriodAttendance
+      // Insert or update PeriodAttendance (using markedBy column)
       await connection.query(
         `
         INSERT INTO PeriodAttendance 
-        (regno, staffId, courseCode, sectionId, semesterNumber, dayOfWeek, periodNumber, attendanceDate, status, Deptid, updatedBy)
+        (regno, staffId, courseId, sectionId, semesterNumber, dayOfWeek, periodNumber, attendanceDate, status, Deptid, updatedBy)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE 
           status = ?,
-          staffId = ?,
+          staffId =null,
           updatedBy = ?
         `,
         [
           att.rollnumber,
-          staffId, // Use Userid as markedBy
-          courseCode,
+          markedBy,
+          courseId,
           studentSectionId,
           semesterNumber,
           dayOfWeek,
@@ -351,26 +367,16 @@ export async function markAttendanceAdmin(req, res, next) {
           deptId,
           "admin",
           statusToSave,
-          staffId,
+          markedBy,
           "admin",
         ]
       );
-      console.log("SQL Insert Data:", [
-        att.rollnumber,
-        staffId,
-        courseCode,
-        studentSectionId,
-        semesterNumber,
-        dayOfWeek,
-        periodNumber,
-        date,
-        statusToSave,
-        deptId,
-        "admin",
-       
-      ]);
-      // Update DayAttendance
-      
+
+      console.log("Processed attendance for student:", {
+        rollnumber: att.rollnumber,
+        status: statusToSave,
+        sectionId: studentSectionId,
+      });
 
       processedStudents.push({
         rollnumber: att.rollnumber,
@@ -383,11 +389,11 @@ export async function markAttendanceAdmin(req, res, next) {
 
     // Log successful and skipped records
     console.log("Attendance Marked Successfully (Admin):", {
-      courseCode,
+      courseId,
       sectionId: sectionId || "all",
       date,
       periodNumber,
-      staffId,
+      markedBy,
       processedStudents,
       skippedStudents,
     });

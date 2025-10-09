@@ -276,15 +276,22 @@ export default function AdminAttendanceGenerator() {
 
   // Handle when user clicks on a course in the timetable
   const handleCourseClick = async (
-    courseCode,
+    courseId,
     sectionId,
     date,
-    periodNumber
+    periodNumber,
+    courseTitle
   ) => {
     setError(null);
     setStudents([]);
     setSelectedCourse(null);
     setBulkStatus(""); // Reset bulk status dropdown
+
+    if (!courseId) {
+      setError("Invalid course ID selected.");
+      toast.error("Invalid course ID selected.", { position: "top-right" });
+      return;
+    }
 
     const safeSectionId = "all";
 
@@ -294,7 +301,7 @@ export default function AdminAttendanceGenerator() {
         .toUpperCase();
 
       console.log("Calling getStudentsForPeriod with:", {
-        courseCode,
+        courseId,
         sectionId: safeSectionId,
         dayOfWeek,
         periodNumber,
@@ -302,7 +309,7 @@ export default function AdminAttendanceGenerator() {
       });
 
       const res = await axios.get(
-        `${API_BASE_URL}/api/admin/attendance/students/${courseCode}/${safeSectionId}/${dayOfWeek}/${periodNumber}`,
+        `${API_BASE_URL}/api/admin/attendance/students/${courseId}/${safeSectionId}/${dayOfWeek}/${periodNumber}`,
         {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
           params: { date },
@@ -322,7 +329,8 @@ export default function AdminAttendanceGenerator() {
         }));
         setStudents(updatedStudents);
         setSelectedCourse({
-          courseCode,
+          courseId,
+          courseTitle,
           sectionId: safeSectionId,
           date,
           periodNumber,
@@ -408,7 +416,8 @@ export default function AdminAttendanceGenerator() {
     setSaving(true);
     try {
       console.log("Sending attendance payload:", {
-        courseCode: selectedCourse.courseCode,
+        courseId: selectedCourse.courseId,
+        courseTitle: selectedCourse.courseTitle,
         sectionId: selectedCourse.sectionId,
         dayOfWeek: selectedCourse.dayOfWeek,
         periodNumber: selectedCourse.periodNumber,
@@ -417,7 +426,7 @@ export default function AdminAttendanceGenerator() {
       });
 
       const res = await axios.post(
-        `${API_BASE_URL}/api/admin/attendance/mark/${selectedCourse.courseCode}/${selectedCourse.sectionId}/${selectedCourse.dayOfWeek}/${selectedCourse.periodNumber}`,
+        `${API_BASE_URL}/api/admin/attendance/mark/${selectedCourse.courseId}/${selectedCourse.sectionId}/${selectedCourse.dayOfWeek}/${selectedCourse.periodNumber}`,
         { date: selectedCourse.date, attendances: payload },
         {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -439,7 +448,7 @@ export default function AdminAttendanceGenerator() {
             prev.map((student) => ({ ...student, status: student.status })) // Keep the saved status
         );
         // Optionally reload to fetch fresh data:
-        // handleCourseClick(selectedCourse.courseCode, selectedCourse.sectionId, selectedCourse.date, selectedCourse.periodNumber);
+        // handleCourseClick(selectedCourse.courseId, selectedCourse.sectionId, selectedCourse.date, selectedCourse.periodNumber, selectedCourse.courseTitle);
       } else {
         throw new Error(res.data.message || "Save failed");
       }
@@ -730,15 +739,18 @@ export default function AdminAttendanceGenerator() {
                                 <button
                                   onClick={() =>
                                     handleCourseClick(
-                                      period.courseCode,
+                                      period.courseId,
                                       period.sectionId,
                                       date,
-                                      period.periodNumber
+                                      period.periodNumber,
+                                      period.courseTitle
                                     )
                                   }
                                   className="text-md font-semibold text-blue-700 hover:text-blue-900 hover:underline transition-colors duration-150 py-1 px-2 rounded"
+                                  disabled={!period.courseId}
                                 >
-                                  {period.courseTitle || period.courseCode}
+                                  {period.courseTitle ||
+                                    `Course ${period.courseId}`}
                                   <br />
                                   <span className="text-xs font-normal">
                                     Sec: {period.sectionName || "N/A"}
@@ -766,7 +778,8 @@ export default function AdminAttendanceGenerator() {
         <div className="mt-8 bg-white p-6 rounded-xl shadow-md">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-semibold text-blue-800">
-              Attendance for {selectedCourse.courseCode}
+              Attendance for {selectedCourse.courseTitle} (ID:{" "}
+              {selectedCourse.courseId})
             </h2>
             <div className="text-sm text-blue-600">
               <p>Date: {selectedCourse.date}</p>

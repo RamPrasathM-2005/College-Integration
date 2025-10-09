@@ -177,17 +177,16 @@ export default function AttendanceGenerator() {
           const next = periods[i + 1];
           if (
             next.periodNumber === current.periodNumber + 1 &&
-            current.courseCode === next.courseCode &&
-            current.sectionId === next.sectionId &&
-            current.staffId === next.staffId
+            current.courseId === next.courseId &&
+            current.sectionId === next.sectionId
           ) {
-            const key = `${date}-${current.periodNumber}-${current.courseCode}-${current.sectionId}`;
+            const key = `${date}-${current.periodNumber}-${current.courseId}-${current.sectionId || 'null'}`;
             append[key] = {
               nextPeriodNumber: next.periodNumber,
               nextDayOfWeek: new Date(date)
                 .toLocaleDateString("en-US", { weekday: "short" })
                 .toUpperCase(),
-              nextCourseCode: next.courseCode,
+              nextCourseId: next.courseId,
               nextSectionId: next.sectionId,
             };
           }
@@ -312,7 +311,7 @@ export default function AttendanceGenerator() {
   };
 
   const handleCourseClick = async (
-    courseCode,
+    courseId,
     sectionId,
     date,
     periodNumber
@@ -335,7 +334,7 @@ export default function AttendanceGenerator() {
         .toUpperCase();
 
       console.log("Calling getStudentsForPeriod with:", {
-        courseCode,
+        courseId,
         sectionId: safeSectionId,
         dayOfWeek,
         periodNumber,
@@ -343,7 +342,7 @@ export default function AttendanceGenerator() {
       });
 
       const res = await axios.get(
-        `${API_BASE_URL}/api/staff/attendance/students/${courseCode}/${safeSectionId}/${dayOfWeek}/${periodNumber}`,
+        `${API_BASE_URL}/api/staff/attendance/students/${courseId}/${safeSectionId}/${dayOfWeek}/${periodNumber}`,
         {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
           params: { date },
@@ -364,7 +363,8 @@ export default function AttendanceGenerator() {
       }));
       setStudents(updatedStudents);
       setSelectedCourse({
-        courseCode,
+        courseId,
+        courseCode: (timetable[date] || []).find(p => p.courseId === courseId)?.courseCode,
         sectionId: safeSectionId,
         date,
         periodNumber,
@@ -373,7 +373,7 @@ export default function AttendanceGenerator() {
 
       try {
         const skippedRes = await axios.get(
-          `${API_BASE_URL}/api/staff/attendance/skipped/${courseCode}/${safeSectionId}/${dayOfWeek}/${periodNumber}`,
+          `${API_BASE_URL}/api/staff/attendance/skipped/${courseId}/${safeSectionId}/${dayOfWeek}/${periodNumber}`,
           {
             headers: {
               Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -401,7 +401,7 @@ export default function AttendanceGenerator() {
         console.error("Error fetching skipped students:", skipErr);
       }
 
-      const key = `${date}-${periodNumber}-${courseCode}-${safeSectionId}`;
+      const key = `${date}-${periodNumber}-${courseId}-${safeSectionId || 'null'}`;
       const appendData = appendPeriods[key];
       console.log(
         "Checking for append period with key:",
@@ -412,7 +412,7 @@ export default function AttendanceGenerator() {
       if (appendData) {
         try {
           const nextRes = await axios.get(
-            `${API_BASE_URL}/api/staff/attendance/students/${appendData.nextCourseCode}/${appendData.nextSectionId}/${appendData.nextDayOfWeek}/${appendData.nextPeriodNumber}`,
+            `${API_BASE_URL}/api/staff/attendance/students/${appendData.nextCourseId}/${appendData.nextSectionId}/${appendData.nextDayOfWeek}/${appendData.nextPeriodNumber}`,
             {
               headers: {
                 Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -435,7 +435,7 @@ export default function AttendanceGenerator() {
               }))
             );
             const nextSkippedRes = await axios.get(
-              `${API_BASE_URL}/api/staff/attendance/skipped/${appendData.nextCourseCode}/${appendData.nextSectionId}/${appendData.nextDayOfWeek}/${appendData.nextPeriodNumber}`,
+              `${API_BASE_URL}/api/staff/attendance/skipped/${appendData.nextCourseId}/${appendData.nextSectionId}/${appendData.nextDayOfWeek}/${appendData.nextPeriodNumber}`,
               {
                 headers: {
                   Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -588,7 +588,7 @@ export default function AttendanceGenerator() {
       return;
     }
 
-    const key = `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseCode}-${selectedCourse.sectionId}`;
+    const key = `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseId}-${selectedCourse.sectionId || 'null'}`;
     const appendData = appendPeriods[key];
     console.log("appendData for key", key, ":", appendData);
 
@@ -650,7 +650,7 @@ export default function AttendanceGenerator() {
       requests.push({
         period: `P${selectedCourse.periodNumber}`,
         promise: axios.post(
-          `${API_BASE_URL}/api/staff/attendance/mark/${selectedCourse.courseCode}/${selectedCourse.sectionId}/${selectedCourse.dayOfWeek}/${selectedCourse.periodNumber}`,
+          `${API_BASE_URL}/api/staff/attendance/mark/${selectedCourse.courseId}/${selectedCourse.sectionId}/${selectedCourse.dayOfWeek}/${selectedCourse.periodNumber}`,
           { date: selectedCourse.date, attendances: payload },
           {
             headers: {
@@ -660,8 +660,9 @@ export default function AttendanceGenerator() {
         ),
       });
 
+      let nextPayload;
       if (isAppendMode && appendData && nextPeriodStudents.length > 0) {
-        const nextPayload = nextPeriodStudents
+        nextPayload = nextPeriodStudents
           .filter(
             (student) =>
               !nextPeriodSkippedStudents.some(
@@ -679,7 +680,7 @@ export default function AttendanceGenerator() {
         requests.push({
           period: `P${appendData.nextPeriodNumber}`,
           promise: axios.post(
-            `${API_BASE_URL}/api/staff/attendance/mark/${appendData.nextCourseCode}/${appendData.nextSectionId}/${appendData.nextDayOfWeek}/${appendData.nextPeriodNumber}`,
+            `${API_BASE_URL}/api/staff/attendance/mark/${appendData.nextCourseId}/${appendData.nextSectionId}/${appendData.nextDayOfWeek}/${appendData.nextPeriodNumber}`,
             { date: selectedCourse.date, attendances: nextPayload },
             {
               headers: {
@@ -698,7 +699,7 @@ export default function AttendanceGenerator() {
 
       console.log("Sending attendance payloads:", {
         firstPeriod: {
-          courseCode: selectedCourse.courseCode,
+          courseId: selectedCourse.courseId,
           sectionId: selectedCourse.sectionId,
           dayOfWeek: selectedCourse.dayOfWeek,
           periodNumber: selectedCourse.periodNumber,
@@ -708,7 +709,7 @@ export default function AttendanceGenerator() {
         nextPeriod:
           isAppendMode && appendData && nextPeriodStudents.length > 0
             ? {
-                courseCode: appendData.nextCourseCode,
+                courseId: appendData.nextCourseId,
                 sectionId: appendData.nextSectionId,
                 dayOfWeek: appendData.nextDayOfWeek,
                 periodNumber: appendData.nextPeriodNumber,
@@ -1073,7 +1074,7 @@ export default function AttendanceGenerator() {
                         {timeSlots.map(({ periodNumber }) => {
                           const period = periods[periodNumber];
                           const key = period
-                            ? `${date}-${periodNumber}-${period.courseCode}-${period.sectionId}`
+                            ? `${date}-${periodNumber}-${period.courseId}-${period.sectionId || 'null'}` 
                             : `${date}-${periodNumber}`;
                           const canAppend = !!appendPeriods[key];
 
@@ -1088,7 +1089,7 @@ export default function AttendanceGenerator() {
                                 <button
                                   onClick={() =>
                                     handleCourseClick(
-                                      period.courseCode,
+                                      period.courseId,
                                       period.sectionId,
                                       date,
                                       period.periodNumber
@@ -1138,12 +1139,12 @@ export default function AttendanceGenerator() {
                 Section:{" "}
                 {(timetable[selectedCourse.date] || []).find(
                   (p) =>
-                    p.courseCode === selectedCourse.courseCode &&
+                    p.courseId === selectedCourse.courseId &&
                     p.sectionId === selectedCourse.sectionId
                 )?.sectionName || "N/A"}
               </p>
               {appendPeriods[
-                `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseCode}-${selectedCourse.sectionId}`
+                `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseId}-${selectedCourse.sectionId || 'null'}`
               ] && (
                 <p className="text-green-600 font-semibold">
                   Can append to Period {selectedCourse.periodNumber + 1}
@@ -1163,7 +1164,7 @@ export default function AttendanceGenerator() {
               <option value="A">Mark as Absent</option>
               <option value="OD">Mark as On Duty</option>
               {appendPeriods[
-                `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseCode}-${selectedCourse.sectionId}`
+                `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseId}-${selectedCourse.sectionId || 'null'}`
               ] && (
                 <option value="APPEND">
                   Append to Period {selectedCourse.periodNumber + 1}
@@ -1272,7 +1273,8 @@ export default function AttendanceGenerator() {
                         {attendanceSummary.onDuty}
                       </td>
                     </tr>
-                  </tfoot>
+                  
+                </tfoot>
                 )}
               </table>
             </div>
@@ -1283,7 +1285,7 @@ export default function AttendanceGenerator() {
                   Period{" "}
                   {
                     appendPeriods[
-                      `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseCode}-${selectedCourse.sectionId}`
+                      `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseId}-${selectedCourse.sectionId || 'null'}`
                     ].nextPeriodNumber
                   }
                 </h3>
@@ -1398,7 +1400,7 @@ export default function AttendanceGenerator() {
                 Skipped Students for Period{" "}
                 {
                   appendPeriods[
-                    `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseCode}-${selectedCourse.sectionId}`
+                    `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseId}-${selectedCourse.sectionId || 'null'}`
                   ]?.nextPeriodNumber
                 }{" "}
                 ({nextPeriodSkippedStudents.length})

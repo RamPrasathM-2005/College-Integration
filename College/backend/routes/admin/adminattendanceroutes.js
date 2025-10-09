@@ -1,10 +1,10 @@
-// adminAttendanceRoutes.js
+// adminAttendanceRoutes.js - Updated with consistent param names (:courseId for POST)
 import express from "express";
 import {
   getTimetableAdmin,
   getStudentsForPeriodAdmin,
   markAttendanceAdmin,
-} from "../../controllers/adminattendancecontroller.js"; // Assume new controller file
+} from "../../controllers/adminattendancecontroller.js";
 import { protect } from "../../controllers/auth/authController.js";
 
 const router = express.Router();
@@ -15,11 +15,11 @@ router.use(protect);
 // Admin-specific routes
 router.get("/timetable", getTimetableAdmin);
 router.get(
-  "/students/:courseCode/:sectionId/:dayOfWeek/:periodNumber",
+  "/students/:courseId/all/:dayOfWeek/:periodNumber",
   getStudentsForPeriodAdmin
 );
 router.post(
-  "/mark/:courseCode/:sectionId/:dayOfWeek/:periodNumber",
+  "/mark/:courseId/:sectionId/:dayOfWeek/:periodNumber",
   markAttendanceAdmin
 );
 
