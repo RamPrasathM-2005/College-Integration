@@ -1,4 +1,3 @@
-
 import axios from 'axios';
 
 const API_URL = 'http://localhost:4000/api/staff';
@@ -16,6 +15,10 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Remove Content-Type for FormData requests to let axios set the correct boundary
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
     return config;
   },
   (error) => Promise.reject(error)
@@ -32,28 +35,38 @@ api.interceptors.response.use(
   }
 );
 
-export const createTool = async (coId, tool) => {
+export const importMarksForTool = async (toolId, file) => {
   try {
-    console.log('createTool called with:', { coId, tool });
-    const response = await api.post(`/tools/${coId}`, tool);
+    if (!file || !(file instanceof File)) {
+      console.error('No valid file provided for upload:', file);
+      throw new Error('No file selected');
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Debug FormData contents
+    console.log('Sending import request for toolId:', toolId);
+    console.log('File details:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    });
+    for (let [key, value] of formData.entries()) {
+      console.log(`FormData entry: ${key}=`, value);
+    }
+
+    const response = await api.post(`/marks/${toolId}/import`, formData);
+    console.log('Import response:', response.data);
     return response.data;
   } catch (error) {
-    console.error('Error in createTool:', error);
-    throw error;
+    console.error('Error in importMarksForTool:', error);
+    console.error('Response data:', error.response?.data);
+    console.error('Response status:', error.response?.status);
+    throw new Error(error.response?.data?.message || 'Failed to import marks');
   }
 };
 
-export const saveStudentMarksForTool = async (toolId, marks) => {
-  try {
-    console.log('saveStudentMarksForTool called with:', { toolId, marks });
-    const response = await api.post(`/marks/${toolId}`, marks);
-    return response.data;
-  } catch (error) {
-    console.error('Error in saveStudentMarksForTool:', error);
-    throw error;
-  }
-};
-
+// ... other functions remain unchanged
 export const getCoursePartitions = async (courseCode) => {
   const response = await api.get(`/partitions/${courseCode}`);
   return response.data.data;
@@ -84,6 +97,17 @@ export const saveToolsForCO = async (coId, tools) => {
   return response.data;
 };
 
+export const createTool = async (coId, tool) => {
+  try {
+    console.log('createTool called with:', { coId, tool });
+    const response = await api.post(`/tools/${coId}`, tool);
+    return response.data;
+  } catch (error) {
+    console.error('Error in createTool:', error);
+    throw error;
+  }
+};
+
 export const updateTool = async (toolId, tool) => {
   const response = await api.put(`/tools/${toolId}`, tool);
   return response.data;
@@ -108,18 +132,15 @@ export const getStudentMarksForTool = async (toolId) => {
   }
 };
 
-export const importMarksForTool = async (toolId, file) => {
-  if (!file) {
-    console.error('No file provided for upload');
-    throw new Error('No file selected');
+export const saveStudentMarksForTool = async (toolId, marks) => {
+  try {
+    console.log('saveStudentMarksForTool called with:', { toolId, marks });
+    const response = await api.post(`/marks/${toolId}`, marks);
+    return response.data;
+  } catch (error) {
+    console.error('Error in saveStudentMarksForTool:', error);
+    throw error;
   }
-  const formData = new FormData();
-  formData.append('file', file);
-  console.log('Sending import request for toolId:', toolId, 'File:', file.name, 'Size:', file.size);
-  const response = await api.post(`/marks/${toolId}/import`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-  return response.data;
 };
 
 export const exportCoWiseCsv = async (coId) => {
@@ -170,9 +191,9 @@ export const getMyCourses = async () => {
   return response.data.data || [];
 };
 
-export const getStudentsForSection = async (courseId, sectionId) => {
+export const getStudentsForSection = async (courseCode, sectionId) => {
   try {
-    const response = await api.get(`/students/${courseId}/section/${sectionId}`);
+    const response = await api.get(`/students/${courseCode}/section/${sectionId}`);
     return response.data.data || [];
   } catch (error) {
     console.error('Error in getStudentsForSection:', error);

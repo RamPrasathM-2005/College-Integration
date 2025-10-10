@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Download } from 'lucide-react';
+import { ClipLoader } from 'react-spinners';
 import useInternalMarks from '../../hooks/useInternalMarks';
 import InternalMarksTable from '../../components/tables/InternalMarksTable';
 
@@ -10,8 +11,19 @@ const InternalMarks = () => {
   const navigate = useNavigate();
   const course = location.state?.course ?? { name: courseCode };
   const { students, courseOutcomes, calculateInternalMarks, exportCourseWiseCsv, error, loading } = useInternalMarks(courseCode);
+  const [minLoading, setMinLoading] = useState(true);
 
-  console.log('InternalMarks - courseCode:', courseCode, 'students:', students, 'courseOutcomes:', courseOutcomes); // Debug log
+  console.log('InternalMarks - courseCode:', courseCode, 'students:', students, 'courseOutcomes:', courseOutcomes, 'loading:', loading);
+
+  // Ensure minimum loading duration of 1.5 seconds for UX
+  useEffect(() => {
+    if (!loading) {
+      const timer = setTimeout(() => {
+        setMinLoading(false);
+      }, 1500); // 1.5 seconds minimum loading
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
 
   const handleExport = async () => {
     try {
@@ -47,7 +59,7 @@ const InternalMarks = () => {
             <button
               onClick={handleExport}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors shadow-sm"
-              disabled={loading || error}
+              disabled={loading || minLoading || error}
             >
               <Download className="h-5 w-5 mr-2" /> Export to CSV
             </button>
@@ -57,9 +69,16 @@ const InternalMarks = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {loading ? (
-          <div className="text-center text-gray-600 bg-white p-6 rounded-lg shadow-md">
-            Loading marks...
+        {loading || minLoading ? (
+          <div className="flex flex-col items-center justify-center bg-white p-6 rounded-lg shadow-md">
+            <ClipLoader
+              color="#2563eb"
+              loading={true}
+              size={50}
+              aria-label="Loading Spinner"
+              data-testid="loader"
+            />
+            <p className="mt-4 text-gray-600 text-lg">Loading marks...</p>
           </div>
         ) : error ? (
           <div className="bg-red-50 border-l-4 border-red-500 text-red-800 p-4 rounded-lg shadow-md">
