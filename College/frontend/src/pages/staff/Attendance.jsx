@@ -16,14 +16,6 @@ export default function AttendanceGenerator() {
   const [error, setError] = useState(null);
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
-  const [degrees, setDegrees] = useState([]);
-  const [batches, setBatches] = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [semesters, setSemesters] = useState([]);
-  const [selectedDegree, setSelectedDegree] = useState("");
-  const [selectedBatch, setSelectedBatch] = useState("");
-  const [selectedDepartment, setSelectedDepartment] = useState("");
-  const [selectedSemester, setSelectedSemester] = useState("");
   const [bulkStatus, setBulkStatus] = useState("");
   const [skippedStudents, setSkippedStudents] = useState([]);
   const [nextPeriodSkippedStudents, setNextPeriodSkippedStudents] = useState(
@@ -40,6 +32,16 @@ export default function AttendanceGenerator() {
       setError("No authentication token found. Please log in.");
     }
 
+    try {
+      const userData = JSON.parse(localStorage.getItem("user") || "{}");
+      setUserProfile(userData);
+    } catch (err) {
+      console.error("Failed to load user profile", err);
+      setError("Failed to load user profile");
+    }
+  }, []);
+
+  useEffect(() => {
     if (!fromDate) {
       const today = new Date();
       const formattedToday = today.toISOString().split("T")[0];
@@ -48,123 +50,13 @@ export default function AttendanceGenerator() {
       nextWeek.setDate(today.getDate() + 6);
       setToDate(nextWeek.toISOString().split("T")[0]);
     }
-
-    try {
-      const userData = JSON.parse(localStorage.getItem("user") || "{}");
-      setUserProfile(userData);
-    } catch (err) {
-      console.error("Failed to load user profile", err);
-      setError("Failed to load user profile");
-    }
-  }, [fromDate]);
-
-  useEffect(() => {
-    const fetchDegreesAndBatches = async () => {
-      try {
-        const response = await axios.get(
-          `${API_BASE_URL}/api/admin/timetable/batches`
-        );
-        console.log("Batches API response:", response.data);
-        if (
-          response.data?.status === "success" &&
-          Array.isArray(response.data.data)
-        ) {
-          const uniqueDegrees = [
-            ...new Set(response.data.data.map((batch) => batch.degree)),
-          ];
-          setDegrees(uniqueDegrees);
-          setBatches(response.data.data);
-          setError(null);
-        } else {
-          throw new Error("Invalid response structure: data is not an array");
-        }
-      } catch (error) {
-        console.error("Error fetching degrees and batches:", error);
-        setError(
-          error.response?.data?.message || "Failed to load degrees and batches."
-        );
-        setDegrees([]);
-        setBatches([]);
-      }
-    };
-    fetchDegreesAndBatches();
   }, []);
 
   useEffect(() => {
-    const fetchDepartments = async () => {
-      try {
-        const response = await axios.get(
-          `${API_BASE_URL}/api/admin/timetable/departments`
-        );
-        console.log("Departments API response:", response.data);
-        if (
-          response.data?.status === "success" &&
-          Array.isArray(response.data.data)
-        ) {
-          const mappedDepartments = response.data.data.map((dept) => ({
-            departmentId: dept.Deptid,
-            departmentCode: dept.deptCode,
-            departmentName: dept.Deptname,
-          }));
-          setDepartments(mappedDepartments);
-          setError(null);
-        } else {
-          throw new Error("Invalid response structure: data is not an array");
-        }
-      } catch (error) {
-        console.error("Error fetching departments:", error);
-        setError(
-          error.response?.data?.message || "Failed to load departments."
-        );
-        setDepartments([]);
-      }
-    };
-    fetchDepartments();
-  }, []);
-
-  useEffect(() => {
-    if (selectedDegree && selectedBatch && selectedDepartment) {
-      const fetchSemesters = async () => {
-        try {
-          const selectedBatchData = batches.find(
-            (batch) => batch.batchId === parseInt(selectedBatch)
-          );
-          if (!selectedBatchData) {
-            throw new Error("Selected batch not found");
-          }
-          const response = await axios.get(
-            `${API_BASE_URL}/api/admin/semesters/by-batch-branch`,
-            {
-              params: {
-                degree: selectedDegree,
-                batch: selectedBatchData.batch,
-                branch: selectedBatchData.branch,
-              },
-            }
-          );
-          console.log("Semesters API response:", response.data);
-          if (
-            response.data?.status === "success" &&
-            Array.isArray(response.data.data)
-          ) {
-            setSemesters(response.data.data);
-            setError(null);
-          } else {
-            throw new Error("Invalid response structure: data is not an array");
-          }
-        } catch (error) {
-          console.error("Error fetching semesters:", error);
-          setError(
-            error.response?.data?.message || "Failed to load semesters."
-          );
-          setSemesters([]);
-        }
-      };
-      fetchSemesters();
-    } else {
-      setSemesters([]);
+    if (fromDate && toDate && new Date(fromDate) <= new Date(toDate) && !loading) {
+      handleGenerate();
     }
-  }, [selectedDegree, selectedBatch, selectedDepartment, batches]);
+  }, [fromDate, toDate]);
 
   useEffect(() => {
     const identifyConsecutivePeriods = () => {
@@ -180,7 +72,9 @@ export default function AttendanceGenerator() {
             current.courseId === next.courseId &&
             current.sectionId === next.sectionId
           ) {
-            const key = `${date}-${current.periodNumber}-${current.courseId}-${current.sectionId || 'null'}`;
+            const key = `${date}-${current.periodNumber}-${current.courseId}-${
+              current.sectionId || "null"
+            }`;
             append[key] = {
               nextPeriodNumber: next.periodNumber,
               nextDayOfWeek: new Date(date)
@@ -243,18 +137,6 @@ export default function AttendanceGenerator() {
       toast.error("Please select both dates", { position: "top-right" });
       return;
     }
-    if (
-      !selectedDegree ||
-      !selectedBatch ||
-      !selectedDepartment ||
-      !selectedSemester
-    ) {
-      setError("Please select degree, batch, department, and semester");
-      toast.error("Please select degree, batch, department, and semester", {
-        position: "top-right",
-      });
-      return;
-    }
     if (new Date(fromDate) > new Date(toDate)) {
       setError("From date must be before or equal to to date");
       toast.error("From date must be before or equal to to date", {
@@ -265,12 +147,6 @@ export default function AttendanceGenerator() {
 
     setLoading(true);
     try {
-      const selectedBatchData = batches.find(
-        (batch) => batch.batchId === parseInt(selectedBatch)
-      );
-      if (!selectedBatchData) {
-        throw new Error("Selected batch not found");
-      }
       const res = await axios.get(
         `${API_BASE_URL}/api/staff/attendance/timetable`,
         {
@@ -278,18 +154,13 @@ export default function AttendanceGenerator() {
           params: {
             startDate: fromDate,
             endDate: toDate,
-            degree: selectedDegree,
-            batch: selectedBatchData.batch,
-            branch: selectedBatchData.branch,
-            Deptid: selectedDepartment,
-            semesterId: selectedSemester,
           },
         }
       );
       console.log("Timetable Response:", res.data);
       if (!res.data.data?.timetable) {
-        setError("No timetable data received for the selected filters.");
-        toast.error("No timetable data received for the selected filters.", {
+        setError("No timetable data received for the selected dates.");
+        toast.error("No timetable data received for the selected dates.", {
           position: "top-right",
         });
       } else {
@@ -310,12 +181,7 @@ export default function AttendanceGenerator() {
     }
   };
 
-  const handleCourseClick = async (
-    courseId,
-    sectionId,
-    date,
-    periodNumber
-  ) => {
+  const handleCourseClick = async (courseId, sectionId, date, periodNumber) => {
     setError(null);
     setStudents([]);
     setNextPeriodStudents([]);
@@ -364,7 +230,8 @@ export default function AttendanceGenerator() {
       setStudents(updatedStudents);
       setSelectedCourse({
         courseId,
-        courseCode: (timetable[date] || []).find(p => p.courseId === courseId)?.courseCode,
+        courseCode: (timetable[date] || []).find((p) => p.courseId === courseId)
+          ?.courseCode,
         sectionId: safeSectionId,
         date,
         periodNumber,
@@ -401,7 +268,9 @@ export default function AttendanceGenerator() {
         console.error("Error fetching skipped students:", skipErr);
       }
 
-      const key = `${date}-${periodNumber}-${courseId}-${safeSectionId || 'null'}`;
+      const key = `${date}-${periodNumber}-${courseId}-${
+        safeSectionId || "null"
+      }`;
       const appendData = appendPeriods[key];
       console.log(
         "Checking for append period with key:",
@@ -410,6 +279,7 @@ export default function AttendanceGenerator() {
         appendData
       );
       if (appendData) {
+        setIsAppendMode(true);
         try {
           const nextRes = await axios.get(
             `${API_BASE_URL}/api/staff/attendance/students/${appendData.nextCourseId}/${appendData.nextSectionId}/${appendData.nextDayOfWeek}/${appendData.nextPeriodNumber}`,
@@ -515,9 +385,7 @@ export default function AttendanceGenerator() {
   const handleBulkStatusChange = (status) => {
     console.log("handleBulkStatusChange called with status:", status);
     setBulkStatus(status);
-    const newAppendMode = status === "APPEND";
-    setIsAppendMode(newAppendMode);
-    if (status && status !== "APPEND") {
+    if (status && status !== "") {
       setStudents((prev) =>
         prev.map((student) => {
           const isSkipped = skippedStudents.some(
@@ -541,7 +409,7 @@ export default function AttendanceGenerator() {
         { position: "top-right" }
       );
     }
-    console.log("isAppendMode set to:", newAppendMode);
+    console.log("Bulk mode applied");
   };
 
   const handleSave = async () => {
@@ -588,7 +456,9 @@ export default function AttendanceGenerator() {
       return;
     }
 
-    const key = `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseId}-${selectedCourse.sectionId || 'null'}`;
+    const key = `${selectedCourse.date}-${selectedCourse.periodNumber}-${
+      selectedCourse.courseId
+    }-${selectedCourse.sectionId || "null"}`;
     const appendData = appendPeriods[key];
     console.log("appendData for key", key, ":", appendData);
 
@@ -821,7 +691,6 @@ export default function AttendanceGenerator() {
       <h1 className="text-4xl font-bold mb-8 text-center text-blue-900">
         Attendance Management
       </h1>
-
       {error && (
         <div className="mb-6 p-4 bg-red-100 border-l-4 border-red-500 text-red-800 rounded-lg shadow">
           {error}
@@ -833,125 +702,7 @@ export default function AttendanceGenerator() {
           </button>
         </div>
       )}
-
       <div className="flex flex-wrap gap-4 justify-center mb-8">
-        <div className="flex flex-col">
-          <label className="text-sm text-blue-700 mb-1">Degree</label>
-          <select
-            value={selectedDegree}
-            onChange={(e) => {
-              setSelectedDegree(e.target.value);
-              setSelectedBatch("");
-              setSelectedDepartment("");
-              setSelectedSemester("");
-              setError(null);
-              setSkippedStudents([]);
-              setNextPeriodSkippedStudents([]);
-            }}
-            className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="">Select Degree</option>
-            {degrees.length > 0 ? (
-              degrees.map((degree) => (
-                <option key={degree} value={degree}>
-                  {degree}
-                </option>
-              ))
-            ) : (
-              <option value="" disabled>
-                No degrees available
-              </option>
-            )}
-          </select>
-        </div>
-
-        <div className="flex flex-col">
-          <label className="text-sm text-blue-700 mb-1">Batch</label>
-          <select
-            value={selectedBatch}
-            onChange={(e) => {
-              setSelectedBatch(e.target.value);
-              setSelectedDepartment("");
-              setSelectedSemester("");
-              setError(null);
-              setSkippedStudents([]);
-              setNextPeriodSkippedStudents([]);
-            }}
-            disabled={!selectedDegree}
-            className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-blue-50"
-          >
-            <option value="">Select Batch</option>
-            {batches
-              .filter((batch) => batch.degree === selectedDegree)
-              .map((batch) => (
-                <option key={batch.batchId} value={batch.batchId}>
-                  {batch.branch} ({batch.batch})
-                </option>
-              ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col">
-          <label className="text-sm text-blue-700 mb-1">Department</label>
-          <select
-            value={selectedDepartment}
-            onChange={(e) => {
-              setSelectedDepartment(e.target.value);
-              setSelectedSemester("");
-              setError(null);
-              setSkippedStudents([]);
-              setNextPeriodSkippedStudents([]);
-            }}
-            disabled={!selectedBatch}
-            className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-blue-50"
-          >
-            <option value="">Select Department</option>
-            {departments
-              .filter((dept) =>
-                batches.some(
-                  (batch) =>
-                    batch.degree === selectedDegree &&
-                    batch.batchId === parseInt(selectedBatch) &&
-                    batch.branch.toUpperCase() ===
-                      dept.departmentCode.toUpperCase()
-                )
-              )
-              .map((dept) => (
-                <option key={dept.departmentId} value={dept.departmentId}>
-                  {dept.departmentName} ({dept.departmentCode})
-                </option>
-              ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col">
-          <label className="text-sm text-blue-700 mb-1">Semester</label>
-          <select
-            value={selectedSemester}
-            onChange={(e) => {
-              setSelectedSemester(e.target.value);
-              setError(null);
-              setSkippedStudents([]);
-              setNextPeriodSkippedStudents([]);
-            }}
-            disabled={!selectedDepartment}
-            className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-blue-50"
-          >
-            <option value="">Select Semester</option>
-            {semesters.length > 0 ? (
-              semesters.map((sem) => (
-                <option key={sem.semesterId} value={sem.semesterId}>
-                  Semester {sem.semesterNumber}
-                </option>
-              ))
-            ) : (
-              <option value="" disabled>
-                No semesters available
-              </option>
-            )}
-          </select>
-        </div>
-
         <div className="flex flex-col">
           <label className="text-sm text-blue-700 mb-1">From Date</label>
           <input
@@ -1009,7 +760,6 @@ export default function AttendanceGenerator() {
           </button>
         </div>
       </div>
-
       {hasDatesSelected && (
         <div className="mb-8">
           <h2 className="text-2xl font-semibold mb-4 text-blue-800">
@@ -1023,7 +773,7 @@ export default function AttendanceGenerator() {
 
           {Object.keys(timetable).length === 0 && !loading && (
             <div className="text-center text-blue-500 italic">
-              No timetable data available for the selected filters.
+              No timetable data available for the selected dates.
             </div>
           )}
 
@@ -1073,46 +823,78 @@ export default function AttendanceGenerator() {
                         </td>
                         {timeSlots.map(({ periodNumber }) => {
                           const period = periods[periodNumber];
-                          const key = period
-                            ? `${date}-${periodNumber}-${period.courseId}-${period.sectionId || 'null'}` 
-                            : `${date}-${periodNumber}`;
-                          const canAppend = !!appendPeriods[key];
+                          if (!period) {
+                            return (
+                              <td
+                                key={`${date}-${periodNumber}`}
+                                className="border border-blue-200 p-3 text-center bg-blue-100"
+                              >
+                                <span className="text-sm text-blue-400 italic">
+                                  No period
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          const prevPeriodNum = periodNumber - 1;
+                          const prevPeriod = periods[prevPeriodNum];
+                          const isContinuation =
+                            prevPeriod &&
+                            prevPeriod.courseId === period.courseId &&
+                            (prevPeriod.sectionId || null) ===
+                              (period.sectionId || null);
+
+                          if (isContinuation) {
+                            return (
+                              <td
+                                key={`${date}-${periodNumber}`}
+                                className="border border-blue-200 p-3 text-center bg-blue-50"
+                              >
+                                <span className="text-sm text-gray-500 italic">
+                                  Continued from P{prevPeriodNum}
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          const nextPeriodNum = periodNumber + 1;
+                          const nextPeriod = periods[nextPeriodNum];
+                          const canAppend =
+                            nextPeriod &&
+                            nextPeriod.courseId === period.courseId &&
+                            (nextPeriod.sectionId || null) ===
+                              (period.sectionId || null);
+                          const key = `${date}-${periodNumber}-${
+                            period.courseId
+                          }-${period.sectionId || "null"}`;
 
                           return (
                             <td
                               key={`${date}-${periodNumber}`}
-                              className={`border border-blue-200 p-3 text-center ${
-                                period ? "bg-blue-50" : "bg-blue-100"
-                              }`}
+                              className="border border-blue-200 p-3 text-center bg-blue-50"
                             >
-                              {period ? (
-                                <button
-                                  onClick={() =>
-                                    handleCourseClick(
-                                      period.courseId,
-                                      period.sectionId,
-                                      date,
-                                      period.periodNumber
-                                    )
-                                  }
-                                  className="text-md font-semibold text-blue-700 hover:text-blue-900 hover:underline transition-colors duration-150 py-1 px-2 rounded"
-                                >
-                                  {period.courseTitle || period.courseCode}
-                                  {canAppend && (
-                                    <span className="text-xs font-normal ml-1 text-green-600">
-                                      (Append to P{period.periodNumber + 1})
-                                    </span>
-                                  )}
-                                  <br />
-                                  <span className="text-xs font-normal">
-                                    Sec: {period.sectionName || "N/A"}
+                              <button
+                                onClick={() =>
+                                  handleCourseClick(
+                                    period.courseId,
+                                    period.sectionId,
+                                    date,
+                                    period.periodNumber
+                                  )
+                                }
+                                className="text-md font-semibold text-blue-700 hover:text-blue-900 hover:underline transition-colors duration-150 py-1 px-2 rounded"
+                              >
+                                {period.courseTitle || period.courseCode}
+                                {canAppend && (
+                                  <span className="text-xs font-normal ml-1 text-green-600">
+                                    (Spans P{nextPeriodNum})
                                   </span>
-                                </button>
-                              ) : (
-                                <span className="text-sm text-blue-400 italic">
-                                  No period
+                                )}
+                                <br />
+                                <span className="text-xs font-normal">
+                                  Sec: {period.sectionName || "N/A"}
                                 </span>
-                              )}
+                              </button>
                             </td>
                           );
                         })}
@@ -1125,7 +907,6 @@ export default function AttendanceGenerator() {
           )}
         </div>
       )}
-
       {selectedCourse && (
         <div className="mt-8 bg-white p-6 rounded-xl shadow-md">
           <div className="flex justify-between items-center mb-6">
@@ -1134,7 +915,17 @@ export default function AttendanceGenerator() {
             </h2>
             <div className="text-sm text-blue-600">
               <p>Date: {selectedCourse.date}</p>
-              <p>Period: {selectedCourse.periodNumber}</p>
+              <p>
+                Period: {selectedCourse.periodNumber}
+                {isAppendMode &&
+                  ` - ${
+                    appendPeriods[
+                      `${selectedCourse.date}-${selectedCourse.periodNumber}-${
+                        selectedCourse.courseId
+                      }-${selectedCourse.sectionId || "null"}`
+                    ]?.nextPeriodNumber
+                  }`}
+              </p>
               <p>
                 Section:{" "}
                 {(timetable[selectedCourse.date] || []).find(
@@ -1143,274 +934,199 @@ export default function AttendanceGenerator() {
                     p.sectionId === selectedCourse.sectionId
                 )?.sectionName || "N/A"}
               </p>
-              {appendPeriods[
-                `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseId}-${selectedCourse.sectionId || 'null'}`
-              ] && (
+              {isAppendMode && (
                 <p className="text-green-600 font-semibold">
-                  Can append to Period {selectedCourse.periodNumber + 1}
+                  Marking for consecutive periods
                 </p>
               )}
             </div>
           </div>
 
-          <div className="mb-4">
-            <select
-              value={bulkStatus}
-              onChange={(e) => handleBulkStatusChange(e.target.value)}
-              className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">Select Status for All</option>
-              <option value="P">Mark as Present</option>
-              <option value="A">Mark as Absent</option>
-              <option value="OD">Mark as On Duty</option>
-              {appendPeriods[
-                `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseId}-${selectedCourse.sectionId || 'null'}`
-              ] && (
-                <option value="APPEND">
-                  Append to Period {selectedCourse.periodNumber + 1}
-                </option>
-              )}
-            </select>
-          </div>
-
-          <div className="flex flex-col lg:flex-row gap-6">
-            <div className="flex-1 overflow-x-auto rounded-lg shadow-md">
-              <h3 className="text-lg font-semibold mb-2 text-blue-800">
-                Period {selectedCourse.periodNumber}
-              </h3>
-              <table className="w-full border-collapse">
-                <thead className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
-                  <tr>
-                    <th className="border border-blue-300 p-3 text-center">
-                      Roll No
-                    </th>
-                    <th className="border border-blue-300 p-3 text-center">
-                      Name
-                    </th>
-                    <th className="border border-blue-300 p-3 text-center">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.length > 0 ? (
-                    students.map((student, idx) => {
-                      const isSkipped = skippedStudents.some(
-                        (skipped) => skipped.rollnumber === student.rollnumber
-                      );
-                      return (
-                        <tr
-                          key={idx}
-                          className="even:bg-blue-50 odd:bg-white hover:bg-blue-100 transition-colors duration-150"
-                        >
-                          <td className="border border-blue-200 p-3 text-center text-blue-900">
-                            {student.rollnumber}
-                          </td>
-                          <td className="border border-blue-200 p-3 text-center text-blue-900">
-                            {student.name}
-                          </td>
-                          <td className="border border-blue-200 p-3 text-center">
-                            {isSkipped ? (
-                              <span className="text-blue-800 font-semibold">
-                                {student.status === "P"
-                                  ? "Present"
-                                  : student.status === "A"
-                                  ? "Absent"
-                                  : "On Duty"}
-                              </span>
-                            ) : (
-                              <select
-                                value={student.status}
-                                onChange={(e) =>
-                                  handleAttendanceChange(
-                                    student.rollnumber,
-                                    e.target.value
-                                  )
-                                }
-                                className={`border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-blue-800 ${
-                                  student.status === "P"
-                                    ? "bg-green-100 border-green-300"
-                                    : student.status === "A"
-                                    ? "bg-red-100 border-red-300"
-                                    : student.status === "OD"
-                                    ? "bg-yellow-100 border-yellow-300"
-                                    : "bg-gray-100 border-gray-300"
-                                }`}
-                                aria-label={`Attendance status for ${student.name}`}
-                                disabled={saving}
-                              >
-                                <option value="">Status</option>
-                                <option value="P">Present</option>
-                                <option value="A">Absent</option>
-                                <option value="OD">On Duty</option>
-                              </select>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan="3"
-                        className="border border-blue-200 p-5 text-center text-blue-500"
-                      >
-                        No students found for this course section.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-                {students.length > 0 && (
-                  <tfoot>
-                    <tr className="bg-blue-100">
-                      <td
-                        colSpan="3"
-                        className="border border-blue-200 p-3 text-center text-blue-900 font-semibold"
-                      >
-                        Total: {students.length} students | Present:{" "}
-                        {attendanceSummary.present} | Absent:{" "}
-                        {attendanceSummary.absent} | On Duty:{" "}
-                        {attendanceSummary.onDuty}
-                      </td>
-                    </tr>
-                  
-                </tfoot>
-                )}
-              </table>
+          <div className="mb-4 flex items-center gap-4">
+            <div className="flex-1">
+              <select
+                value={bulkStatus}
+                onChange={(e) => handleBulkStatusChange(e.target.value)}
+                className="border-2 border-blue-300 p-3 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full"
+              >
+                <option value="">Select Status for All</option>
+                <option value="P">Mark as Present</option>
+                <option value="A">Mark as Absent</option>
+                <option value="OD">Mark as On Duty</option>
+              </select>
             </div>
-
-            {nextPeriodStudents.length > 0 && (
-              <div className="flex-1 overflow-x-auto rounded-lg shadow-md">
-                <h3 className="text-lg font-semibold mb-2 text-blue-800">
-                  Period{" "}
-                  {
-                    appendPeriods[
-                      `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseId}-${selectedCourse.sectionId || 'null'}`
-                    ].nextPeriodNumber
-                  }
-                </h3>
-                <table className="w-full border-collapse">
-                  <thead className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
-                    <tr>
-                      <th className="border border-blue-300 p-3 text-center">
-                        Roll No
-                      </th>
-                      <th className="border border-blue-300 p-3 text-center">
-                        Name
-                      </th>
-                      <th className="border border-blue-300 p-3 text-center">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {nextPeriodStudents.map((student, idx) => {
-                      const isSkipped = nextPeriodSkippedStudents.some(
-                        (skipped) => skipped.rollnumber === student.rollnumber
-                      );
-                      return (
-                        <tr
-                          key={idx}
-                          className="even:bg-blue-50 odd:bg-white hover:bg-blue-100 transition-colors duration-150"
-                        >
-                          <td className="border border-blue-200 p-3 text-center text-blue-900">
-                            {student.rollnumber}
-                          </td>
-                          <td className="border border-blue-200 p-3 text-center text-blue-900">
-                            {student.name}
-                          </td>
-                          <td className="border border-blue-200 p-3 text-center">
-                            {isSkipped ? (
-                              <span className="text-blue-800 font-semibold">
-                                {student.status === "P"
-                                  ? "Present"
-                                  : student.status === "A"
-                                  ? "Absent"
-                                  : "On Duty"}
-                              </span>
-                            ) : (
-                              <select
-                                value={student.status}
-                                onChange={(e) =>
-                                  handleNextPeriodAttendanceChange(
-                                    student.rollnumber,
-                                    e.target.value
-                                  )
-                                }
-                                className={`border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-blue-800 ${
-                                  student.status === "P"
-                                    ? "bg-green-100 border-green-300"
-                                    : student.status === "A"
-                                    ? "bg-red-100 border-red-300"
-                                    : student.status === "OD"
-                                    ? "bg-yellow-100 border-yellow-300"
-                                    : "bg-gray-100 border-gray-300"
-                                }`}
-                                aria-label={`Attendance status for ${student.name} (next period)`}
-                                disabled={saving || !isAppendMode}
-                              >
-                                <option value="">Status</option>
-                                <option value="P">Present</option>
-                                <option value="A">Absent</option>
-                                <option value="OD">On Duty</option>
-                              </select>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-blue-100">
-                      <td
-                        colSpan="3"
-                        className="border border-blue-200 p-3 text-center text-blue-900 font-semibold"
-                      >
-                        Total: {nextPeriodStudents.length} students | Present:{" "}
-                        {nextPeriodAttendanceSummary.present} | Absent:{" "}
-                        {nextPeriodAttendanceSummary.absent} | On Duty:{" "}
-                        {nextPeriodAttendanceSummary.onDuty}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
           </div>
 
-          {skippedStudents.length > 0 && (
+          <div className="overflow-x-auto rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold mb-2 text-blue-800">
+              Period {selectedCourse.periodNumber}
+              {isAppendMode &&
+                ` - ${
+                  appendPeriods[
+                    `${selectedCourse.date}-${selectedCourse.periodNumber}-${
+                      selectedCourse.courseId
+                    }-${selectedCourse.sectionId || "null"}`
+                  ]?.nextPeriodNumber
+                }`}
+            </h3>
+            <table className="w-full border-collapse">
+              <thead className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
+                <tr>
+                  <th className="border border-blue-300 p-3 text-center">
+                    Roll No
+                  </th>
+                  <th className="border border-blue-300 p-3 text-center">
+                    Name
+                  </th>
+                  <th className="border border-blue-300 p-3 text-center">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.length > 0 ? (
+                  students.map((student, idx) => {
+                    const isSkipped = skippedStudents.some(
+                      (skipped) => skipped.rollnumber === student.rollnumber
+                    );
+                    const isNextSkipped =
+                      isAppendMode &&
+                      nextPeriodSkippedStudents.some(
+                        (skipped) => skipped.rollnumber === student.rollnumber
+                      );
+                    return (
+                      <tr
+                        key={idx}
+                        className="even:bg-blue-50 odd:bg-white hover:bg-blue-100 transition-colors duration-150"
+                      >
+                        <td className="border border-blue-200 p-3 text-center text-blue-900">
+                          {student.rollnumber}
+                        </td>
+                        <td className="border border-blue-200 p-3 text-center text-blue-900">
+                          {student.name}
+                        </td>
+                        <td className="border border-blue-200 p-3 text-center">
+                          {isSkipped || isNextSkipped ? (
+                            <span className="text-blue-800 font-semibold">
+                              {student.status === "P"
+                                ? "Present"
+                                : student.status === "A"
+                                ? "Absent"
+                                : "On Duty"}
+                              {isSkipped && isNextSkipped
+                                ? " (Both Periods Skipped)"
+                                : isSkipped
+                                ? " (P" +
+                                  selectedCourse.periodNumber +
+                                  " Skipped)"
+                                : " (P" +
+                                  appendPeriods[
+                                    `${selectedCourse.date}-${
+                                      selectedCourse.periodNumber
+                                    }-${selectedCourse.courseId}-${
+                                      selectedCourse.sectionId || "null"
+                                    }`
+                                  ]?.nextPeriodNumber +
+                                  " Skipped)"}
+                            </span>
+                          ) : (
+                            <select
+                              value={student.status}
+                              onChange={(e) =>
+                                handleAttendanceChange(
+                                  student.rollnumber,
+                                  e.target.value
+                                )
+                              }
+                              className={`border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-blue-800 ${
+                                student.status === "P"
+                                  ? "bg-green-100 border-green-300"
+                                  : student.status === "A"
+                                  ? "bg-red-100 border-red-300"
+                                  : student.status === "OD"
+                                  ? "bg-yellow-100 border-yellow-300"
+                                  : "bg-gray-100 border-gray-300"
+                              }`}
+                              aria-label={`Attendance status for ${student.name}`}
+                              disabled={saving}
+                            >
+                              <option value="">Status</option>
+                              <option value="P">Present</option>
+                              <option value="A">Absent</option>
+                              <option value="OD">On Duty</option>
+                            </select>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td
+                      colSpan="3"
+                      className="border border-blue-200 p-5 text-center text-blue-500"
+                    >
+                      No students found for this course section.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {students.length > 0 && (
+                <tfoot>
+                  <tr className="bg-blue-100">
+                    <td
+                      colSpan="3"
+                      className="border border-blue-200 p-3 text-center text-blue-900 font-semibold"
+                    >
+                      Total: {students.length} students | Present:{" "}
+                      {attendanceSummary.present} | Absent:{" "}
+                      {attendanceSummary.absent} | On Duty:{" "}
+                      {attendanceSummary.onDuty}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+
+          {(skippedStudents.length > 0 ||
+            (isAppendMode && nextPeriodSkippedStudents.length > 0)) && (
             <div className="mt-6 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 rounded-lg shadow">
               <h3 className="text-lg font-semibold mb-2">
-                Skipped Students for Period {selectedCourse.periodNumber} (
-                {skippedStudents.length})
+                Skipped Students for Period {selectedCourse.periodNumber}
+                {isAppendMode &&
+                  ` - ${
+                    appendPeriods[
+                      `${selectedCourse.date}-${selectedCourse.periodNumber}-${
+                        selectedCourse.courseId
+                      }-${selectedCourse.sectionId || "null"}`
+                    ]?.nextPeriodNumber
+                  }`}{" "}
+                ({skippedStudents.length + nextPeriodSkippedStudents.length})
               </h3>
               <ul className="list-disc pl-5">
                 {skippedStudents.map((student, idx) => (
-                  <li key={idx}>
-                    Roll No: {student.rollnumber} - {student.reason}
+                  <li key={`first-${idx}`}>
+                    Roll No: {student.rollnumber} - {student.reason} (P
+                    {selectedCourse.periodNumber})
                   </li>
                 ))}
-              </ul>
-            </div>
-          )}
-
-          {nextPeriodSkippedStudents.length > 0 && (
-            <div className="mt-6 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 rounded-lg shadow">
-              <h3 className="text-lg font-semibold mb-2">
-                Skipped Students for Period{" "}
-                {
-                  appendPeriods[
-                    `${selectedCourse.date}-${selectedCourse.periodNumber}-${selectedCourse.courseId}-${selectedCourse.sectionId || 'null'}`
-                  ]?.nextPeriodNumber
-                }{" "}
-                ({nextPeriodSkippedStudents.length})
-              </h3>
-              <ul className="list-disc pl-5">
-                {nextPeriodSkippedStudents.map((student, idx) => (
-                  <li key={idx}>
-                    Roll No: {student.rollnumber} - {student.reason}
-                  </li>
-                ))}
+                {isAppendMode &&
+                  nextPeriodSkippedStudents.map((student, idx) => (
+                    <li key={`next-${idx}`}>
+                      Roll No: {student.rollnumber} - {student.reason} (P
+                      {
+                        appendPeriods[
+                          `${selectedCourse.date}-${
+                            selectedCourse.periodNumber
+                          }-${selectedCourse.courseId}-${
+                            selectedCourse.sectionId || "null"
+                          }`
+                        ]?.nextPeriodNumber
+                      }
+                      )
+                    </li>
+                  ))}
               </ul>
             </div>
           )}
@@ -1446,13 +1162,13 @@ export default function AttendanceGenerator() {
                   Saving...
                 </span>
               ) : (
-                `Save Attendance${isAppendMode ? " (with Append)" : ""}`
+                `Save Attendance${isAppendMode ? " (with Next Period)" : ""}`
               )}
             </button>
           </div>
         </div>
       )}
-
+      
       <ToastContainer
         position="top-right"
         autoClose={3000}

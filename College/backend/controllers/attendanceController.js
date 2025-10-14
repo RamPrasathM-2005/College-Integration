@@ -20,131 +20,6 @@ function getDayOfWeek(dateStr) {
   return day === 0 ? 7 : day; // Convert Sunday to 7
 }
 
-// Fetch all degrees
-export async function getDegrees(req, res, next) {
-  try {
-    const [degrees] = await pool.query(
-      `SELECT DISTINCT degree FROM Batch ORDER BY degree`
-    );
-    res.json({ status: "success", data: degrees });
-  } catch (err) {
-    console.error("Error in getDegrees:", err);
-    res
-      .status(500)
-      .json({ status: "error", message: "Failed to fetch degrees" });
-  }
-}
-
-// Fetch all branches
-export async function getBranches(req, res, next) {
-  try {
-    const [branches] = await pool.query(
-      `SELECT DISTINCT branch FROM Batch ORDER BY branch`
-    );
-    res.json({ status: "success", data: branches });
-  } catch (err) {
-    console.error("Error in getBranches:", err);
-    res
-      .status(500)
-      .json({ status: "error", message: "Failed to fetch branches" });
-  }
-}
-
-// Fetch all departments
-export async function getDepartments(req, res, next) {
-  try {
-    const [departments] = await pool.query(
-      `SELECT Deptid, Deptacronym, Deptname FROM department ORDER BY Deptacronym`
-    );
-    // Map to match frontend expectations
-    const mappedDepartments = departments.map((dept) => ({
-      Deptid: dept.Deptid,
-      deptCode: dept.Deptacronym,
-      Deptname: dept.Deptname,
-    }));
-    res.json({ status: "success", data: mappedDepartments });
-  } catch (err) {
-    console.error("Error in getDepartments:", err);
-    res
-      .status(500)
-      .json({ status: "error", message: "Failed to fetch departments" });
-  }
-}
-
-// Fetch all semesters
-export async function getSemesters(req, res, next) {
-  try {
-    const [semesters] = await pool.query(
-      `SELECT semesterId, semesterNumber FROM Semester ORDER BY semesterNumber`
-    );
-    res.json({ status: "success", data: semesters });
-  } catch (err) {
-    console.error("Error in getSemesters:", err);
-    res
-      .status(500)
-      .json({ status: "error", message: "Failed to fetch semesters" });
-  }
-}
-
-// Fetch batches
-export async function getBatches(req, res, next) {
-  try {
-    const [batches] = await pool.query(
-      `
-      SELECT 
-        b.batchId, 
-        b.batch, 
-        b.branch, 
-        b.degree, 
-        b.batchYears 
-      FROM Batch b
-      ORDER BY b.batchYears DESC, b.branch
-      `
-    );
-    res.json({ status: "success", data: batches });
-  } catch (err) {
-    console.error("Error in getBatches:", err);
-    res
-      .status(500)
-      .json({ status: "error", message: "Failed to fetch batches" });
-  }
-}
-
-// Fetch semesters by batch and branch
-export async function getSemestersByBatchBranch(req, res, next) {
-  try {
-    const { degree, batch, branch } = req.query;
-
-    if (!degree || !batch || !branch) {
-      return res.status(400).json({
-        status: "error",
-        message: "Degree, batch, and branch are required",
-      });
-    }
-
-    const [semesters] = await pool.query(
-      `
-      SELECT 
-        s.semesterId, 
-        s.semesterNumber, 
-        b.batchYears
-      FROM Semester s
-      JOIN Batch b ON s.batchId = b.batchId
-      WHERE b.degree = ? AND b.batch = ? AND b.branch = ?
-      ORDER BY s.semesterNumber
-      `,
-      [degree, batch, branch]
-    );
-
-    res.json({ status: "success", data: semesters });
-  } catch (err) {
-    console.error("Error in getSemestersByBatchBranch:", err);
-    res
-      .status(500)
-      .json({ status: "error", message: "Failed to fetch semesters" });
-  }
-}
-
 // Helper function to get Userid from staffId
 async function getUserIdFromStaffId(staffId, connection = null) {
   const conn = connection || pool;
@@ -162,8 +37,7 @@ async function getUserIdFromStaffId(staffId, connection = null) {
 export async function getTimetable(req, res, next) {
   const connection = await pool.getConnection();
   try {
-    const { startDate, endDate, degree, batch, branch, Deptid, semesterId } =
-      req.query;
+    const { startDate, endDate } = req.query;
     const staffId = req.user.staffId;
 
     if (!staffId) {
@@ -175,12 +49,6 @@ export async function getTimetable(req, res, next) {
       return res
         .status(400)
         .json({ status: "error", message: "Start and end dates required" });
-    }
-    if (!degree || !batch || !branch || !Deptid || !semesterId) {
-      return res.status(400).json({
-        status: "error",
-        message: "Degree, batch, branch, Deptid, and semesterId are required",
-      });
     }
 
     const userId = await getUserIdFromStaffId(staffId, connection);
@@ -210,25 +78,15 @@ export async function getTimetable(req, res, next) {
         AND t.isActive = 'YES'
         AND c.isActive = 'YES'
         AND sc.Deptid = t.Deptid
-        AND b.degree = ?
-        AND b.batch = ?
-        AND b.branch = ?
-        AND t.Deptid = ?
-        AND t.semesterId = ?
       ORDER BY FIELD(t.dayOfWeek, 'MON','TUE','WED','THU','FRI','SAT'), t.periodNumber;
       `,
-      [userId, degree, batch, branch, Deptid, semesterId]
+      [userId]
     );
 
     console.log("Fetched Timetable for Staff ID:", staffId, "User ID:", userId);
     console.log("Filters:", {
       startDate,
       endDate,
-      degree,
-      batch,
-      branch,
-      Deptid,
-      semesterId,
     });
     console.log("Periods:", JSON.stringify(periods, null, 2));
 
