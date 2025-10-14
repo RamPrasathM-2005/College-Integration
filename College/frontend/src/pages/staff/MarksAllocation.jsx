@@ -114,53 +114,80 @@ const MarksAllocation = () => {
     MySwal.fire('Success', 'Tool removed from draft', 'success');
   };
 
-const handleSaveToolMarksClick = async () => {
-  if (!selectedCO || !selectedCO.tools || selectedCO.tools.length === 0) {
-    MySwal.fire('Error', 'No tools selected for this CO', 'error');
-    return;
-  }
-
-  let allSuccess = true;
-  let errorMessage = '';
-
-  for (const tool of selectedCO.tools) {
-    const marks = students.map((student) => ({
-      regno: student.regno,
-      marksObtained: student.marks?.[tool.toolId] || 0,
-    }));
-
-    const result = await handleSaveToolMarks(tool.toolId, marks);
-    if (!result.success) {
-      allSuccess = false;
-      errorMessage = result.error;
-      break;
+  const handleSaveToolMarksClick = async () => {
+    if (!selectedCO || !selectedCO.tools || selectedCO.tools.length === 0) {
+      MySwal.fire('Error', 'No tools selected for this CO', 'error');
+      return;
     }
-  }
 
-  if (allSuccess) {
-    MySwal.fire('Success', 'Marks saved successfully for all tools', 'success');
-  } else {
-    MySwal.fire('Error', errorMessage || 'Failed to save marks for some tools', 'error');
-  }
-};
+    let allSuccess = true;
+    let errorMessage = '';
+
+    for (const tool of selectedCO.tools) {
+      const marks = students.map((student) => ({
+        regno: student.regno,
+        marksObtained: student.marks?.[tool.toolId] || 0,
+      }));
+
+      const result = await handleSaveToolMarks(tool.toolId, marks);
+      if (!result.success) {
+        allSuccess = false;
+        errorMessage = result.error;
+        break;
+      }
+    }
+
+    if (allSuccess) {
+      MySwal.fire('Success', 'Marks saved successfully for all tools', 'success');
+    } else {
+      MySwal.fire('Error', errorMessage || 'Failed to save marks for some tools', 'error');
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    console.log('Selected file:', file);
+    if (file) {
+      // Validate file type
+      if (!file.name.toLowerCase().endsWith('.csv')) {
+        MySwal.fire('Error', 'Please select a CSV file', 'error');
+        setImportFile(null);
+        e.target.value = ''; // Reset input
+        return;
+      }
+      // Validate file size
+      if (file.size > 5 * 1024 * 1024) {
+        MySwal.fire('Error', 'File size must be less than 5MB', 'error');
+        setImportFile(null);
+        e.target.value = '';
+        return;
+      }
+      setImportFile(file);
+      console.log('Valid file selected:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      });
+    } else {
+      setImportFile(null);
+    }
+  };
 
   const handleImportClick = async () => {
     if (!importFile) {
       MySwal.fire('Error', 'Please select a file to import', 'error');
       return;
     }
+    console.log('Initiating import for file:', importFile.name);
     const result = await handleImportMarks(importFile);
     if (result.success) {
       MySwal.fire('Success', result.message, 'success');
+      setImportFile(null);
+      document.querySelector('input[type="file"]').value = ''; // Reset file input
     } else {
       MySwal.fire('Error', result.error, 'error');
     }
-    setImportFile(null);
     setShowImportModal(false);
-  };
-
-  const handleFileChange = (e) => {
-    setImportFile(e.target.files[0]);
   };
 
   const handleSelectCO = (e) => {
@@ -402,24 +429,43 @@ const handleSaveToolMarksClick = async () => {
             <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg">
               <h3 className="text-2xl font-bold text-slate-900 mb-6">Import Marks for {selectedTool?.toolName}</h3>
               <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Select CSV File</label>
                 <input
                   type="file"
-                  accept=".csv"
+                  accept=".csv, text/csv"
                   onChange={handleFileChange}
                   className="w-full p-3 border-2 border-dashed border-slate-300 rounded-xl hover:border-blue-400 transition-all duration-200"
                 />
+                {importFile && (
+                  <p className="mt-2 text-sm text-slate-600">
+                    Selected: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
+                  </p>
+                )}
+                <p className="mt-2 text-xs text-slate-500">
+                  Expected CSV format: regNo (or regno),marks (e.g., REG001,85)
+                </p>
               </div>
               <div className="flex justify-end gap-3">
                 <button
-                  onClick={() => setShowImportModal(false)}
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportFile(null);
+                    document.querySelector('input[type="file"]').value = '';
+                  }}
                   className="px-6 py-3 bg-slate-200 text-slate-700 rounded-xl hover:bg-slate-300 transition-all duration-200 font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleImportClick}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all duration-200 font-medium shadow-lg"
+                  disabled={!importFile}
+                  className={`px-6 py-3 rounded-xl font-medium shadow-lg transition-all duration-200 flex items-center gap-2 ${
+                    importFile
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                  }`}
                 >
+                  <Upload className="w-4 h-4" />
                   Import
                 </button>
               </div>

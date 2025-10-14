@@ -35,7 +35,7 @@ const useMarkAllocation = (courseCode, sectionId) => {
   const [coCollapsed, setCoCollapsed] = useState({});
   const [error, setError] = useState('');
   const [tempTools, setTempTools] = useState([]);
-  const [loading, setLoading] = useState(true); // Added loading state
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -49,14 +49,12 @@ const useMarkAllocation = (courseCode, sectionId) => {
         setError('');
         setLoading(true);
 
-        // Fetch partitions
         const parts = await getCoursePartitions(courseCode);
         console.log('getCoursePartitions response:', parts);
         setPartitions(parts);
         setNewPartition(parts);
         setShowPartitionModal(!parts.partitionId);
 
-        // Fetch course outcomes
         const cos = await getCOsForCourse(courseCode);
         console.log('getCOsForCourse response:', cos);
         if (!Array.isArray(cos)) {
@@ -71,7 +69,6 @@ const useMarkAllocation = (courseCode, sectionId) => {
           return;
         }
 
-        // Fetch tools for each CO
         const cosWithTools = await Promise.all(
           cos.map(async (co) => {
             const tools = await getToolsForCO(co.coId);
@@ -81,7 +78,6 @@ const useMarkAllocation = (courseCode, sectionId) => {
         );
         setCourseOutcomes(cosWithTools);
 
-        // Fetch students
         const studentsData = await getStudentsForSection(courseCode, sectionId);
         console.log('getStudentsForSection response:', studentsData);
         if (!Array.isArray(studentsData)) {
@@ -96,7 +92,6 @@ const useMarkAllocation = (courseCode, sectionId) => {
           return;
         }
 
-        // Fetch marks for each student and tool
         const studentsWithMarks = await Promise.all(
           studentsData.map(async (student) => {
             const marks = {};
@@ -104,7 +99,7 @@ const useMarkAllocation = (courseCode, sectionId) => {
               for (const tool of co.tools || []) {
                 try {
                   const marksData = await getStudentMarksForTool(tool.toolId);
-                  console.log(`Marks for tool ${tool.toolId}:`, marksData); // Debug log
+                  console.log(`Marks for tool ${tool.toolId}:`, marksData);
                   const studentMark = marksData.find((m) => m.regno === student.regno);
                   marks[tool.toolId] = studentMark ? Number(studentMark.marksObtained) : 0;
                 } catch (markErr) {
@@ -113,7 +108,7 @@ const useMarkAllocation = (courseCode, sectionId) => {
                 }
               }
             }
-            console.log(`Marks for student ${student.regno}:`, marks); // Debug log
+            console.log(`Marks for student ${student.regno}:`, marks);
             return { ...student, marks };
           })
         );
@@ -194,7 +189,7 @@ const useMarkAllocation = (courseCode, sectionId) => {
       result.finalAvg = '0.00';
     }
 
-    console.log(`calculateInternalMarks for ${regno}:`, result); // Debug log
+    console.log(`calculateInternalMarks for ${regno}:`, result);
     return result;
   };
 
@@ -415,13 +410,34 @@ const useMarkAllocation = (courseCode, sectionId) => {
     }
   };
 
-  const handleImportMarks = async (toolId, file) => {
+  const handleImportMarks = async (importFile) => {
+    console.log('handleImportMarks called with file:', importFile);
+    
+    if (!selectedTool?.toolId) {
+      console.error('No valid toolId selected for import:', selectedTool);
+      setError('No tool selected for import');
+      return { success: false, error: 'No tool selected' };
+    }
+    
+    if (!importFile || !(importFile instanceof File)) {
+      console.error('Invalid file provided for import:', importFile);
+      setError('Please select a valid CSV file');
+      return { success: false, error: 'Invalid file selected' };
+    }
+
     try {
       setError('');
-      const formData = new FormData();
-      formData.append('file', file);
-      await importMarksForTool(toolId, formData);
-      const updatedMarks = await getStudentMarksForTool(toolId);
+      console.log('File details:', {
+        name: importFile.name,
+        size: importFile.size,
+        type: importFile.type,
+      });
+      console.log('Sending import request for tool:', selectedTool.toolId);
+      const response = await importMarksForTool(selectedTool.toolId, importFile);
+      
+      console.log('Import response:', response);
+
+      const updatedMarks = await getStudentMarksForTool(selectedTool.toolId);
       setStudents((prev) =>
         prev.map((student) => {
           const studentMark = updatedMarks.find((m) => m.regno === student.regno);
@@ -429,17 +445,20 @@ const useMarkAllocation = (courseCode, sectionId) => {
             ...student,
             marks: {
               ...student.marks,
-              [toolId]: studentMark ? Number(studentMark.marksObtained) : student.marks[toolId] || 0,
+              [selectedTool.toolId]: studentMark ? Number(studentMark.marksObtained) : student.marks[selectedTool.toolId] || 0,
             },
           };
         })
       );
+      
       setShowImportModal(false);
-      return { success: true, message: 'Marks imported successfully' };
+      MySwal.fire('Success', response.message || 'Marks imported successfully', 'success');
+      return { success: true, message: response.message || 'Marks imported successfully' };
     } catch (err) {
       console.error('Error importing marks:', err);
       const errMsg = err.response?.data?.message || err.message || 'Failed to import marks';
       setError(errMsg);
+      MySwal.fire('Error', errMsg, 'error');
       return { success: false, error: errMsg };
     }
   };
@@ -507,7 +526,7 @@ const useMarkAllocation = (courseCode, sectionId) => {
     calculateInternalMarks,
     error,
     setError,
-    loading, // Expose loading state
+    loading,
   };
 };
 

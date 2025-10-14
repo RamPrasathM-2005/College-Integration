@@ -708,6 +708,11 @@ export const importMarksForTool = async (req, res) => {
   const staffId = getStaffId(req);
 
   // Log incoming request details
+  console.log('Request headers:', req.headers);
+  console.log('Request body:', req.body);
+  console.log('Request file:', req.file);
+
+  // Log incoming request details
   console.log('Import request received:', { toolId, staffId, file: req.file });
 
   // Check if file is present
