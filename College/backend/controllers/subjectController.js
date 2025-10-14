@@ -1,94 +1,90 @@
 import pool from "../db.js";
 import catchAsync from "../utils/catchAsync.js";
+import Joi from 'joi';
 
-// Valid enum values
+
+// Valid enum values (already defined in your code, keep them here or import if in a shared file)
 const validTypes = ['THEORY', 'INTEGRATED', 'PRACTICAL', 'EXPERIENTIAL LEARNING'];
 const validCategories = ['HSMC', 'BSC', 'ESC', 'PEC', 'OEC', 'EEC', 'PCC'];
 const validIsActive = ['YES', 'NO'];
 
-// Add Course
+
+const addCourseSchema = Joi.object({
+  courseCode: Joi.string().trim().max(20).required(),
+  semesterId: Joi.number().integer().positive().required(),
+  courseTitle: Joi.string().trim().max(255).required(),
+  type: Joi.string().valid(...validTypes).required(),
+  category: Joi.string().valid(...validCategories).required(),
+  minMark: Joi.number().integer().min(0).required(),
+  maxMark: Joi.number().integer().min(0).required(),
+  isActive: Joi.string().valid(...validIsActive).optional(),
+  lectureHours: Joi.number().integer().min(0).required(),
+  tutorialHours: Joi.number().integer().min(0).required(),
+  practicalHours: Joi.number().integer().min(0).required(),
+  experientialHours: Joi.number().integer().min(0).required(),
+  totalContactPeriods: Joi.number().integer().min(0).required(),
+  credits: Joi.number().integer().min(0).required(),
+}).custom((value, helpers) => {
+  if (value.minMark > value.maxMark) {
+    return helpers.error('any.custom', { message: 'minMark must be less than or equal to maxMark' });
+  }
+  return value;
+});
+
+// Note: Joi will auto-coerce strings like "40" to numbers for .number() fields.
+// Schema aligns with your DB constraints (e.g., VARCHAR lengths, INT mins).
+
 export const addCourse = catchAsync(async (req, res) => {
-  const {
-    courseCode,
-    semesterId,
-    courseTitle,
-    type,
-    category,
-    minMark,
-    maxMark,
-    isActive,
-    lectureHours,
-    tutorialHours,
-    practicalHours,
-    experientialHours,
-    totalContactPeriods,
-    credits
-  } = req.body;
+  // Log raw payload for debugging
+  console.log('RAW addCourse payload ->', req.body);
+
   const userEmail = req.user?.email || 'admin';
   const connection = await pool.getConnection();
+
   try {
     await connection.beginTransaction();
 
-    // Validate required fields
-    if (
-      !courseCode ||
-      !semesterId ||
-      !courseTitle ||
-      !type ||
-      !category ||
-      minMark === undefined ||
-      maxMark === undefined ||
-      lectureHours === undefined ||
-      tutorialHours === undefined ||
-      practicalHours === undefined ||
-      experientialHours === undefined ||
-      totalContactPeriods === undefined ||
-      credits === undefined
-    ) {
+    // --- Joi Validation ---
+    const { error, value } = addCourseSchema.validate(req.body, {
+      abortEarly: false, // Collect all errors
+      stripUnknown: true, // Remove any extra fields
+      convert: true, // Enable coercion (strings to numbers, etc.)
+    });
+
+    if (error) {
+      const errorMessages = error.details.map(detail => detail.message).join('; ');
       return res.status(400).json({
         status: 'failure',
-        message: 'All required fields must be provided',
+        message: 'Validation error: ' + errorMessages,
       });
     }
 
-    // Validate enum fields
-    if (!validTypes.includes(type)) {
-      return res.status(400).json({
-        status: 'failure',
-        message: `Invalid type. Must be one of: ${validTypes.join(', ')}`,
-      });
-    }
-    if (!validCategories.includes(category)) {
-      return res.status(400).json({
-        status: 'failure',
-        message: `Invalid category. Must be one of: ${validCategories.join(', ')}`,
-      });
-    }
-    if (isActive && !validIsActive.includes(isActive)) {
-      return res.status(400).json({
-        status: 'failure',
-        message: `Invalid isActive. Must be one of: ${validIsActive.join(', ')}`,
-      });
-    }
+    // Destructure validated/coerced values
+    let {
+      courseCode,
+      semesterId,
+      courseTitle,
+      type,
+      category,
+      minMark,
+      maxMark,
+      isActive = 'YES', // Default if not provided
+      lectureHours,
+      tutorialHours,
+      practicalHours,
+      experientialHours,
+      totalContactPeriods,
+      credits,
+    } = value;
 
-    // Validate numeric fields
-    const numericFields = { minMark, maxMark, lectureHours, tutorialHours, practicalHours, experientialHours, totalContactPeriods, credits };
-    for (const [field, value] of Object.entries(numericFields)) {
-      if (!Number.isInteger(value) || value < 0) {
-        return res.status(400).json({
-          status: 'failure',
-          message: `${field} must be a non-negative integer`,
-        });
-      }
-    }
-    if (minMark > maxMark) {
-      return res.status(400).json({
-        status: 'failure',
-        message: 'minMark must be less than or equal to maxMark',
-      });
-    }
+    // Optional: Normalize category to uppercase (in case of input variance, though Joi valid() is case-sensitive)
+    // If needed, add .uppercase() to schema: Joi.string().valid(...).uppercase()
+    category = category.toUpperCase();
 
-    // Validate semesterId
+    // Log validated values (for debug)
+    console.log("Validated minMark: ", minMark, typeof minMark);
+
+    // --- DB: Validate semester exists and is active ---
     const [semesterRows] = await connection.execute(
       `SELECT semesterId FROM Semester WHERE semesterId = ? AND isActive = 'YES'`,
       [semesterId]
@@ -100,7 +96,7 @@ export const addCourse = catchAsync(async (req, res) => {
       });
     }
 
-    // Check for existing courseCode in the same semester
+    // --- Check for existing courseCode in the same semester ---
     const [existingCourse] = await connection.execute(
       `SELECT courseId, isActive FROM Course WHERE courseCode = ? AND semesterId = ?`,
       [courseCode, semesterId]
@@ -163,7 +159,7 @@ export const addCourse = catchAsync(async (req, res) => {
           category,
           minMark,
           maxMark,
-          isActive || 'YES',
+          isActive,
           userEmail,
           userEmail,
           lectureHours,
