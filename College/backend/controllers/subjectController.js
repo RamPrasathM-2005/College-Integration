@@ -26,7 +26,6 @@ export const addCourse = catchAsync(async (req, res) => {
   } = req.body;
   const userEmail = req.user?.email || 'admin';
   const connection = await pool.getConnection();
-
   try {
     await connection.beginTransaction();
 
