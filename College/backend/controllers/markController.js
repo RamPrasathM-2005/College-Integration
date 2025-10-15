@@ -428,26 +428,50 @@ export const saveToolsForCO = async (req, res) => {
   const { coId } = req.params;
   const { tools } = req.body;
   const staffId = getStaffId(req);
-  if (!tools || !Array.isArray(tools)) {
-    return res.status(400).json({ status: 'error', message: 'tools array is required' });
+
+  console.log('Raw req.body:', req.body); // Debug: Check if payload matches
+
+  if (!tools || !Array.isArray(tools) || tools.length === 0) {
+    return res.status(400).json({ status: 'error', message: 'tools array is required and must be non-empty' });
   }
+
   try {
+    // Per-tool validation: Prevent undefined/missing props CRASH
+    for (const [index, tool] of tools.entries()) {
+      if (!tool || typeof tool !== 'object') {
+        return res.status(400).json({ status: 'error', message: `Invalid tool at index ${index}: must be an object` });
+      }
+      if (!tool.toolName || typeof tool.toolName !== 'string' || tool.toolName.trim() === '') {
+        return res.status(400).json({ status: 'error', message: `Invalid tool at index ${index}: missing or empty toolName` });
+      }
+      if (typeof tool.weightage !== 'number' || tool.weightage <= 0 || tool.weightage > 100) {
+        return res.status(400).json({ status: 'error', message: `Invalid tool at index ${index}: weightage must be a number (1-100)` });
+      }
+      if (typeof tool.maxMarks !== 'number' || tool.maxMarks <= 0) {
+        return res.status(400).json({ status: 'error', message: `Invalid tool at index ${index}: maxMarks must be a number (>0)` });
+      }
+      // Normalize
+      tool.toolName = tool.toolName.trim();
+    }
+
     const [coCheck] = await pool.query('SELECT courseId FROM CourseOutcome WHERE coId = ?', [coId]);
     if (coCheck.length === 0) {
       return res.status(404).json({ status: 'error', message: 'CO not found' });
     }
-    const toolNames = tools.map(t => t.toolName.toLowerCase());
-    if (new Set(toolNames).size !== toolNames.length) {
+
+    // Now safe to map (all tools validated)
+    const toolNamesLower = tools.map(t => t.toolName.toLowerCase());
+    if (new Set(toolNamesLower).size !== toolNamesLower.length) {
       return res.status(400).json({ status: 'error', message: 'Duplicate tool names not allowed in the same CO' });
     }
-    const totalWeightage = tools.reduce((sum, tool) => sum + (tool.weightage || 0), 0);
+    const totalWeightage = tools.reduce((sum, tool) => sum + tool.weightage, 0);
     if (totalWeightage !== 100) {
       return res.status(400).json({ status: 'error', message: 'Total tool weightage for this CO must equal 100%' });
     }
 
     const [existingTools] = await pool.query('SELECT toolId FROM COTool WHERE coId = ?', [coId]);
     const existingToolIds = existingTools.map(t => t.toolId);
-    const inputToolIds = tools.filter(t => t.toolId).map(t => t.toolId);
+    const inputToolIds = tools.filter(t => t.toolId && typeof t.toolId === 'number').map(t => t.toolId);
 
     const toolIdsToDelete = existingToolIds.filter(id => !inputToolIds.includes(id));
     if (toolIdsToDelete.length > 0) {
@@ -460,8 +484,8 @@ export const saveToolsForCO = async (req, res) => {
     for (const tool of tools) {
       if (tool.toolId && existingToolIds.includes(tool.toolId)) {
         await pool.query(
-          'UPDATE COTool SET toolName = ?, weightage = ? WHERE toolId = ?',
-          [tool.toolName, tool.weightage, tool.toolId]
+          'UPDATE COTool SET toolName = ?, weightage = ? WHERE toolId = ? AND coId = ?', // Added coId for safety
+          [tool.toolName, tool.weightage, tool.toolId, coId]
         );
         await pool.query(
           'UPDATE ToolDetails SET maxMarks = ?, updatedBy = ? WHERE toolId = ?',
@@ -481,8 +505,8 @@ export const saveToolsForCO = async (req, res) => {
     }
     res.json({ status: 'success', message: 'Tools saved successfully' });
   } catch (err) {
-    console.error('Error in saveToolsForCO:', err);
-    res.status(500).json({ status: 'error', message: err.message });
+    console.error('Error in saveToolsForCO:', err.stack);
+    res.status(500).json({ status: 'error', message: err.message || 'Internal server error' });
   }
 };
 
@@ -1341,7 +1365,7 @@ export const getConsolidatedMarks = catchAsync(async (req, res) => {
      WHERE sd.Deptid = ? 
        AND sd.batch = ? 
        AND sd.Semester = ? 
-       AND u.status = 'active'`,
+       AND u.status = 'active' order by (sd.regno)`,
     [deptIdValue, batchParam, semParam]
   );
 

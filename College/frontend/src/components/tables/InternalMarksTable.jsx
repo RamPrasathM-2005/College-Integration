@@ -115,7 +115,7 @@ const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }
                     isEvenRow ? 'bg-white' : 'bg-gray-25'
                   }`}
                 >
-                  <td className="px-6 py-4 text-sm text-gray-900 border-r border-gray-100 sticky left-0 bg-inherit z-10">
+                  <td className={`px-6 py-4 text-sm text-gray-900 border-r border-gray-100 sticky left-0 z-10 ${isEvenRow ? 'bg-white' : 'bg-gray-50'}`}>
                     <div className="flex items-center">
                       <div className="w-8 h-8 text-blue-600 rounded-lg flex items-center justify-center mr-3 text-xs font-semibold">
                         {index + 1}
@@ -123,7 +123,7 @@ const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }
                       <span className="font-mono text-gray-700 font-medium">{student.regno || student.rollnumber}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900 border-r border-gray-100 sticky left-[140px] bg-inherit z-10">
+                  <td className={`px-6 py-4 text-sm font-medium text-gray-900 border-r border-gray-100 sticky left-[140px] z-10 ${isEvenRow ? 'bg-white' : 'bg-gray-50'}`}>
                     {student.name}
                   </td>
                   {courseOutcomes.map((co) => {
