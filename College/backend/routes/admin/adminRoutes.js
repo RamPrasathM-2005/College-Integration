@@ -92,6 +92,7 @@ import {
   getCoursesByVertical, // Added this import
 } from "../../controllers/regulationController.js";
 import { protect } from "../../controllers/auth/authController.js";
+import { getStudentEnrollments } from "../../controllers/studentEnrollmentViewController.js";
 
 const router = express.Router();
 
@@ -218,5 +219,10 @@ router.route('/regulations/:regulationId/courses/available').get(protect, getAva
 router.route('/regulations/verticals/courses').post(protect, allocateCoursesToVertical);
 router.route('/regulations/verticals/:verticalId/courses').get(protect, getCoursesByVertical); // Added this route
 router.route('/regulations/allocate-to-batch').post(protect, allocateRegulationToBatch); // Added this route
+
+
+
+
+router.get("/enrollments/view", protect, getStudentEnrollments);
 
 export default router;

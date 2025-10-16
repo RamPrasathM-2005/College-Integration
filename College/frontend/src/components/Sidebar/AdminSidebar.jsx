@@ -29,6 +29,7 @@ const AdminSidebar = () => {
     { to: "/admin/course-recommendation", icon: BookImage, label: "Course Recommendation"},
     { to: "/admin/adminattendance", icon: User, label: "Attendance"},
     { to: "/admin/report", icon: Download, label: "Report" },
+    { to: "/admin/student-staff-mapping", icon: User, label: "Staff Staff Mapping"},
   ];
 
   const handleLogout = async () => {

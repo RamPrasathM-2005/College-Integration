@@ -36,6 +36,8 @@ import InternalMarks from "./pages/staff/InternalMarks";
 
 // NotFound
 import NotFound from "./pages/NotFound";
+import StudentStaffMapping from "./pages/admin/StudentEnrollmentsView";
+import StudentEnrollmentsView from "./pages/admin/StudentEnrollmentsView";
 
 // ProtectedRoute
 const ProtectedRoute = ({ children, role }) => {
@@ -78,6 +80,7 @@ const routes = [
       { path: "course-recommendation", element: <CourseRecommendation/>},
       { path: "adminattendance", element: <AdminAttendance /> },
       { path: "report", element: <Report /> },
+      { path: "student-staff-mapping", element: <StudentEnrollmentsView/>},
       { path: "*", element: <NotFound /> },
     ],
   },

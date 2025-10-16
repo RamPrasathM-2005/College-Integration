@@ -14,6 +14,7 @@
     "antd": "^5.27.4",
     "axios": "^1.11.0",
     "file-saver": "^2.0.5",
+    "json2csv": "^6.0.0-alpha.2",
     "jspdf": "^3.0.3",
     "jspdf-autotable": "^5.0.2",
     "lucide-react": "^0.542.0",
