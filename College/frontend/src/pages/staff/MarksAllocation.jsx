@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Upload, Download, ChevronDown, ChevronUp, Plus, Edit2, Trash2, Save } from 'lucide-react';
 import useMarkAllocation from '../../hooks/useMarkAllocation';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
+import {
+  getStudentCOMarks
+} from '../../services/staffService';
 
 const MySwal = withReactContent(Swal);
 
@@ -47,9 +50,10 @@ const MarksAllocation = () => {
     updateStudentMark,
     handleSaveToolMarks,
     handleImportMarks,
-    exportCoWiseCsv,
+    handleExportCoWiseCsv,
     error,
     setError,
+    loading,
   } = useMarkAllocation(courseId, sectionId);
 
   const [importFile, setImportFile] = useState(null);
@@ -57,6 +61,20 @@ const MarksAllocation = () => {
   const calculateToolWeightageSum = (tools) => {
     return tools.reduce((sum, tool) => sum + (tool.weightage || 0), 0);
   };
+
+  // Real-time consolidated mark calculation
+  const calculateConsolidated = useCallback((student, co) => {
+    if (!co || !co.tools || co.tools.length === 0) return 0;
+    let consolidated = 0;
+    let totalWeight = 0;
+    co.tools.forEach(tool => {
+      const marksObtained = student.marks?.[tool.toolId] ?? 0;
+      const weight = tool.weightage / 100;
+      consolidated += (marksObtained / tool.maxMarks) * weight;
+      totalWeight += weight;
+    });
+    return totalWeight > 0 ? Math.round((consolidated / totalWeight) * 100 * 100) / 100 : 0;
+  }, []);
 
   const handleSavePartitionsClick = async () => {
     if (
@@ -103,6 +121,12 @@ const MarksAllocation = () => {
   const handleSaveToolsForCOClick = async (coId) => {
     const result = await handleSaveToolsForCO(coId);
     if (result.success) {
+      // Update selectedCO and tempTools with the latest data from courseOutcomes
+      const updatedCO = courseOutcomes.find(c => c.coId === coId);
+      if (updatedCO) {
+        setSelectedCO(updatedCO);
+        setTempTools(updatedCO.tools ? updatedCO.tools.map((t) => ({ ...t, uniqueId: t.toolId })) : []);
+      }
       MySwal.fire('Success', result.message, 'success');
     } else {
       MySwal.fire('Error', result.error, 'error');
@@ -110,8 +134,22 @@ const MarksAllocation = () => {
   };
 
   const handleDeleteToolClick = async (tool) => {
-    setTempTools((prev) => prev.filter((t) => t.uniqueId !== tool.uniqueId));
-    MySwal.fire('Success', 'Tool removed from draft', 'success');
+    const result = await handleDeleteTool(tool);
+    if (result.success) {
+      // Update tempTools after deletion
+      setTempTools((prev) => prev.filter(t => t.uniqueId !== tool.uniqueId));
+      // Also update selectedCO.tools if necessary, but since hook handles it, re-set
+      if (selectedCO && selectedCO.coId === tool.coId) {
+        const updatedCO = courseOutcomes.find(c => c.coId === selectedCO.coId);
+        if (updatedCO) {
+          setSelectedCO(updatedCO);
+          setTempTools(updatedCO.tools ? updatedCO.tools.map((t) => ({ ...t, uniqueId: t.toolId })) : []);
+        }
+      }
+      MySwal.fire('Success', result.message, 'success');
+    } else {
+      MySwal.fire('Error', result.error, 'error');
+    }
   };
 
   const handleSaveToolMarksClick = async () => {
@@ -126,7 +164,7 @@ const MarksAllocation = () => {
     for (const tool of selectedCO.tools) {
       const marks = students.map((student) => ({
         regno: student.regno,
-        marksObtained: student.marks?.[tool.toolId] || 0,
+        marksObtained: student.marks?.[tool.toolId] ?? 0,
       }));
 
       const result = await handleSaveToolMarks(tool.toolId, marks);
@@ -138,7 +176,27 @@ const MarksAllocation = () => {
     }
 
     if (allSuccess) {
-      MySwal.fire('Success', 'Marks saved successfully for all tools', 'success');
+      // Refetch CO marks to update consolidated marks after save
+      try {
+        const updatedCoMarks = await getStudentCOMarks(courseId);
+        setStudents((prev) =>
+          prev.map((student) => {
+            const coMark = updatedCoMarks.data.students.find((m) => m.regno === student.regno);
+            if (coMark) {
+              const newConsolidatedMarks = { ...student.consolidatedMarks };
+              courseOutcomes.forEach((co) => {
+                const markData = coMark.marks[co.coNumber];
+                newConsolidatedMarks[co.coId] = markData ? Number(markData.consolidatedMark) : 0;
+              });
+              return { ...student, consolidatedMarks: newConsolidatedMarks };
+            }
+            return student;
+          })
+        );
+      } catch (refetchErr) {
+        console.error('Error refetching CO marks:', refetchErr);
+      }
+      MySwal.fire('Success', 'Tool marks and consolidated CO marks saved successfully', 'success');
     } else {
       MySwal.fire('Error', errorMessage || 'Failed to save marks for some tools', 'error');
     }
@@ -148,14 +206,12 @@ const MarksAllocation = () => {
     const file = e.target.files[0];
     console.log('Selected file:', file);
     if (file) {
-      // Validate file type
       if (!file.name.toLowerCase().endsWith('.csv')) {
         MySwal.fire('Error', 'Please select a CSV file', 'error');
         setImportFile(null);
-        e.target.value = ''; // Reset input
+        e.target.value = '';
         return;
       }
-      // Validate file size
       if (file.size > 5 * 1024 * 1024) {
         MySwal.fire('Error', 'File size must be less than 5MB', 'error');
         setImportFile(null);
@@ -181,9 +237,9 @@ const MarksAllocation = () => {
     console.log('Initiating import for file:', importFile.name);
     const result = await handleImportMarks(importFile);
     if (result.success) {
-      MySwal.fire('Success', result.message, 'success');
+      MySwal.fire('Success', 'Marks imported and consolidated CO marks saved successfully', 'success');
       setImportFile(null);
-      document.querySelector('input[type="file"]').value = ''; // Reset file input
+      document.querySelector('input[type="file"]').value = '';
     } else {
       MySwal.fire('Error', result.error, 'error');
     }
@@ -197,9 +253,12 @@ const MarksAllocation = () => {
     setTempTools(co?.tools ? co.tools.map((t) => ({ ...t, uniqueId: t.toolId })) : []);
   };
 
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
   if (error) {
-    MySwal.fire('Error', error, 'error');
-    setError('');
+    MySwal.fire('Error', error, 'error').then(() => setError(''));
   }
 
   return (
@@ -311,7 +370,7 @@ const MarksAllocation = () => {
         <div className="bg-white rounded-2xl shadow-lg p-8 border border-slate-100">
           <h3 className="text-xl font-bold text-slate-900 mb-6">Course Outcomes (COs)</h3>
           <div className="space-y-4">
-            {courseOutcomes.map((co, index) => (
+            {courseOutcomes.map((co) => (
               <div key={co.coId} className="border border-slate-200 rounded-xl overflow-hidden">
                 <div className="flex justify-between items-center p-6 bg-slate-50">
                   <div className="flex items-center gap-4">
@@ -327,7 +386,7 @@ const MarksAllocation = () => {
                     </div>
                   </div>
                   <button
-                    onClick={() => exportCoWiseCsv(co.coId)}
+                    onClick={() => handleExportCoWiseCsv(co.coId)}
                     className="px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all duration-200 flex items-center gap-2 font-medium shadow-md"
                   >
                     <Download className="w-4 h-4" />
@@ -341,7 +400,7 @@ const MarksAllocation = () => {
                       {co.tools?.map((tool) => (
                         <div key={tool.toolId} className="bg-slate-50 p-4 rounded-lg">
                           <div className="flex justify-between items-center">
-                            <span className="font-medium text-slate-700">{tool.toolName}</span>
+                            <span className="font-medium text-slate-900">{tool.toolName}</span>
                             <div className="flex gap-4 text-sm text-slate-600">
                               <span>Weightage: <strong className="text-blue-600">{tool.weightage}%</strong></span>
                               <span>Max Marks: <strong className="text-green-600">{tool.maxMarks}</strong></span>
@@ -605,10 +664,18 @@ const MarksAllocation = () => {
                           <td key={tool.toolId} className="border-b border-slate-200 p-4">
                             <input
                               type="number"
-                              value={student.marks?.[tool.toolId] || ''}
+                              value={student.marks?.[tool.toolId] ?? ''}
                               onChange={(e) => {
-                                const value = parseInt(e.target.value);
-                                if (isNaN(value) || value < 0 || value > tool.maxMarks) return;
+                                const rawValue = e.target.value;
+                                let value = null;
+                                if (rawValue !== '') {
+                                  const num = parseInt(rawValue);
+                                  if (!isNaN(num) && num >= 0 && num <= tool.maxMarks) {
+                                    value = num;
+                                  } else {
+                                    return; // Invalid, don't update
+                                  }
+                                }
                                 updateStudentMark(tool.toolId, student.regno, value);
                               }}
                               className="w-full p-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-center"
@@ -620,12 +687,7 @@ const MarksAllocation = () => {
                         ))}
                         <td className="border-b border-slate-200 p-4 text-center">
                           <div className="inline-flex px-3 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold">
-                            {(
-                              selectedCO.tools?.reduce((sum, tool) => {
-                                const mark = student.marks?.[tool.toolId] || 0;
-                                return sum + (mark / tool.maxMarks) * (tool.weightage / 100);
-                              }, 0) * 100
-                            ).toFixed(2)}%
+                            {calculateConsolidated(student, selectedCO).toFixed(2)}%
                           </div>
                         </td>
                       </tr>

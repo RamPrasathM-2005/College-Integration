@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getCOsForCourse, getStudentsForCourse, getToolsForCO, getStudentMarksForTool, exportCourseWiseCsv } from '../services/staffService';
+import { getCOsForCourse, getStudentCOMarks, exportCourseWiseCsv } from '../services/staffService';
 import { calculateInternalMarks as calcInternalMarks } from '../utils/calculations';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
@@ -40,81 +40,34 @@ const useInternalMarks = (courseCode) => {
           return;
         }
 
-        // 2. Fetch tools for each CO
-        const cosWithTools = await Promise.all(
-          cos.map(async (co) => {
-            try {
-              const tools = await getToolsForCO(co.coId);
-              console.log(`getToolsForCO response for coId ${co.coId}:`, tools);
-              return { ...co, tools: tools || [] };
-            } catch (err) {
-              console.warn(`Error fetching tools for coId ${co.coId}:`, err);
-              return { ...co, tools: [] };
-            }
-          })
-        );
-        setCourseOutcomes(cosWithTools);
+        setCourseOutcomes(cos);
 
-        // 3. Fetch all students for the course
-        const studentsData = await getStudentsForCourse(courseCode);
-        console.log('getStudentsForCourse response:', studentsData);
-        if (!Array.isArray(studentsData) || studentsData.length === 0) {
-          console.warn('No students found for course:', courseCode);
-          setError(
-            studentsData?.debug
-              ? `Course not found or not assigned to you. Debug: ${JSON.stringify(studentsData.debug)}`
-              : 'No students enrolled in this course or course not found'
-          );
+        // Fetch consolidated marks which include students and their CO marks
+        const comarksResponse = await getStudentCOMarks(courseCode);
+        console.log('getStudentCOMarks response:', comarksResponse);
+
+        if (!comarksResponse || !Array.isArray(comarksResponse.data.students) || comarksResponse.data.students.length === 0) {
+          console.warn('No consolidated marks or students found for course:', courseCode);
+          setError('No students or marks found for this course');
           setStudents([]);
           setLoading(false);
           return;
         }
 
-        // 4. BATCH FETCH ALL MARKS DATA - OPTIMIZED APPROACH
-        // Create a map of all tool IDs to fetch marks for
-        const allToolIds = new Set();
-        cosWithTools.forEach(co => {
-          co.tools.forEach(tool => allToolIds.add(tool.toolId));
-        });
-        const toolIdsArray = Array.from(allToolIds);
-        console.log('All unique tool IDs to fetch:', toolIdsArray);
-
-        // Fetch marks for ALL tools in parallel (1 call per tool, not per student)
-        const allMarksData = await Promise.all(
-          toolIdsArray.map(async (toolId) => {
-            try {
-              const marksData = await getStudentMarksForTool(toolId);
-              console.log(`Marks for tool ${toolId}:`, marksData.length, 'records');
-              return { toolId, marks: marksData };
-            } catch (err) {
-              console.warn(`Error fetching marks for tool ${toolId}:`, err);
-              return { toolId, marks: [] };
-            }
-          })
-        );
-
-        // Create a lookup map: toolId -> [ { regno, marksObtained } ]
-        const marksLookup = new Map();
-        allMarksData.forEach(({ toolId, marks }) => {
-          marksLookup.set(toolId, marks);
-        });
-        console.log('Marks lookup created for', marksLookup.size, 'tools');
-
-        // 5. Process students with marks locally (NO API CALLS)
-        const studentsWithMarks = studentsData.map((student) => {
-          const marks = {};
-          // For each tool, look up the student's marks from the batch data
-          toolIdsArray.forEach(toolId => {
-            const toolMarks = marksLookup.get(toolId) || [];
-            const studentMark = toolMarks.find((m) => m.regno === student.regno);
-            marks[toolId] = studentMark ? Number(studentMark.marksObtained) : 0;
+        // Map the data to the expected format: students with marks { coId: consolidatedMark }
+        const processedStudents = comarksResponse.data.students.map(student => {
+          const marksByCoId = {};
+          Object.entries(student.marks).forEach(([coNumber, markData]) => {
+            marksByCoId[markData.coId] = Number(markData.consolidatedMark);
           });
-          console.log(`Processed marks for student ${student.regno}:`, marks);
-          return { ...student, marks };
+          return {
+            ...student,
+            marks: marksByCoId,  // Now marks is { coId: number }
+          };
         });
 
-        console.log('Final students with marks:', studentsWithMarks.length, 'students');
-        setStudents(studentsWithMarks);
+        console.log('Processed students with CO marks:', processedStudents.length, 'students');
+        setStudents(processedStudents);
         setLoading(false);
       } catch (err) {
         console.error('Error fetching data in useInternalMarks:', err);

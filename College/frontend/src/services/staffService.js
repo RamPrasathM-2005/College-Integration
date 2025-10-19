@@ -15,7 +15,6 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    // Remove Content-Type for FormData requests to let axios set the correct boundary
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
     }
@@ -35,6 +34,29 @@ api.interceptors.response.use(
   }
 );
 
+export const getStudentCOMarks = async (courseCode) => {
+  try {
+    const response = await api.get(`/marks/co/${courseCode}`);
+    console.log(`getStudentCOMarks response for courseCode ${courseCode}:`, response.data);
+    return response.data || { students: [], partitions: {} };
+  } catch (error) {
+    console.error('Error in getStudentCOMarks:', error);
+    throw new Error(error.response?.data?.message || 'Failed to fetch CO marks');
+  }
+};
+
+export const updateStudentCOMark = async (courseCode, regno, coId, consolidatedMark) => {
+  try {
+    // Use the endpoint without courseCode
+    const response = await api.put(`/marks/co/${regno}/${coId}`, { consolidatedMark });
+    console.log(`updateStudentCOMark response for regno ${regno}, coId ${coId}:`, response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error in updateStudentCOMark:', error);
+    throw new Error(error.response?.data?.message || 'Failed to update CO mark');
+  }
+};
+
 export const importMarksForTool = async (toolId, file) => {
   try {
     if (!file || !(file instanceof File)) {
@@ -44,7 +66,6 @@ export const importMarksForTool = async (toolId, file) => {
     const formData = new FormData();
     formData.append('file', file);
     
-    // Debug FormData contents
     console.log('Sending import request for toolId:', toolId);
     console.log('File details:', {
       name: file.name,
@@ -66,7 +87,6 @@ export const importMarksForTool = async (toolId, file) => {
   }
 };
 
-// ... other functions remain unchanged
 export const getCoursePartitions = async (courseCode) => {
   const response = await api.get(`/partitions/${courseCode}`);
   return response.data.data;
