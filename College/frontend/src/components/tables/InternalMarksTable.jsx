@@ -1,7 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BookOpen, TrendingUp, Users } from 'lucide-react';
+import { updateStudentCOMark } from '../../services/staffService';
+import Swal from 'sweetalert2';
+import withReactContent from 'sweetalert2-react-content';
 
-const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }) => {
+const MySwal = withReactContent(Swal);
+
+const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks, refreshData }) => {
+  const [editingCell, setEditingCell] = useState(null); // Track editing cell: { regno, coId }
+  const [editValue, setEditValue] = useState(''); // Track input value during editing
+  const [localMarks, setLocalMarks] = useState({}); // Store local marks for immediate UI updates
+
   if (!students?.length || !courseOutcomes?.length || !calculateInternalMarks) {
     return (
       <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 text-center">
@@ -18,8 +27,111 @@ const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }
     );
   }
 
-  console.log('InternalMarksTable - students:', students); // Debug log
-  console.log('InternalMarksTable - courseOutcomes:', courseOutcomes); // Debug log
+  console.log('InternalMarksTable - students:', students);
+  console.log('InternalMarksTable - courseOutcomes:', courseOutcomes);
+
+  const handleClick = (regno, coId, currentMark) => {
+    setEditingCell({ regno, coId });
+    setEditValue(currentMark?.toString() || '0');
+  };
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    // Allow numbers and decimal points, within 0-100
+    if (/^\d*\.?\d*$/.test(value) && (value === '' || (Number(value) >= 0 && Number(value) <= 100))) {
+      setEditValue(value);
+    }
+  };
+
+  const handleInputBlur = async (regno, coId) => {
+    const newMark = parseFloat(editValue);
+    if (isNaN(newMark) || newMark < 0 || newMark > 100) {
+      MySwal.fire('Error', 'Please enter a valid mark between 0 and 100', 'error');
+      setEditingCell(null);
+      return;
+    }
+
+    try {
+      // Update the backend
+      await updateStudentCOMark(null, regno, coId, newMark);
+      console.log(`Updated mark for regno ${regno}, coId ${coId}: ${newMark}`);
+
+      // Update local marks state
+      setLocalMarks((prev) => ({
+        ...prev,
+        [`${regno}_${coId}`]: newMark,
+      }));
+
+      // Trigger parent component to refresh data
+      if (refreshData) {
+        await refreshData();
+      }
+
+      setEditingCell(null);
+      MySwal.fire('Success', 'Mark updated successfully', 'success');
+    } catch (error) {
+      console.error('Error updating CO mark:', error);
+      MySwal.fire('Error', `Failed to update mark: ${error.message}`, 'error');
+      setEditingCell(null);
+    }
+  };
+
+  const handleKeyPress = (e, regno, coId) => {
+    if (e.key === 'Enter') {
+      handleInputBlur(regno, coId);
+    } else if (e.key === 'Escape') {
+      setEditingCell(null);
+    }
+  };
+
+  // Modified getAverages to prioritize consolidated marks from students.marks
+  const getAverages = (regno) => {
+    const student = students.find((s) => (s.regno || s.rollnumber) === regno);
+    const averages = {};
+
+    // Use consolidated marks from students.marks or localMarks
+    courseOutcomes.forEach((co) => {
+      const key = `${regno}_${co.coId}`;
+      averages[co.coId] = localMarks[key] ?? student?.marks?.[co.coId] ?? 0;
+    });
+
+    // Calculate partition averages
+    let theorySum = 0, theoryCount = 0, practicalSum = 0, practicalCount = 0, experientialSum = 0, experientialCount = 0;
+    courseOutcomes.forEach((co) => {
+      const coMark = parseFloat(averages[co.coId]) || 0;
+      if (co.coType === 'THEORY') {
+        theorySum += coMark;
+        theoryCount++;
+      } else if (co.coType === 'PRACTICAL') {
+        practicalSum += coMark;
+        practicalCount++;
+      } else if (co.coType === 'EXPERIENTIAL') {
+        experientialSum += coMark;
+        experientialCount++;
+      }
+    });
+
+    averages.avgTheory = theoryCount ? (theorySum / theoryCount).toFixed(2) : '0.00';
+    averages.avgPractical = practicalCount ? (practicalSum / practicalCount).toFixed(2) : '0.00';
+    averages.avgExperiential = experientialCount ? (experientialSum / experientialCount).toFixed(2) : '0.00';
+
+    // Calculate overall final average as total sum of all CO marks / total COs
+    let totalSum = 0;
+    const totalCount = courseOutcomes.length;
+    courseOutcomes.forEach((co) => {
+      totalSum += parseFloat(averages[co.coId]) || 0;
+    });
+    averages.finalAvg = totalCount > 0 ? (totalSum / totalCount).toFixed(2) : '0.00';
+
+    return averages;
+  };
+
+  // Determine partition counts for dynamic headers
+  const partitionCounts = {
+    theory: courseOutcomes.filter((co) => co.coType === 'THEORY').length,
+    practical: courseOutcomes.filter((co) => co.coType === 'PRACTICAL').length,
+    experiential: courseOutcomes.filter((co) => co.coType === 'EXPERIENTIAL').length,
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
@@ -68,30 +180,36 @@ const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }
                   </div>
                 </th>
               ))}
-              <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 bg-gray-50 border-r border-gray-200 min-w-[130px]">
-                <div className="flex flex-col items-center">
-                  <div className="w-7 h-7 bg-emerald-100 text-emerald-700 rounded-lg flex items-center justify-center mb-1 text-xs font-bold">
-                    T
+              {partitionCounts.theory > 0 && (
+                <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 bg-gray-50 border-r border-gray-200 min-w-[130px]">
+                  <div className="flex flex-col items-center">
+                    <div className="w-7 h-7 bg-emerald-100 text-emerald-700 rounded-lg flex items-center justify-center mb-1 text-xs font-bold">
+                      T
+                    </div>
+                    <span className="text-xs text-gray-500">Theory Average</span>
                   </div>
-                  <span className="text-xs text-gray-500">Theory Average</span>
-                </div>
-              </th>
-              <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 bg-gray-50 border-r border-gray-200 min-w-[130px]">
-                <div className="flex flex-col items-center">
-                  <div className="w-7 h-7 bg-violet-100 text-violet-700 rounded-lg flex items-center justify-center mb-1 text-xs font-bold">
-                    P
+                </th>
+              )}
+              {partitionCounts.practical > 0 && (
+                <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 bg-gray-50 border-r border-gray-200 min-w-[130px]">
+                  <div className="flex flex-col items-center">
+                    <div className="w-7 h-7 bg-violet-100 text-violet-700 rounded-lg flex items-center justify-center mb-1 text-xs font-bold">
+                      P
+                    </div>
+                    <span className="text-xs text-gray-500">Practical Average</span>
                   </div>
-                  <span className="text-xs text-gray-500">Practical Average</span>
-                </div>
-              </th>
-              <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 bg-gray-50 border-r border-gray-200 min-w-[130px]">
-                <div className="flex flex-col items-center">
-                  <div className="w-7 h-7 bg-amber-100 text-amber-700 rounded-lg flex items-center justify-center mb-1 text-xs font-bold">
-                    E
+                </th>
+              )}
+              {partitionCounts.experiential > 0 && (
+                <th className="px-4 py-4 text-center text-sm font-semibold text-gray-700 bg-gray-50 border-r border-gray-200 min-w-[130px]">
+                  <div className="flex flex-col items-center">
+                    <div className="w-7 h-7 bg-amber-100 text-amber-700 rounded-lg flex items-center justify-center mb-1 text-xs font-bold">
+                      E
+                    </div>
+                    <span className="text-xs text-gray-500">Experiential Avg</span>
                   </div>
-                  <span className="text-xs text-gray-500">Experiential Avg</span>
-                </div>
-              </th>
+                </th>
+              )}
               <th className="px-4 py-4 text-center text-sm font-semibold text-blue-600 min-w-[140px]">
                 <div className="flex flex-col items-center">
                   <div className="w-8 h-8 bg-blue-600 bg-opacity-20 rounded-lg flex items-center justify-center mb-1">
@@ -104,8 +222,8 @@ const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }
           </thead>
           <tbody className="divide-y divide-gray-100">
             {students.map((student, index) => {
-              const averages = calculateInternalMarks(student.regno || student.rollnumber);
-              console.log(`Averages for student ${student.regno || student.rollnumber}:`, averages); // Debug log
+              const averages = getAverages(student.regno || student.rollnumber);
+              console.log(`Averages for student ${student.regno || student.rollnumber}:`, averages);
               const isEvenRow = index % 2 === 0;
 
               return (
@@ -128,42 +246,62 @@ const InternalMarksTable = ({ students, courseOutcomes, calculateInternalMarks }
                   </td>
                   {courseOutcomes.map((co) => {
                     const coMark = averages[co.coId] || 0;
-                    console.log(`CO mark for ${co.coNumber} (coId: ${co.coId}): ${coMark}`); // Debug log
+                    const isEditing = editingCell?.regno === (student.regno || student.rollnumber) && editingCell?.coId === co.coId;
+                    console.log(`CO mark for ${co.coNumber} (coId: ${co.coId}): ${coMark}`);
                     return (
                       <td key={co.coId} className="px-4 py-4 text-center border-r border-gray-100">
-                        <span
-                          className={`inline-flex items-center justify-center w-14 h-8 text-sm font-semibold ${
-                            coMark >= 80
-                              ? 'text-emerald-700'
-                              : coMark >= 70
-                              ? 'text-blue-700'
-                              : coMark >= 60
-                              ? 'text-amber-700'
-                              : coMark >= 50
-                              ? 'text-orange-700'
-                              : 'text-red-700'
-                          }`}
-                        >
-                          {coMark.toFixed(1)}
-                        </span>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editValue}
+                            onChange={handleInputChange}
+                            onBlur={() => handleInputBlur(student.regno || student.rollnumber, co.coId)}
+                            onKeyDown={(e) => handleKeyPress(e, student.regno || student.rollnumber, co.coId)}
+                            className="w-14 h-8 text-center text-sm font-semibold border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                          />
+                        ) : (
+                          <span
+                            onClick={() => handleClick(student.regno || student.rollnumber, co.coId, coMark)}
+                            className={`inline-flex items-center justify-center w-14 h-8 text-sm font-semibold cursor-pointer hover:bg-blue-50 ${
+                              coMark >= 80
+                                ? 'text-emerald-700'
+                                : coMark >= 70
+                                ? 'text-blue-700'
+                                : coMark >= 60
+                                ? 'text-amber-700'
+                                : coMark >= 50
+                                ? 'text-orange-700'
+                                : 'text-red-700'
+                            }`}
+                          >
+                            {coMark.toFixed(1)}
+                          </span>
+                        )}
                       </td>
                     );
                   })}
-                  <td className="px-4 py-4 text-center border-r border-gray-100">
-                    <span className="inline-flex items-center justify-center w-16 h-8 text-emerald-700 text-sm font-semibold">
-                      {averages.avgTheory || '0.00'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 text-center border-r border-gray-100">
-                    <span className="inline-flex items-center justify-center w-16 h-8 text-violet-700 text-sm font-semibold">
-                      {averages.avgPractical || '0.00'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 text-center border-r border-gray-100">
-                    <span className="inline-flex items-center justify-center w-16 h-8 text-amber-700 text-sm font-semibold">
-                      {averages.avgExperiential || '0.00'}
-                    </span>
-                  </td>
+                  {partitionCounts.theory > 0 && (
+                    <td className="px-4 py-4 text-center border-r border-gray-100">
+                      <span className="inline-flex items-center justify-center w-16 h-8 text-emerald-700 text-sm font-semibold">
+                        {averages.avgTheory || '0.00'}
+                      </span>
+                    </td>
+                  )}
+                  {partitionCounts.practical > 0 && (
+                    <td className="px-4 py-4 text-center border-r border-gray-100">
+                      <span className="inline-flex items-center justify-center w-16 h-8 text-violet-700 text-sm font-semibold">
+                        {averages.avgPractical || '0.00'}
+                      </span>
+                    </td>
+                  )}
+                  {partitionCounts.experiential > 0 && (
+                    <td className="px-4 py-4 text-center border-r border-gray-100">
+                      <span className="inline-flex items-center justify-center w-16 h-8 text-amber-700 text-sm font-semibold">
+                        {averages.avgExperiential || '0.00'}
+                      </span>
+                    </td>
+                  )}
                   <td className="px-4 py-4 text-center">
                     <span className="inline-flex items-center justify-center w-20 h-10 text-blue-600 text-sm font-bold">
                       {averages.finalAvg || '0.00'}

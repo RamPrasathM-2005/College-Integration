@@ -531,6 +531,24 @@ const initDatabase = async () => {
             )
         `);
 
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS StudentCOMarks (
+                studentCoMarkId INT PRIMARY KEY AUTO_INCREMENT,
+                regno VARCHAR(50) NOT NULL,
+                coId INT NOT NULL,
+                consolidatedMark DECIMAL(5,2) NOT NULL CHECK (consolidatedMark >= 0 AND consolidatedMark <= 100),
+                createdBy VARCHAR(150),
+                updatedBy VARCHAR(150),
+                createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE (regno, coId),
+                CONSTRAINT fk_scm_student FOREIGN KEY (regno) REFERENCES student_details(regno)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_scm_co FOREIGN KEY (coId) REFERENCES CourseOutcome(coId)
+                    ON UPDATE CASCADE ON DELETE CASCADE
+            )
+        `);
+
         // 25) StudentElectiveSelection - Stores student selections from elective buckets
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS StudentElectiveSelection (

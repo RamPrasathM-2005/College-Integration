@@ -71,7 +71,7 @@ import {
   deleteTimetableEntry,
   getTimetableByFilters,
 } from "../../controllers/timetableController.js";
-import { getConsolidatedMarks } from "../../controllers/markController.js";
+import { exportCourseWiseCsvAdmin, getConsolidatedMarks } from "../../controllers/markController.js";
 import { getDepartments } from "../../controllers/departmentController.js";
 import {
   getElectiveBuckets,
@@ -93,6 +93,8 @@ import {
 } from "../../controllers/regulationController.js";
 import { protect } from "../../controllers/auth/authController.js";
 import { getStudentEnrollments } from "../../controllers/studentEnrollmentViewController.js";
+
+import { getCOsForCourseAdmin, getStudentCOMarksAdmin, updateStudentCOMarkAdmin } from "../../controllers/markController.js";
 
 const router = express.Router();
 
@@ -224,5 +226,11 @@ router.route('/regulations/allocate-to-batch').post(protect, allocateRegulationT
 
 
 router.get("/enrollments/view", protect, getStudentEnrollments);
+
+
+router.get("/admin-marks/cos/:courseCode", protect, getCOsForCourseAdmin);
+router.get("/admin-marks/marks/co/:courseCode", protect, getStudentCOMarksAdmin);
+router.put("/admin-marks/marks/co/:regno/:coId", protect, updateStudentCOMarkAdmin);
+router.get('/export/course/:courseCode', protect, exportCourseWiseCsvAdmin);
 
 export default router;

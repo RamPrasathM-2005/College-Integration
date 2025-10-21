@@ -14,6 +14,7 @@ import {
   exportCoWiseCsv,
   exportCourseWiseCsv,
   getStudentsForSection,
+  getStudentCOMarks,
 } from '../services/staffService';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
@@ -49,12 +50,14 @@ const useMarkAllocation = (courseCode, sectionId) => {
         setError('');
         setLoading(true);
 
+        // Fetch partitions
         const parts = await getCoursePartitions(courseCode);
         console.log('getCoursePartitions response:', parts);
         setPartitions(parts);
         setNewPartition(parts);
         setShowPartitionModal(!parts.partitionId);
 
+        // Fetch course outcomes
         const cos = await getCOsForCourse(courseCode);
         console.log('getCOsForCourse response:', cos);
         if (!Array.isArray(cos)) {
@@ -78,6 +81,7 @@ const useMarkAllocation = (courseCode, sectionId) => {
         );
         setCourseOutcomes(cosWithTools);
 
+        // Fetch students
         const studentsData = await getStudentsForSection(courseCode, sectionId);
         console.log('getStudentsForSection response:', studentsData);
         if (!Array.isArray(studentsData)) {
@@ -92,26 +96,46 @@ const useMarkAllocation = (courseCode, sectionId) => {
           return;
         }
 
-        const studentsWithMarks = await Promise.all(
-          studentsData.map(async (student) => {
-            const marks = {};
-            for (const co of cosWithTools) {
-              for (const tool of co.tools || []) {
-                try {
-                  const marksData = await getStudentMarksForTool(tool.toolId);
-                  console.log(`Marks for tool ${tool.toolId}:`, marksData);
-                  const studentMark = marksData.find((m) => m.regno === student.regno);
-                  marks[tool.toolId] = studentMark ? Number(studentMark.marksObtained) : 0;
-                } catch (markErr) {
-                  console.warn(`Error fetching marks for tool ${tool.toolId}:`, markErr);
-                  marks[tool.toolId] = 0;
-                }
-              }
+        // Fetch CO marks from StudentCOMarks
+        const coMarks = await getStudentCOMarks(courseCode);
+        console.log('getStudentCOMarks response:', coMarks);
+
+        // Fetch all tool marks once per tool (outside student loop)
+        const allToolMarks = {};
+        for (const co of cosWithTools) {
+          for (const tool of co.tools || []) {
+            try {
+              const marksData = await getStudentMarksForTool(tool.toolId);
+              console.log(`getStudentMarksForTool for tool ${tool.toolId}:`, marksData);
+              allToolMarks[tool.toolId] = marksData;
+            } catch (markErr) {
+              console.warn(`Error fetching marks for tool ${tool.toolId}:`, markErr);
+              allToolMarks[tool.toolId] = [];
             }
-            console.log(`Marks for student ${student.regno}:`, marks);
-            return { ...student, marks };
-          })
-        );
+          }
+        }
+
+        // Fetch tool marks and combine with CO marks
+        const studentsWithMarks = studentsData.map((student) => {
+          const marks = {};
+          const consolidatedMarks = {};
+          for (const co of cosWithTools) {
+            // Store consolidated mark for this CO
+            const coMark = coMarks.data.students.find((m) => m.regno === student.regno);
+            const markData = coMark?.marks[co.coNumber];
+            consolidatedMarks[co.coId] = markData ? Number(markData.consolidatedMark) : 0;
+
+            // Fetch tool marks from pre-fetched data
+            for (const tool of co.tools || []) {
+              const toolMarks = allToolMarks[tool.toolId] || [];
+              const studentMark = toolMarks.find((m) => m.regno === student.regno);
+              marks[tool.toolId] = studentMark ? Number(studentMark.marksObtained) : 0;
+            }
+          }
+          console.log(`Marks for student ${student.regno}:`, marks);
+          console.log(`Consolidated marks for student ${student.regno}:`, consolidatedMarks);
+          return { ...student, marks, consolidatedMarks };
+        });
         console.log('Processed students with marks:', studentsWithMarks);
         setStudents(studentsWithMarks);
         setLoading(false);
@@ -368,7 +392,15 @@ const useMarkAllocation = (courseCode, sectionId) => {
   const updateStudentMark = (toolId, regno, marks) => {
     setStudents((prev) =>
       prev.map((s) =>
-        s.regno === regno ? { ...s, marks: { ...s.marks, [toolId]: marks } } : s
+        s.regno === regno 
+          ? { 
+              ...s, 
+              marks: { 
+                ...s.marks, 
+                [toolId]: marks 
+              } 
+            } 
+          : s
       )
     );
   };
