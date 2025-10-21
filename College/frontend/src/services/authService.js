@@ -88,7 +88,9 @@ export const logout = async () => {
 
 export const getCurrentUser = () => {
   const userStr = localStorage.getItem('user');
+  console.log('Current user from localStorage:', JSON.parse(userStr));
   return userStr ? JSON.parse(userStr) : null;
+  
 };
 
 export const getDepartments = async () => {

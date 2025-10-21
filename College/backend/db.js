@@ -531,6 +531,32 @@ const initDatabase = async () => {
             )
         `);
 
+        // 25) StudentElectiveSelection - Stores student selections from elective buckets
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS StudentElectiveSelection (
+                selectionId INT PRIMARY KEY AUTO_INCREMENT,
+                regno VARCHAR(50) NOT NULL,
+                bucketId INT NOT NULL,
+                selectedCourseId INT NOT NULL,
+                status ENUM('pending', 'allocated', 'rejected') DEFAULT 'pending',
+                createdBy INT,
+                updatedBy INT,
+                createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE (regno, bucketId),
+                CONSTRAINT fk_ses_student FOREIGN KEY (regno) REFERENCES student_details(regno)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_ses_bucket FOREIGN KEY (bucketId) REFERENCES ElectiveBucket(bucketId)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_ses_course FOREIGN KEY (selectedCourseId) REFERENCES Course(courseId)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_ses_created FOREIGN KEY (createdBy) REFERENCES users(Userid)
+                    ON UPDATE CASCADE ON DELETE SET NULL,
+                CONSTRAINT fk_ses_updated FOREIGN KEY (updatedBy) REFERENCES users(Userid)
+                    ON UPDATE CASCADE ON DELETE SET NULL
+            )
+        `);
+
         // Insert initial department data (aligned with branchMap)
         await connection.execute(`
             INSERT IGNORE INTO department (Deptid, Deptname, Deptacronym)
