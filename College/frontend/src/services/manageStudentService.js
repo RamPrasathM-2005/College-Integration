@@ -70,6 +70,7 @@ const manageStudentsService = {
                   sectionName: course.sectionName && typeof course.sectionName === 'string' ? course.sectionName.replace(/"/g, '') : '',
                 }))
               : [],
+            selectedElectiveIds: student.selectedElectiveIds?.map(id => String(id)) || [],
           }))
         : [];
 
@@ -79,6 +80,7 @@ const manageStudentsService = {
             courseId: String(course.courseId),
             courseCode: course.courseCode,
             courseTitle: course.courseTitle || 'Unknown Course',
+            category: course.category,
             batches: Array.isArray(course.batches)
               ? course.batches.map((batch, index) => ({
                   ...batch,
@@ -105,6 +107,7 @@ const manageStudentsService = {
                   courseId: String(course.courseId),
                   courseCode: course.courseCode,
                   courseTitle: course.courseTitle || course.courseName || 'Unknown Course',
+                  category: course.category,
                   batches: Array.isArray(course.batches || course.sections)
                     ? (course.batches || course.sections).map((batch, index) => ({
                         ...batch,

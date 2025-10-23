@@ -28,6 +28,7 @@ import BatchRegulationAllocation from './pages/admin/BatchRegulationAllocation';
 import AdminAttendance from './pages/admin/AttendanceAdmin';
 import Report from './pages/admin/Reports';
 import StudentEnrollmentsView from './pages/admin/StudentEnrollmentsView';
+// import UpdateStudentSem from './pages/admin/ManageStudents/UpdateStudentSem.jsx'; 
 
 // Staff Pages
 import StaffDashboard from './pages/staff/Dashboard';
@@ -85,6 +86,7 @@ const routes = [
       { path: 'adminattendance', element: <AdminAttendance /> },
       { path: 'report', element: <Report /> },
       { path: 'student-staff-mapping', element: <StudentEnrollmentsView /> },
+      // { path: 'student-sem-update', element: <UpdateStudentSem/ > },
       { path: '*', element: <NotFound /> },
     ],
   },

@@ -8,6 +8,7 @@ import {
   getStudentEnrolledCourses,
   getAttendanceSummary,
   getUserId,
+  getElectiveSelections,
 } from "../../controllers/studentpageController.js";
 import { protect} from "../../controllers/auth/authController.js";
 
@@ -38,5 +39,7 @@ router.get("/enrolled-courses", getStudentEnrolledCourses);
 
 // Get attendance summary for a semester
 router.get("/attendance-summary", getAttendanceSummary);
+
+router.get('/elective-selections', protect, getElectiveSelections);
 
 export default router;

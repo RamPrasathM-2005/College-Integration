@@ -4,7 +4,6 @@ import { getUserRole, getUserId } from '../../utils/auth';
 import {
   fetchStudentDetails,
   fetchSemesters,
-  fetchMandatoryCourses,
   fetchElectiveBuckets,
   allocateElectives,
 } from '../../services/studentService';
@@ -13,7 +12,6 @@ const ChooseCourse = () => {
   const navigate = useNavigate();
   const [semesters, setSemesters] = useState([]);
   const [selectedSemester, setSelectedSemester] = useState('');
-  const [mandatoryCourses, setMandatoryCourses] = useState({ core: [], other: [] });
   const [electiveBuckets, setElectiveBuckets] = useState([]);
   const [selections, setSelections] = useState({});
   const [studentDetails, setStudentDetails] = useState({});
@@ -31,7 +29,6 @@ const ChooseCourse = () => {
       try {
         setLoading(true);
         const userId = getUserId();
-
         const studentData = await fetchStudentDetails(userId);
         setStudentDetails(studentData);
 
@@ -43,8 +40,8 @@ const ChooseCourse = () => {
           setSelectedSemester(activeSemester.semesterId);
         }
       } catch (err) {
-        setError('Failed to fetch student data');
-        console.error(err);
+        setError('Failed to fetch student data. Please try again.');
+        console.error('Error fetching student data:', err);
       } finally {
         setLoading(false);
       }
@@ -54,7 +51,7 @@ const ChooseCourse = () => {
   }, [navigate]);
 
   useEffect(() => {
-    const fetchCoursesAndBuckets = async () => {
+    const fetchBuckets = async () => {
       if (!selectedSemester) return;
 
       try {
@@ -62,9 +59,6 @@ const ChooseCourse = () => {
         setError(null);
         setSuccess(null);
         setSelections({});
-
-        const mandatoryData = await fetchMandatoryCourses(selectedSemester);
-        setMandatoryCourses(mandatoryData);
 
         const bucketsData = await fetchElectiveBuckets(selectedSemester);
         setElectiveBuckets(bucketsData);
@@ -75,14 +69,14 @@ const ChooseCourse = () => {
         });
         setSelections(initialSelections);
       } catch (err) {
-        setError('Failed to fetch courses or buckets');
-        console.error(err);
+        setError('Failed to fetch elective buckets. Please try again.');
+        console.error('Error fetching buckets:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchCoursesAndBuckets();
+    fetchBuckets();
   }, [selectedSemester]);
 
   const handleSemesterChange = (e) => {
@@ -99,29 +93,30 @@ const ChooseCourse = () => {
       setError(null);
       setSuccess(null);
 
-      // ✅ Pass 2 arguments: semesterId, selections
       const validSelections = Object.entries(selections)
-        .filter(([_, courseId]) => courseId)  // Only include selected courses
+        .filter(([_, courseId]) => courseId)
         .map(([bucketId, courseId]) => ({
           bucketId: parseInt(bucketId),
           courseId: parseInt(courseId),
         }));
 
-      // ✅ Call with 2 parameters
+      if (validSelections.length !== electiveBuckets.length) {
+        throw new Error('Please select one course from each elective bucket.');
+      }
+
       await allocateElectives(selectedSemester, validSelections);
-      
-      setSuccess('Courses allocated successfully!');
+      setSuccess('Elective courses allocated successfully!');
       setTimeout(() => navigate('/student/dashboard'), 2000);
     } catch (err) {
-      setError(err.message || 'Failed to allocate courses');
-      console.error(err);
+      setError(err.message || 'Failed to allocate elective courses. Please try again.');
+      console.error('Error allocating electives:', err);
     } finally {
       setLoading(false);
     }
   };
 
   const isSubmitDisabled = () => {
-    return Object.values(selections).some((val) => !val);
+    return electiveBuckets.length === 0 || Object.values(selections).some((val) => !val);
   };
 
   if (loading) {
@@ -129,12 +124,24 @@ const ChooseCourse = () => {
   }
 
   if (error) {
-    return <div className="text-red-500 text-center">{error}</div>;
+    return (
+      <div className="container mx-auto p-6">
+        <div className="text-red-500 text-center p-4 bg-red-100 rounded-lg">
+          {error}
+          <button
+            onClick={() => setError(null)}
+            className="ml-4 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="container mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-6">Choose Courses</h1>
+      <h1 className="text-3xl font-bold mb-6">Choose Elective Courses</h1>
 
       <div className="mb-6">
         <label htmlFor="semester" className="mr-2 font-medium">Select Semester:</label>
@@ -144,7 +151,7 @@ const ChooseCourse = () => {
           onChange={handleSemesterChange}
           className="border rounded-md p-2"
         >
-          <option value="">-- Select --</option>
+          <option value="">-- Select Semester --</option>
           {semesters.map((sem) => (
             <option key={sem.semesterId} value={sem.semesterId}>
               Semester {sem.semesterNumber} ({sem.startDate} - {sem.endDate})
@@ -156,65 +163,49 @@ const ChooseCourse = () => {
       {selectedSemester && (
         <>
           <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">Core Courses (PCC)</h2>
-            {mandatoryCourses.core.length > 0 ? (
-              <ul className="list-disc pl-5">
-                {mandatoryCourses.core.map((course) => (
-                  <li key={course.courseId}>
-                    {course.courseCode} - {course.courseTitle} ({course.credits} credits)
-                  </li>
-                ))}
-              </ul>
+            <h2 className="text-xl font-semibold mb-4">Elective Buckets (Select one course from each)</h2>
+            {electiveBuckets.length > 0 ? (
+              electiveBuckets.map((bucket) => (
+                <div key={bucket.bucketId} className="mb-4">
+                  <h3 className="text-lg font-medium">
+                    {bucket.bucketName} (Bucket {bucket.bucketNumber})
+                  </h3>
+                  <select
+                    value={selections[bucket.bucketId] || ''}
+                    onChange={(e) => handleSelectionChange(bucket.bucketId, e.target.value)}
+                    className="border rounded-md p-2 w-full mt-2"
+                  >
+                    <option value="">-- Select Course --</option>
+                    {bucket.courses.map((course) => (
+                      <option key={course.courseId} value={course.courseId}>
+                        {course.courseCode} - {course.courseTitle} ({course.category}, {course.credits} credits)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))
             ) : (
-              <p>No core courses for this semester.</p>
-            )}
-
-            <h2 className="text-xl font-semibold mt-6 mb-4">Other Mandatory Courses</h2>
-            {mandatoryCourses.other.length > 0 ? (
-              <ul className="list-disc pl-5">
-                {mandatoryCourses.other.map((course) => (
-                  <li key={course.courseId}>
-                    {course.courseCode} - {course.courseTitle} ({course.category}, {course.credits} credits)
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>No other mandatory courses for this semester.</p>
+              <p>No elective buckets available for this semester.</p>
             )}
           </div>
 
-          <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">Elective Buckets (Select one from each)</h2>
-            {electiveBuckets.map((bucket) => (
-              <div key={bucket.bucketId} className="mb-4">
-                <h3 className="text-lg font-medium">
-                  {bucket.bucketName} (Bucket {bucket.bucketNumber})
-                </h3>
-                <select
-                  value={selections[bucket.bucketId] || ''}
-                  onChange={(e) => handleSelectionChange(bucket.bucketId, e.target.value)}
-                  className="border rounded-md p-2 w-full"
-                >
-                  <option value="">-- Select Course --</option>
-                  {bucket.courses.map((course) => (
-                    <option key={course.courseId} value={course.courseId}>
-                      {course.courseCode} - {course.courseTitle} ({course.category}, {course.credits} credits)
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ))}
-          </div>
+          {electiveBuckets.length > 0 && (
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitDisabled() || loading}
+              className={`px-4 py-2 rounded-md text-white ${
+                isSubmitDisabled() || loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'
+              }`}
+            >
+              Submit Elective Selections
+            </button>
+          )}
 
-          <button
-            onClick={handleSubmit}
-            disabled={isSubmitDisabled() || loading}
-            className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 disabled:bg-gray-400"
-          >
-            Submit Selections
-          </button>
-
-          {success && <div className="text-green-500 mt-4">{success}</div>}
+          {success && (
+            <div className="text-green-500 mt-4 p-4 bg-green-100 rounded-lg">
+              {success}
+            </div>
+          )}
         </>
       )}
     </div>

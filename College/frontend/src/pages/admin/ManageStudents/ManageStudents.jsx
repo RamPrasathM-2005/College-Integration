@@ -224,37 +224,43 @@ const ManageStudents = () => {
                             availableCourses.map((course) => {
                               const enrolled = student.enrolledCourses.find((c) => c.courseId === course.courseId);
                               const selectedStaffId = enrolled ? String(enrolled.staffId) : '';
+                              const isElective = ['PEC', 'OEC'].includes(course.category);
+                              const canAllocate = !isElective || (student.selectedElectiveIds || []).includes(String(course.courseId));
                               return (
                                 <td
                                   key={course.courseId}
                                   className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
                                   style={{ width: '300px', minWidth: '300px' }}
                                 >
-                                  <select
-                                    value={selectedStaffId}
-                                    onChange={(e) => {
-                                      const staffId = e.target.value;
-                                      console.log('Dropdown change:', { rollnumber: student.rollnumber, courseId: course.courseId, staffId });
-                                      if (!staffId) {
-                                        unenroll(student, course.courseId);
-                                      } else {
-                                        const section = course.batches.find((b) => String(b.staffId) === String(staffId));
-                                        if (section) {
-                                          assignStaff(student, course.courseId, section.sectionId, staffId);
+                                  {canAllocate ? (
+                                    <select
+                                      value={selectedStaffId}
+                                      onChange={(e) => {
+                                        const staffId = e.target.value;
+                                        console.log('Dropdown change:', { rollnumber: student.rollnumber, courseId: course.courseId, staffId });
+                                        if (!staffId) {
+                                          unenroll(student, course.courseId);
                                         } else {
-                                          console.warn('Section not found for staffId:', staffId);
+                                          const section = course.batches.find((b) => String(b.staffId) === String(staffId));
+                                          if (section) {
+                                            assignStaff(student, course.courseId, section.sectionId, staffId);
+                                          } else {
+                                            console.warn('Section not found for staffId:', staffId);
+                                          }
                                         }
-                                      }
-                                    }}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white hover:bg-gray-100"
-                                  >
-                                    <option value="">Not Assigned</option>
-                                    {course.batches.map((batch) => (
-                                      <option key={batch.sectionId} value={String(batch.staffId)}>
-                                        {`${batch.staffName} (${batch.sectionName})`}
-                                      </option>
-                                    ))}
-                                  </select>
+                                      }}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white hover:bg-gray-100"
+                                    >
+                                      <option value="">Not Assigned</option>
+                                      {course.batches.map((batch) => (
+                                        <option key={batch.sectionId} value={String(batch.staffId)}>
+                                          {`${batch.staffName} (${batch.sectionName})`}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <div className="px-6 py-4 text-sm text-gray-500 italic">Not Selected</div>
+                                  )}
                                 </td>
                               );
                             })

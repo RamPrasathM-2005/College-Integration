@@ -171,85 +171,70 @@ export const allocateElectives = catchAsync(async (req, res) => {
     return res.status(401).json({ status: "failure", message: "User not authenticated" });
   }
 
-  // Fetch student details to get regno
-  const [studentRows] = await pool.execute(
-    `SELECT sd.regno 
-     FROM student_details sd 
-     JOIN users u ON sd.Userid = u.Userid 
-     WHERE u.Userid = ? AND u.status = 'active'`,
-    [req.user.Userid]
-  );
-  if (studentRows.length === 0) {
-    return res.status(404).json({ status: "failure", message: "Student not found" });
-  }
-  const regno = studentRows[0].regno;
-
-  // Validate selections
-  for (const { bucketId, courseId } of selections) {
-    const [bucketCheck] = await pool.execute(
-      `SELECT 1 FROM ElectiveBucketCourse WHERE bucketId = ? AND courseId = ?`,
-      [bucketId, courseId]
-    );
-    if (bucketCheck.length === 0) {
-      return res.status(400).json({ status: "failure", message: `Invalid course ${courseId} for bucket ${bucketId}` });
-    }
-  }
-
-  // Start transaction
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
-    // Insert mandatory courses
-    const [mandatoryCourses] = await connection.execute(
-      `SELECT courseId FROM Course WHERE semesterId = ? AND category NOT IN ('PEC', 'OEC') AND isActive = 'YES'`,
+    // Fetch student's regno
+    const [studentRows] = await connection.execute(
+      `SELECT sd.regno 
+       FROM student_details sd 
+       JOIN users u ON sd.Userid = u.Userid 
+       WHERE u.Userid = ? AND u.status = 'active'`,
+      [req.user.Userid]
+    );
+    if (studentRows.length === 0) {
+      throw new Error('Student not found');
+    }
+    const regno = studentRows[0].regno;
+
+    // Validate semester
+    const [semester] = await connection.execute(
+      'SELECT semesterId FROM Semester WHERE semesterId = ? AND isActive = "YES"',
       [semesterId]
     );
-    for (const { courseId } of mandatoryCourses) {
-      const [section] = await connection.execute(
-        `SELECT sectionId FROM Section WHERE courseId = ? AND isActive = 'YES' LIMIT 1`,
-        [courseId]
-      );
-      if (section.length === 0) {
-        throw new Error(`No active section found for mandatory course ${courseId}`);
-      }
-      await connection.execute(
-        `INSERT IGNORE INTO StudentCourse (regno, courseId, sectionId, createdBy, updatedBy)
-         VALUES (?, ?, ?, ?, ?)`,
-        [regno, courseId, section[0].sectionId, req.user.email || 'admin', req.user.email || 'admin']
-      );
+    if (!semester[0]) {
+      throw new Error('Invalid or inactive semester');
     }
 
-    // ⭐ NEW ELECTIVE SECTION (THIS IS THE ONLY CHANGE!)
-    for (const { bucketId, courseId } of selections) {
-      // FIRST: Record student's CHOICE
-      await connection.execute(
-        `INSERT INTO StudentElectiveSelection (regno, bucketId, selectedCourseId, status, createdBy)
-         VALUES (?, ?, ?, 'allocated', ?)`,
-        [regno, bucketId, courseId, req.user.Userid]
-      );
+    // Check for existing selections
+    const bucketIds = selections.map(s => s.bucketId);
+    const [existingSelections] = await connection.execute(
+      `SELECT bucketId FROM StudentElectiveSelection WHERE regno = ? AND bucketId IN (?)`,
+      [regno, bucketIds]
+    );
+    if (existingSelections.length > 0) {
+      throw new Error('Elective selections already exist for some buckets. Please contact admin to modify.');
+    }
 
-      // THEN: Enroll in StudentCourse
-      const [section] = await connection.execute(
-        `SELECT sectionId FROM Section WHERE courseId = ? AND isActive = 'YES' LIMIT 1`,
-        [courseId]
+    // Validate and insert selections into StudentElectiveSelection
+    for (const { bucketId, courseId } of selections) {
+      // Verify bucket and course
+      const [bucketCheck] = await connection.execute(
+        `SELECT eb.bucketId 
+         FROM ElectiveBucket eb 
+         JOIN ElectiveBucketCourse ebc ON eb.bucketId = ebc.bucketId 
+         WHERE eb.bucketId = ? AND ebc.courseId = ? AND eb.semesterId = ?`,
+        [bucketId, courseId, semesterId]
       );
-      if (section.length === 0) {
-        throw new Error(`No active section found for elective course ${courseId}`);
+      if (!bucketCheck[0]) {
+        throw new Error(`Invalid course ${courseId} for bucket ${bucketId}`);
       }
+
+      // Insert into StudentElectiveSelection
       await connection.execute(
-        `INSERT IGNORE INTO StudentCourse (regno, courseId, sectionId, createdBy, updatedBy)
-         VALUES (?, ?, ?, ?, ?)`,
-        [regno, courseId, section[0].sectionId, req.user.email || 'admin', req.user.email || 'admin']
+        `INSERT INTO StudentElectiveSelection (regno, bucketId, selectedCourseId, status, createdBy, updatedBy)
+         VALUES (?, ?, ?, 'allocated', ?, ?)`,
+        [regno, bucketId, courseId, req.user.Userid, req.user.Userid]
       );
     }
 
     await connection.commit();
-    res.status(200).json({ status: "success", message: "Courses allocated successfully" });
+    res.status(200).json({ status: "success", message: "Elective courses allocated successfully" });
   } catch (err) {
     await connection.rollback();
     console.error("Error allocating electives:", err);
-    res.status(500).json({ status: "error", message: err.message || "Failed to allocate courses" });
+    res.status(400).json({ status: "failure", message: err.message || "Failed to allocate elective courses" });
   } finally {
     connection.release();
   }
@@ -372,4 +357,37 @@ export const getUserId = catchAsync(async (req, res) => {
     status: "success",
     data: { Userid: req.user.Userid },
   });
+});
+
+export const getElectiveSelections = catchAsync(async (req, res) => {
+  const { semesterId, branch, batch } = req.query;
+  if (!semesterId || !branch || !batch) {
+    return res.status(400).json({ status: "failure", message: "semesterId, branch, and batch are required" });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT 
+         ses.regno,
+         ses.bucketId,
+         ses.selectedCourseId,
+         c.courseCode,
+         c.courseTitle,
+         c.category,
+         c.credits
+       FROM StudentElectiveSelection ses
+       JOIN Course c ON ses.selectedCourseId = c.courseId
+       JOIN ElectiveBucket eb ON ses.bucketId = eb.bucketId
+       JOIN student_details sd ON ses.regno = sd.regno
+       JOIN department d ON sd.Deptid = d.Deptid
+       JOIN Batch b ON sd.batch = b.batch
+       WHERE eb.semesterId = ? AND d.Deptacronym = ? AND b.batch = ? AND ses.status = 'allocated'`,
+      [semesterId, branch, batch]
+    );
+
+    res.status(200).json({ status: "success", data: rows });
+  } catch (err) {
+    console.error("Error fetching elective selections:", err);
+    res.status(400).json({ status: "failure", message: err.message || "Failed to fetch elective selections" });
+  }
 });

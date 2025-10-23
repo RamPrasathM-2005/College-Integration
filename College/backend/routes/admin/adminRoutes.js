@@ -80,6 +80,7 @@ import {
   deleteElectiveBucket,
   removeCourseFromBucket,
   updateElectiveBucketName,
+  
 } from "../../controllers/electiveBucketController.js";
 import {
   getAllRegulations,
@@ -93,7 +94,7 @@ import {
 } from "../../controllers/regulationController.js";
 import { protect } from "../../controllers/auth/authController.js";
 import { getStudentEnrollments } from "../../controllers/studentEnrollmentViewController.js";
-
+import { getElectiveSelections } from "../../controllers/studentpageController.js";
 import { getCOsForCourseAdmin, getStudentCOMarksAdmin, updateStudentCOMarkAdmin } from "../../controllers/markController.js";
 
 const router = express.Router();
@@ -232,5 +233,8 @@ router.get("/admin-marks/cos/:courseCode", protect, getCOsForCourseAdmin);
 router.get("/admin-marks/marks/co/:courseCode", protect, getStudentCOMarksAdmin);
 router.put("/admin-marks/marks/co/:regno/:coId", protect, updateStudentCOMarkAdmin);
 router.get('/export/course/:courseCode', protect, exportCourseWiseCsvAdmin);
+
+
+router.get("/elective-selections", getElectiveSelections);
 
 export default router;

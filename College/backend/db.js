@@ -55,7 +55,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 2) Regulation - Stores regulation details (MOVED HERE)
+        // 2) Regulation - Stores regulation details
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Regulation (
                 regulationId INT PRIMARY KEY AUTO_INCREMENT,
@@ -156,7 +156,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 5) Batch - Stores degree programs (MOVED AFTER REGULATION)
+        // 5) Batch - Stores degree programs
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Batch (
                 batchId INT PRIMARY KEY AUTO_INCREMENT,
@@ -289,6 +289,7 @@ const initDatabase = async () => {
                 sectionId INT PRIMARY KEY AUTO_INCREMENT,
                 courseId INT NOT NULL,
                 sectionName VARCHAR(10) NOT NULL,
+                capacity INT NOT NULL CHECK (capacity > 0),
                 isActive ENUM('YES','NO') DEFAULT 'YES',
                 createdBy VARCHAR(150),
                 updatedBy VARCHAR(150),
@@ -617,7 +618,7 @@ const initDatabase = async () => {
 
         // Commit the transaction
         await connection.commit();
-        console.log("✅ Database initialized with RegulationCourse and updated VerticalCourse");
+        console.log("✅ Database initialized with RegulationCourse, VerticalCourse, and Section capacity");
 
     } catch (err) {
         // Rollback on error
