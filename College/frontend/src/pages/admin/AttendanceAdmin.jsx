@@ -544,7 +544,7 @@ export default function AdminAttendanceGenerator() {
               .filter((batch) => batch.degree === selectedDegree)
               .map((batch) => (
                 <option key={batch.batchId} value={batch.batchId}>
-                  {batch.branch} ({batch.batch})
+                 {batch.batch}
                 </option>
               ))}
           </select>

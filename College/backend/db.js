@@ -10,7 +10,7 @@ const dbConfig = {
     database: process.env.DB_NAME
 };
 
-const pool = mysql.createPool({
+export const pool = mysql.createPool({
     ...dbConfig,
     waitForConnections: true,
     connectionLimit: 10,
@@ -611,3 +611,62 @@ const initDatabase = async () => {
 
 initDatabase();
 export default pool;
+export const getCourseWiseAttendance = async ({
+  deptId,
+  batch,
+  semesterId,
+  fromDate,
+  toDate,
+}) => {
+  try {
+    // Fetch all students for the batch and department
+    const [students] = await pool.execute(
+      `SELECT s.regno AS RegisterNumber, u.username AS StudentName
+       FROM student_details s
+       JOIN users u ON s.Userid = u.Userid
+       WHERE s.batch = ? AND s.Deptid = ? AND u.status = 'active'`,
+      [batch, deptId]
+    );
+
+    if (!students.length) return { success: true, report: [] };
+
+    // Fetch attendance data
+    const [attendanceRows] = await pool.execute(
+      `SELECT a.regno, c.courseCode AS CourseCode,
+              COUNT(*) AS ConductedPeriods,
+              SUM(CASE WHEN a.status='P' THEN 1 ELSE 0 END) AS AttendedPeriods
+       FROM PeriodAttendance a
+       JOIN Course c ON a.courseId = c.courseId
+       JOIN student_details s ON a.regno = s.regno
+       WHERE s.batch = ? AND s.Deptid = ? AND c.semesterId = ?
+         AND a.attendanceDate BETWEEN ? AND ?
+         AND c.isActive = 'YES' AND a.isActive = 'YES'
+       GROUP BY a.regno, c.courseCode`,
+      [batch, deptId, semesterId, fromDate, toDate]
+    );
+
+    // Map students and their attendance
+    const studentMap = {};
+    students.forEach((s) => {
+      studentMap[s.RegisterNumber] = {
+        ...s,
+        Courses: {},
+      };
+    });
+
+    attendanceRows.forEach((row) => {
+      if (studentMap[row.regno]) {
+        studentMap[row.regno].Courses[row.CourseCode] = {
+          CourseCode: row.CourseCode,
+          ConductedPeriods: row.ConductedPeriods,
+          AttendedPeriods: row.AttendedPeriods,
+        };
+      }
+    });
+
+    return { success: true, report: Object.values(studentMap) };
+  } catch (error) {
+    console.error("Error in getCourseWiseAttendance:", error);
+    return { success: false, error: error.message };
+  }
+};

@@ -13,7 +13,7 @@ import departmentRoutes from './routes/departmentRoutes.js';
 import staffRoutes from './routes/staff/staffRoutes.js';
 import attendanceRoutes from './routes/staff/staffattendanceroutes.js';
 import adminattendance from './routes/admin/adminattendanceroutes.js';
-
+import attendanceReportRoutes from './routes/admin/attendanceReportRoutes.js'
 dotenv.config({ path: './config.env' });
 
 const app = express();
@@ -136,7 +136,7 @@ app.use('/api/departments', sanitizeInput, departmentRoutes);
 app.use('/api/staff', sanitizeInput, staffRoutes);
 app.use('/api/staff/attendance', sanitizeInput, attendanceRoutes);
 app.use('/api/admin/attendance', sanitizeInput, adminattendance);
-
+app.use("/api/admin/attendanceReports", attendanceReportRoutes);
 // Health check (bypass limiter if needed by placing early, but ok here)
 
 // Global CORS fallback for any response (add this new middleware)

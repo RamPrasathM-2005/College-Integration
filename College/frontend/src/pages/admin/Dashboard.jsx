@@ -28,8 +28,8 @@ const AdminDashboard = () => {
   const [dashboardData, setDashboardData] = useState({
     totalSemesters: 0,
     totalCourses: 0,
-    totalStaff: 23,
-    totalStudents: 1200,
+    totalStaff: 3,
+    totalStudents: 105,
     recentSemesters: [],
     recentCourses: []
   });

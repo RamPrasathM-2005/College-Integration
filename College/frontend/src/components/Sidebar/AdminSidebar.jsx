@@ -28,6 +28,7 @@ const AdminSidebar = () => {
     { to: "/admin/subjectwise-marks", icon: Book, label: "Subjectwise Marks" },
     { to: "/admin/course-recommendation", icon: BookImage, label: "Course Recommendation"},
     { to: "/admin/adminattendance", icon: User, label: "Attendance"},
+    {to: "/admin/attendanceReport", icon: User, label: "AttendanceReport"},
     { to: "/admin/report", icon: Download, label: "Report" },
     { to: "/admin/student-staff-mapping", icon: User, label: "Staff Course Mapping"},
   ];

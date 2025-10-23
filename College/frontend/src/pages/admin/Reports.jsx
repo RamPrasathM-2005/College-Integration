@@ -971,14 +971,14 @@ const Report = () => {
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: 'Excel',
-      cancelButtonText: 'PDF',
+      // cancelButtonText: 'PDF',
       confirmButtonColor: '#52c41a',
-      cancelButtonColor: '#1890ff',
+      // cancelButtonColor: '#1890ff',
     }).then((result) => {
       if (result.isConfirmed) {
         exportToExcel();
-      } else if (result.dismiss === Swal.DismissReason.cancel) {
-        exportToPDF();
+      // } else if (result.dismiss === Swal.DismissReason.cancel) {
+      //   exportToPDF();
       }
     });
   };
