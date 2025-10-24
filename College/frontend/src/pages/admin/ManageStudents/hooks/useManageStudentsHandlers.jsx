@@ -17,6 +17,12 @@ const useManageStudentsHandlers = (
         showErrorToast('Error', `No course found for ID ${courseId}`);
         return false;
       }
+      const isElective = ['PEC', 'OEC'].includes(course.category);
+      if (isElective && !student.selectedElectiveIds?.includes(String(courseId))) {
+        setError('Cannot assign this elective to a student who did not select it.');
+        showErrorToast('Error', 'Cannot assign this elective to a student who did not select it.');
+        return false;
+      }
       const section = course.batches.find((b) => String(b.sectionId) === String(sectionId) && String(b.staffId) === String(staffId));
       if (!section) {
         setError(`No section found for course ${course.courseCode} with sectionId ${sectionId} and staffId ${staffId}`);

@@ -55,7 +55,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 2) Regulation - Stores regulation details (MOVED HERE)
+        // 2) Regulation - Stores regulation details
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Regulation (
                 regulationId INT PRIMARY KEY AUTO_INCREMENT,
@@ -156,7 +156,7 @@ const initDatabase = async () => {
             )
         `);
 
-        // 5) Batch - Stores degree programs (MOVED AFTER REGULATION)
+        // 5) Batch - Stores degree programs
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Batch (
                 batchId INT PRIMARY KEY AUTO_INCREMENT,
@@ -289,6 +289,7 @@ const initDatabase = async () => {
                 sectionId INT PRIMARY KEY AUTO_INCREMENT,
                 courseId INT NOT NULL,
                 sectionName VARCHAR(10) NOT NULL,
+                capacity INT NOT NULL CHECK (capacity > 0),
                 isActive ENUM('YES','NO') DEFAULT 'YES',
                 createdBy VARCHAR(150),
                 updatedBy VARCHAR(150),
@@ -549,6 +550,32 @@ const initDatabase = async () => {
             )
         `);
 
+        // 25) StudentElectiveSelection - Stores student selections from elective buckets
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS StudentElectiveSelection (
+                selectionId INT PRIMARY KEY AUTO_INCREMENT,
+                regno VARCHAR(50) NOT NULL,
+                bucketId INT NOT NULL,
+                selectedCourseId INT NOT NULL,
+                status ENUM('pending', 'allocated', 'rejected') DEFAULT 'pending',
+                createdBy INT,
+                updatedBy INT,
+                createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE (regno, bucketId),
+                CONSTRAINT fk_ses_student FOREIGN KEY (regno) REFERENCES student_details(regno)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_ses_bucket FOREIGN KEY (bucketId) REFERENCES ElectiveBucket(bucketId)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_ses_course FOREIGN KEY (selectedCourseId) REFERENCES Course(courseId)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_ses_created FOREIGN KEY (createdBy) REFERENCES users(Userid)
+                    ON UPDATE CASCADE ON DELETE SET NULL,
+                CONSTRAINT fk_ses_updated FOREIGN KEY (updatedBy) REFERENCES users(Userid)
+                    ON UPDATE CASCADE ON DELETE SET NULL
+            )
+        `);
+
         // Insert initial department data (aligned with branchMap)
         await connection.execute(`
             INSERT IGNORE INTO department (Deptid, Deptname, Deptacronym)
@@ -591,7 +618,7 @@ const initDatabase = async () => {
 
         // Commit the transaction
         await connection.commit();
-        console.log("✅ Database initialized with RegulationCourse and updated VerticalCourse");
+        console.log("✅ Database initialized with RegulationCourse, VerticalCourse, and Section capacity");
 
     } catch (err) {
         // Rollback on error
