@@ -2,7 +2,7 @@ import pool from "../db.js";
 import catchAsync from "../utils/catchAsync.js";
 
 export const searchStudents = catchAsync(async (req, res) => {
-  const { degree, branch, batch, semesterNumber } = req.query;
+  const { degree, branch: originalBranch, batch, semesterNumber } = req.query;
   let connection = null;
 
   try {
@@ -23,11 +23,14 @@ export const searchStudents = catchAsync(async (req, res) => {
       });
     }
 
+    console.log('Query params:', { degree, branch: originalBranch, batch, semesterNumber });
+
     // Get database connection
     connection = await pool.getConnection();
     console.log('Database connection acquired');
 
-    let query = `
+    // Fetch all students
+    let studentQuery = `
       SELECT 
         u.Userid, 
         u.username AS name, 
@@ -54,31 +57,32 @@ export const searchStudents = catchAsync(async (req, res) => {
       LEFT JOIN StaffCourse scf ON sc.courseId = scf.courseId AND sc.sectionId = scf.sectionId
       LEFT JOIN users us ON scf.Userid = us.Userid AND us.role = 'Staff' AND us.status = 'active'
       WHERE u.status = 'active'
+        AND sd.pending = 1  -- Updated to match pending students
     `;
-    const queryParams = [];
+    const studentParams = [];
 
     if (degree) {
-      query += ' AND b.degree = ?';
-      queryParams.push(degree);
+      studentQuery += ' AND b.degree = ?';
+      studentParams.push(degree);
     }
-    if (branch) {
-      query += ' AND d.Deptacronym = ?';
-      queryParams.push(branch);
+    if (originalBranch) {
+      studentQuery += ' AND d.Deptacronym = ? AND b.branch = ?';
+      studentParams.push(originalBranch, originalBranch);
     }
     if (batch) {
-      query += ' AND b.batch = ?';
-      queryParams.push(batch);
+      studentQuery += ' AND b.batch = ? AND sd.batch = ?';
+      studentParams.push(batch, batch);
     }
     if (semesterNumber) {
-      query += ' AND sd.Semester = ?';
-      queryParams.push(parseInt(semesterNumber, 10));
+      studentQuery += ' AND sd.Semester = ?';
+      studentParams.push(parseInt(semesterNumber, 10));
     }
 
-    query += ' ORDER BY sd.regno, c.courseCode';
+    studentQuery += ' ORDER BY sd.regno, c.courseCode';
 
-    console.log('Executing student query:', query, 'with params:', queryParams);
-    const [rows] = await connection.execute(query, queryParams);
-    console.log('Student query result:', rows);
+    console.log('Executing student query:', studentQuery, 'with params:', studentParams);
+    const [studentRows] = await connection.execute(studentQuery, studentParams);
+    console.log('Student query result:', studentRows.length, 'rows', studentRows);
 
     // Fetch elective selections
     let selectionsQuery = `
@@ -92,21 +96,21 @@ export const searchStudents = catchAsync(async (req, res) => {
       JOIN student_details sd ON ses.regno = sd.regno
       JOIN department d ON sd.Deptid = d.Deptid
       JOIN Course c ON ses.selectedCourseId = c.courseId
-      WHERE ses.status = 'allocated' 
-        AND c.category IN ('PEC', 'OEC')
+      WHERE c.category IN ('PEC', 'OEC')
+        AND ses.status = 'allocated'
     `;
     const selectionsParams = [];
     if (degree) {
       selectionsQuery += ' AND b.degree = ?';
       selectionsParams.push(degree);
     }
-    if (branch) {
-      selectionsQuery += ' AND d.Deptacronym = ?';
-      selectionsParams.push(branch);
+    if (originalBranch) {
+      selectionsQuery += ' AND d.Deptacronym = ? AND b.branch = ?';
+      selectionsParams.push(originalBranch, originalBranch);
     }
     if (batch) {
-      selectionsQuery += ' AND b.batch = ?';
-      selectionsParams.push(batch);
+      selectionsQuery += ' AND b.batch = ? AND sd.batch = ?';
+      selectionsParams.push(batch, batch);
     }
     if (semesterNumber) {
       selectionsQuery += ' AND sem.semesterNumber = ?';
@@ -115,7 +119,7 @@ export const searchStudents = catchAsync(async (req, res) => {
 
     console.log('Executing selections query:', selectionsQuery, 'with params:', selectionsParams);
     const [selectionRows] = await connection.execute(selectionsQuery, selectionsParams);
-    console.log('Selections query result:', selectionRows);
+    console.log('Selections query result:', selectionRows.length, 'rows', selectionRows);
 
     // Create selectionsMap
     const selectionsMap = new Map();
@@ -125,10 +129,11 @@ export const searchStudents = catchAsync(async (req, res) => {
       }
       selectionsMap.get(row.regno).push(String(row.selectedCourseId));
     });
+    console.log('Selections map:', Array.from(selectionsMap.entries()));
 
     // Aggregate student data
     const studentsMap = new Map();
-    rows.forEach(row => {
+    studentRows.forEach(row => {
       if (!row.rollnumber) {
         console.warn('Skipping row with missing rollnumber:', row);
         return;
@@ -162,8 +167,9 @@ export const searchStudents = catchAsync(async (req, res) => {
     });
 
     const students = Array.from(studentsMap.values());
+    console.log('Aggregated students:', students.length, students);
 
-    // Fetch available courses
+    // Fetch all available courses
     const coursesQuery = `
       SELECT 
         c.courseId,
@@ -183,15 +189,15 @@ export const searchStudents = catchAsync(async (req, res) => {
       WHERE c.isActive = 'YES'
         AND sem.isActive = 'YES'
         ${degree ? 'AND b.degree = ?' : ''}
-        ${branch ? 'AND b.branch = ?' : ''}
+        ${originalBranch ? 'AND b.branch = ?' : ''}
         ${batch ? 'AND b.batch = ?' : ''}
         ${semesterNumber ? 'AND sem.semesterNumber = ?' : ''}
       ORDER BY c.courseCode, s.sectionName
     `;
-    const coursesParams = [degree, branch, batch, semesterNumber ? parseInt(semesterNumber, 10) : undefined].filter(Boolean);
+    const coursesParams = [degree, originalBranch, batch, semesterNumber ? parseInt(semesterNumber, 10) : undefined].filter(Boolean);
     console.log('Executing courses query:', coursesQuery, 'with params:', coursesParams);
     const [courseRows] = await connection.execute(coursesQuery, coursesParams);
-    console.log('Courses query result:', courseRows);
+    console.log('Courses query result:', courseRows.length, 'rows', courseRows);
 
     // Aggregate course data
     const coursesMap = new Map();
@@ -219,15 +225,19 @@ export const searchStudents = catchAsync(async (req, res) => {
             sectionName: row.sectionName || 'Unknown',
             staffId: row.staffId ? String(row.staffId) : null,
             staffName: row.staffName || 'Not Assigned',
+            enrolled: row.enrolled || 0,
+            capacity: 40, // Adjust as needed
           });
         }
       }
     });
 
     const availableCourses = Array.from(coursesMap.values());
+    console.log('Aggregated courses:', availableCourses.length, availableCourses);
 
     connection.release();
 
+    res.set('Cache-Control', 'no-store');
     res.status(200).json({
       status: 'success',
       studentsData: students,
@@ -240,7 +250,9 @@ export const searchStudents = catchAsync(async (req, res) => {
     console.error('Error in searchStudents:', {
       message: err.message,
       stack: err.stack,
-      queryParams: { degree, branch, batch, semesterNumber },
+      sqlError: err.sqlMessage || 'No SQL error',
+      sql: err.sql || 'No SQL query',
+      queryParams: { degree, branch: originalBranch, batch, semesterNumber },
     });
     res.status(500).json({
       status: 'failure',
@@ -651,105 +663,105 @@ export const updateStudentBatch = catchAsync(async (req, res) => {
   }
 });
 
-// export const getAvailableCoursesForBatch = catchAsync(async (req, res) => {
-//   const { batchId, semesterNumber } = req.params;
-//   const userEmail = req.user?.email || 'admin';
-//   let connection = null;
+export const getAvailableCoursesForBatch = catchAsync(async (req, res) => {
+  const { batchId, semesterNumber } = req.params;
+  const userEmail = req.user?.email || 'admin';
+  let connection = null;
 
-//   try {
-//     if (!batchId || isNaN(batchId) || !semesterNumber || isNaN(semesterNumber) || semesterNumber < 1 || semesterNumber > 8) {
-//       return res.status(400).json({
-//         status: "error",
-//         message: "Valid batchId and semesterNumber (1-8) are required",
-//       });
-//     }
+  try {
+    if (!batchId || isNaN(batchId) || !semesterNumber || isNaN(semesterNumber) || semesterNumber < 1 || semesterNumber > 8) {
+      return res.status(400).json({
+        status: "error",
+        message: "Valid batchId and semesterNumber (1-8) are required",
+      });
+    }
 
-//     connection = await pool.getConnection();
-//     console.log('Database connection acquired');
+    connection = await pool.getConnection();
+    console.log('Database connection acquired');
 
-//     const [userCheck] = await connection.execute(
-//       'SELECT Userid FROM users WHERE email = ? AND status = "active"',
-//       [userEmail]
-//     );
-//     if (userCheck.length === 0) {
-//       return res.status(400).json({
-//         status: 'failure',
-//         message: `No active user found with email ${userEmail}`,
-//       });
-//     }
+    const [userCheck] = await connection.execute(
+      'SELECT Userid FROM users WHERE email = ? AND status = "active"',
+      [userEmail]
+    );
+    if (userCheck.length === 0) {
+      return res.status(400).json({
+        status: 'failure',
+        message: `No active user found with email ${userEmail}`,
+      });
+    }
 
-//     const [rows] = await connection.execute(
-//       `
-//       SELECT 
-//         c.courseId, 
-//         c.courseCode, 
-//         c.courseTitle AS courseName,
-//         c.category,
-//         sem.semesterNumber,
-//         sec.sectionId, 
-//         sec.sectionName,
-//         u.Userid, 
-//         u.username AS staff,
-//         b.branch AS department,
-//         (SELECT COUNT(DISTINCT sc2.regno) 
-//          FROM StudentCourse sc2 
-//          WHERE sc2.courseId = c.courseId 
-//          AND sc2.sectionId = sec.sectionId) AS enrolled
-//       FROM Course c
-//       JOIN Semester sem ON c.semesterId = sem.semesterId
-//       JOIN Batch b ON sem.batchId = b.batchId
-//       JOIN Section sec ON c.courseId = sec.courseId
-//       LEFT JOIN StaffCourse sc ON c.courseId = sc.courseId 
-//         AND sc.sectionId = sec.sectionId
-//       LEFT JOIN users u ON sc.Userid = u.Userid
-//       WHERE sem.batchId = ? 
-//         AND sem.semesterNumber = ? 
-//         AND c.isActive = 'YES' 
-//         AND sec.isActive = 'YES'
-//       `,
-//       [batchId, semesterNumber]
-//     );
+    const [rows] = await connection.execute(
+      `
+      SELECT 
+        c.courseId, 
+        c.courseCode, 
+        c.courseTitle AS courseName,
+        c.category,
+        sem.semesterNumber,
+        sec.sectionId, 
+        sec.sectionName,
+        u.Userid, 
+        u.username AS staff,
+        b.branch AS department,
+        (SELECT COUNT(DISTINCT sc2.regno) 
+         FROM StudentCourse sc2 
+         WHERE sc2.courseId = c.courseId 
+         AND sc2.sectionId = sec.sectionId) AS enrolled
+      FROM Course c
+      JOIN Semester sem ON c.semesterId = sem.semesterId
+      JOIN Batch b ON sem.batchId = b.batchId
+      JOIN Section sec ON c.courseId = sec.courseId
+      LEFT JOIN StaffCourse sc ON c.courseId = sc.courseId 
+        AND sc.sectionId = sec.sectionId
+      LEFT JOIN users u ON sc.Userid = u.Userid
+      WHERE sem.batchId = ? 
+        AND sem.semesterNumber = ? 
+        AND c.isActive = 'YES' 
+        AND sec.isActive = 'YES'
+      `,
+      [batchId, semesterNumber]
+    );
 
-//     const grouped = rows.reduce((acc, row) => {
-//       if (!acc[row.courseId]) {
-//         acc[row.courseId] = {
-//           courseId: row.courseId,
-//           courseCode: row.courseCode,
-//           courseName: row.courseName,
-//           category: row.category,
-//           semester: `S${row.semesterNumber}`,
-//           department: row.department,
-//           batches: [],
-//         };
-//       }
-//       acc[row.courseId].batches.push({
-//         sectionId: row.sectionId,
-//         sectionName: row.sectionName,
-//         staffId: row.Userid ? String(row.Userid) : null,
-//         staffName: row.staff || "Not Assigned",
-//         enrolled: parseInt(row.enrolled) || 0,
-//         capacity: 40,
-//       });
-//       return acc;
-//     }, {});
+    const grouped = rows.reduce((acc, row) => {
+      if (!acc[row.courseId]) {
+        acc[row.courseId] = {
+          courseId: row.courseId,
+          courseCode: row.courseCode,
+          courseName: row.courseName,
+          category: row.category,
+          semester: `S${row.semesterNumber}`,
+          department: row.department,
+          batches: [],
+        };
+      }
+      acc[row.courseId].batches.push({
+        sectionId: row.sectionId,
+        sectionName: row.sectionName,
+        staffId: row.Userid ? String(row.Userid) : null,
+        staffName: row.staff || "Not Assigned",
+        enrolled: parseInt(row.enrolled) || 0,
+        capacity: 40,
+      });
+      return acc;
+    }, {});
 
-//     connection.release();
+    connection.release();
 
-//     res.status(200).json({
-//       status: "success",
-//       data: Object.values(grouped),
-//     });
-//   } catch (err) {
-//     if (connection) {
-//       connection.release();
-//     }
-//     console.error(`Error fetching available courses for batchId ${batchId}, semester ${semesterNumber}:`, err);
-//     res.status(500).json({
-//       status: "error",
-//       message: "Internal server error while fetching available courses",
-//     });
-//   }
-// });
+    res.status(200).json({
+      status: "success",
+      data: Object.values(grouped),
+    });
+  } catch (err) {
+    if (connection) {
+      connection.release();
+    }
+    console.error(`Error fetching available courses for batchId ${batchId}, semester ${semesterNumber}:`, err);
+    res.status(500).json({
+      status: "error",
+      message: "Internal server error while fetching available courses",
+    });
+  }
+});
 
 export const unenrollStudentFromCourse = catchAsync(async (req, res) => {
   const { rollnumber, courseId } = req.body;
@@ -837,112 +849,5 @@ export const unenrollStudentFromCourse = catchAsync(async (req, res) => {
     });
   } finally {
     connection.release();
-  }
-});
-
-
-export const getAvailableCoursesForBatch = catchAsync(async (req, res) => {
-  const { batchId, semesterNumber } = req.params;
-  const userEmail = req.user?.email || 'admin';
-  let connection = null;
-
-  try {
-    if (!batchId || isNaN(batchId) || !semesterNumber || isNaN(semesterNumber) || semesterNumber < 1 || semesterNumber > 8) {
-      return res.status(400).json({
-        status: "error",
-        message: "Valid batchId and semesterNumber (1-8) are required",
-      });
-    }
-
-    connection = await pool.getConnection();
-    console.log('Database connection acquired for getAvailableCoursesForBatch');
-
-    const [userCheck] = await connection.execute(
-      'SELECT Userid FROM users WHERE email = ? AND status = "active"',
-      [userEmail]
-    );
-    if (userCheck.length === 0) {
-      return res.status(400).json({
-        status: 'failure',
-        message: `No active user found with email ${userEmail}`,
-      });
-    }
-
-    const [rows] = await connection.execute(
-      `
-      SELECT 
-        c.courseId, 
-        c.courseCode, 
-        c.courseTitle AS courseName,
-        c.category,
-        sem.semesterNumber,
-        sec.sectionId, 
-        sec.sectionName,
-        u.Userid, 
-        u.username AS staff,
-        b.branch AS department,
-        (SELECT COUNT(DISTINCT sc2.regno) 
-         FROM StudentCourse sc2 
-         WHERE sc2.courseId = c.courseId 
-         AND sc2.sectionId = sec.sectionId) AS enrolled,
-        sec.capacity
-      FROM Course c
-      JOIN Semester sem ON c.semesterId = sem.semesterId
-      JOIN Batch b ON sem.batchId = b.batchId
-      JOIN Section sec ON c.courseId = sec.courseId
-      LEFT JOIN StaffCourse sc ON c.courseId = sc.courseId 
-        AND sc.sectionId = sec.sectionId
-      LEFT JOIN users u ON sc.Userid = u.Userid
-      WHERE sem.batchId = ? 
-        AND sem.semesterNumber = ? 
-        AND c.isActive = 'YES' 
-        AND sec.isActive = 'YES'
-      ORDER BY c.courseCode, sec.sectionName
-      `,
-      [batchId, semesterNumber]
-    );
-
-    console.log('Courses fetched for batchId:', batchId, 'semesterNumber:', semesterNumber, 'Rows:', rows);
-
-    const grouped = rows.reduce((acc, row) => {
-      if (!acc[row.courseId]) {
-        acc[row.courseId] = {
-          courseId: String(row.courseId), // Ensure courseId is string
-          courseCode: row.courseCode,
-          courseName: row.courseName,
-          category: row.category,
-          semester: `S${row.semesterNumber}`,
-          department: row.department,
-          batches: [],
-        };
-      }
-      acc[row.courseId].batches.push({
-        sectionId: String(row.sectionId), // Ensure sectionId is string
-        sectionName: row.sectionName,
-        staffId: row.Userid ? String(row.Userid) : null,
-        staffName: row.staff || "Not Assigned",
-        enrolled: parseInt(row.enrolled) || 0,
-        capacity: parseInt(row.capacity) || 40,
-      });
-      return acc;
-    }, {});
-
-    const courses = Object.values(grouped);
-
-    connection.release();
-
-    res.status(200).json({
-      status: "success",
-      data: courses,
-    });
-  } catch (err) {
-    if (connection) {
-      connection.release();
-    }
-    console.error(`Error fetching available courses for batchId ${batchId}, semester ${semesterNumber}:`, err);
-    res.status(500).json({
-      status: "error",
-      message: "Internal server error while fetching available courses",
-    });
   }
 });
