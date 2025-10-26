@@ -4,7 +4,7 @@ import { DeleteOutlined } from '@ant-design/icons';
 import { toast } from 'react-toastify';
 import { api } from '../../services/authService';
 import { degrees, branchMap } from '../admin/ManageSemesters/branchMap';
-import AddBucketModal from './AddBucketModal';
+import AddBucketModal from './addBucketModal';
 import Swal from 'sweetalert2';
 
 const { Option } = Select;
