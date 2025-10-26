@@ -286,19 +286,20 @@ const initDatabase = async () => {
         // 11) Section - Stores sections for each course
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Section (
-                sectionId INT PRIMARY KEY AUTO_INCREMENT,
-                courseId INT NOT NULL,
-                sectionName VARCHAR(10) NOT NULL,
-                capacity INT NOT NULL CHECK (capacity > 0),
-                isActive ENUM('YES','NO') DEFAULT 'YES',
-                createdBy VARCHAR(150),
-                updatedBy VARCHAR(150),
-                createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                CONSTRAINT fk_section_course FOREIGN KEY (courseId) REFERENCES Course(courseId)
-                    ON UPDATE CASCADE ON DELETE RESTRICT,
-                UNIQUE (courseId, sectionName)
-            )
+            sectionId INT PRIMARY KEY AUTO_INCREMENT,
+            courseId INT NOT NULL,
+            sectionName VARCHAR(10) NOT NULL,
+            capacity INT NOT NULL DEFAULT 40 CHECK (capacity > 0),
+            isActive ENUM('YES','NO') DEFAULT 'YES',
+            createdBy VARCHAR(150),
+            updatedBy VARCHAR(150),
+            createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            CONSTRAINT fk_section_course FOREIGN KEY (courseId) REFERENCES Course(courseId)
+                ON UPDATE CASCADE ON DELETE RESTRICT,
+            UNIQUE (courseId, sectionName)
+);
+
         `);
 
         // 12) StudentCourse - Enrolls students in courses with sections

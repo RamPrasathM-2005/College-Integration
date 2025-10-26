@@ -98,7 +98,9 @@ const manageStudentsService = {
       const batchId = batches.find((b) => String(b.batch) === String(filters.batch))?.batchId;
       if (batchId && semesterNumber) {
         try {
-          const coursesRes = await api.get(`${API_BASE}/courses/available/${batchId}/${semesterNumber}`);
+          const coursesRes = await api.get(`${API_BASE}/courses/available/${batchId}/${semesterNumber}`, {
+            params: { _t: Date.now() }, // Cache-busting parameter
+          });
           if (coursesRes.status === 200 && coursesRes.data.status === 'success') {
             const rawCoursesData = coursesRes.data.data || [];
             coursesData = Array.isArray(rawCoursesData)
@@ -134,6 +136,40 @@ const manageStudentsService = {
     } catch (err) {
       console.error('Error in fetchStudentsAndCourses:', err);
       throw new Error(err.message);
+    }
+  },
+
+  fetchStudentsByBatchAndSemester: async (branch, batch, semesterNumber) => {
+    try {
+      const res = await api.get(`${API_BASE}/students/batch-semester`, {
+        params: { branch, batch, semesterNumber },
+      });
+      if (res.status !== 200 || res.data.status !== 'success') {
+        throw new Error(res.data.message || 'Failed to fetch students');
+      }
+      return res.data.data;
+    } catch (err) {
+      console.error('Error in fetchStudentsByBatchAndSemester:', err);
+      showErrorToast(err.message);
+      throw err;
+    }
+  },
+
+  bulkUpdateStudentSemester: async (students, batch, branch) => {
+    try {
+      const res = await api.post(`${API_BASE}/students/bulk-update-semester`, {
+        students,
+        batch,
+        branch,
+      });
+      if (res.status !== 200 || res.data.status !== 'success') {
+        throw new Error(res.data.message || 'Failed to update semesters');
+      }
+      return res.data;
+    } catch (err) {
+      console.error('Error in bulkUpdateStudentSemester:', err);
+      showErrorToast(err.message);
+      throw err;
     }
   },
 

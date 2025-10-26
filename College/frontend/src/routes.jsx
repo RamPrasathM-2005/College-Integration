@@ -44,7 +44,7 @@ import ChooseCourse from './pages/student/ChooseCourse';
 // NotFound
 import NotFound from "./pages/NotFound";
 import StudentStaffMapping from "./pages/admin/StudentEnrollmentsView";
-import StudentEnrollmentsView from "./pages/admin/StudentEnrollmentsView";
+// import StudentEnrollmentsView from "./pages/admin/StudentEnrollmentsView";
 import AttendanceReport from "./pages/admin/AttendanceReports";
 
 // ProtectedRoute

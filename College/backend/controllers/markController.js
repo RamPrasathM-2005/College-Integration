@@ -904,50 +904,73 @@ export const importMarksForTool = async (req, res) => {
   }
 };
 
-export const exportCoWiseCsv = async (req, res) => {
+export const exportCoWiseCsv = catchAsync(async (req, res) => {
   const { coId } = req.params;
   const staffId = getStaffId(req);
+
+  let connection;
   try {
-    const [tools] = await pool.query(
-      'SELECT t.*, td.maxMarks FROM COTool t JOIN ToolDetails td ON t.toolId = td.toolId WHERE t.coId = ?',
+    connection = await pool.getConnection();
+    console.log('Database connection acquired for coId:', coId, 'staffId:', staffId);
+
+    // Validate course outcome and get courseId, ensuring course is CSE12003
+    const [courseInfo] = await connection.query(
+      `SELECT co.courseId, c.courseCode 
+       FROM CourseOutcome co 
+       JOIN Course c ON co.courseId = c.courseId 
+       WHERE co.coId = ? AND c.courseCode = ? AND c.isActive = "YES"`,
+      [coId, 'CSE12003']
+    );
+    if (courseInfo.length === 0) {
+      return res.status(404).json({ 
+        status: 'error', 
+        message: `CO ${coId} not found or not associated with course CSE12003` 
+      });
+    }
+    const { courseId, courseCode } = courseInfo[0];
+    console.log('Course info:', { courseId, courseCode });
+
+    // Fetch evaluation tools and their max marks
+    const [tools] = await connection.query(
+      'SELECT t.toolId, t.toolName, t.weightage, td.maxMarks FROM COTool t JOIN ToolDetails td ON t.toolId = td.toolId WHERE t.coId = ?',
       [coId]
     );
     if (tools.length === 0) {
       return res.status(404).json({ status: 'error', message: 'No tools found for this CO' });
     }
+    console.log('Evaluation tools:', tools);
 
-    const [courseInfo] = await pool.query(
-      'SELECT courseId FROM CourseOutcome WHERE coId = ?',
-      [coId]
-    );
-    if (courseInfo.length === 0) {
-      return res.status(404).json({ status: 'error', message: 'CO not found' });
-    }
-    const courseId = courseInfo[0].courseId;
-
-    const [students] = await pool.query(
+    // Fetch students enrolled in the course and staff's section
+    const [students] = await connection.query(
       `SELECT DISTINCT sd.regno, u.username AS name 
        FROM student_details sd
        JOIN users u ON sd.Userid = u.Userid
        JOIN StudentCourse sc ON sd.regno = sc.regno
        JOIN StaffCourse stc ON sc.sectionId = stc.sectionId AND sc.courseId = stc.courseId
        JOIN CourseOutcome co ON sc.courseId = co.courseId
-       WHERE co.coId = ? AND stc.Userid = ?`,
+       WHERE co.coId = ? AND stc.Userid = ? AND u.status = 'active'`,
       [coId, staffId]
     );
     if (students.length === 0) {
-      return res.status(404).json({ status: 'error', message: 'No students found in your section for this CO' });
+      return res.status(404).json({ 
+        status: 'error', 
+        message: `No students found in your section for CO ${coId}` 
+      });
     }
+    console.log('Students:', students);
 
-    const [consolidatedMarks] = await pool.query(
+    // Fetch consolidated marks
+    const [consolidatedMarks] = await connection.query(
       'SELECT regno, consolidatedMark FROM StudentCOMarks WHERE coId = ? AND regno IN (?)',
       [coId, students.map(s => s.regno)]
     );
     const consolidatedMarksMap = consolidatedMarks.reduce((acc, cm) => {
-      acc[cm.regno] = cm.consolidatedMark;
+      acc[cm.regno] = Number(cm.consolidatedMark) || 0; // Ensure number
       return acc;
     }, {});
+    console.log('Consolidated marks:', consolidatedMarks);
 
+    // Define CSV header
     const header = [
       { id: 'regNo', title: 'Reg No' },
       { id: 'name', title: 'Name' },
@@ -955,23 +978,26 @@ export const exportCoWiseCsv = async (req, res) => {
       { id: 'consolidated', title: 'Consolidated' },
     ];
 
+    // Prepare CSV data
     const data = await Promise.all(
       students.map(async (student) => {
         const row = { regNo: student.regno, name: student.name };
         for (const tool of tools) {
-          const [mark] = await pool.query(
+          const [mark] = await connection.query(
             'SELECT marksObtained FROM StudentCOTool WHERE regno = ? AND toolId = ?',
             [student.regno, tool.toolId]
           );
-          row[tool.toolName] = mark[0]?.marksObtained || 0;
+          row[tool.toolName] = Number(mark[0]?.marksObtained || 0).toFixed(2); // Ensure number
         }
-        row.consolidated = consolidatedMarksMap[student.regno]?.toFixed(2) || '0.00';
+        const consolidatedMark = Number(consolidatedMarksMap[student.regno] || 0);
+        row.consolidated = isNaN(consolidatedMark) ? '0.00' : consolidatedMark.toFixed(2);
         return row;
       })
     );
 
+    // Generate CSV file
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `co_${coId}_marks_${timestamp}.csv`;
+    const filename = `${courseCode}_co_${coId}_marks_${timestamp}.csv`;
     const filePath = path.join(os.tmpdir(), filename);
 
     const csvWriter = createCsvWriter({
@@ -979,10 +1005,13 @@ export const exportCoWiseCsv = async (req, res) => {
       header,
     });
     await csvWriter.writeRecords(data);
+    console.log('CSV file written:', filePath);
 
+    // Send the file
     res.download(filePath, filename, (err) => {
       if (err) {
         console.error('Error sending file:', err);
+        res.status(500).json({ status: 'error', message: 'Error sending CSV file' });
       }
       fs.unlink(filePath, (unlinkErr) => {
         if (unlinkErr) console.error('Error deleting file:', unlinkErr);
@@ -994,8 +1023,13 @@ export const exportCoWiseCsv = async (req, res) => {
       status: 'error', 
       message: `Export failed: ${err.message}. Check if tools/students exist for CO ${coId} and staff ${staffId}.` 
     });
+  } finally {
+    if (connection) {
+      connection.release();
+      console.log('Database connection released');
+    }
   }
-};
+});
 
 export const getStudentsForCourse = catchAsync(async (req, res) => {
   const { courseCode } = req.params;
@@ -1184,7 +1218,6 @@ export const getStudentsForSection = catchAsync(async (req, res) => {
     });
   }
 });
-
 
 export const exportCourseWiseCsv = catchAsync(async (req, res) => {
   const { courseCode } = req.params;

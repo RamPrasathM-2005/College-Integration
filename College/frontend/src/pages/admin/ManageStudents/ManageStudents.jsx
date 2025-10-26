@@ -58,9 +58,12 @@ const ManageStudents = () => {
 
   useEffect(() => {
     console.log('Filters updated:', filters);
-  }, [filters]);
-
-  console.log('ManageStudents - Render:', { filters, students, filteredStudents, availableCourses, batches, pendingAssignments });
+    console.log('Available Courses:', availableCourses);
+    console.log('Students with Electives:', students.map(s => ({
+      rollnumber: s.rollnumber,
+      selectedElectiveIds: s.selectedElectiveIds,
+    })));
+  }, [filters, availableCourses, students]);
 
   const areRequiredFiltersSelected = filters.branch !== '' && filters.semester !== '' && filters.batch !== '';
 
@@ -180,7 +183,9 @@ const ManageStudents = () => {
                             >
                               <div className="space-y-2">
                                 <div className="truncate" title={course.courseTitle}>
-                                  <span className="block font-bold text-gray-900">{course.courseCode}</span>
+                                  <span className="block font-bold text-gray-900">
+                                    {course.courseCode} {['PEC', 'OEC'].includes(course.category) ? '(Elective)' : ''}
+                                  </span>
                                   <span className="block text-gray-400 text-xs">{course.courseTitle}</span>
                                 </div>
                                 <button
@@ -229,7 +234,7 @@ const ManageStudents = () => {
                               return (
                                 <td
                                   key={course.courseId}
-                                  className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                                  className={`px-6 py-4 whitespace-nowrap text-sm ${canAllocate ? 'text-gray-500' : 'text-gray-400 italic'}`}
                                   style={{ width: '300px', minWidth: '300px' }}
                                 >
                                   {canAllocate ? (
@@ -249,7 +254,7 @@ const ManageStudents = () => {
                                           }
                                         }
                                       }}
-                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white hover:bg-gray-100"
+                                      className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white hover:bg-gray-100 ${isElective ? 'bg-blue-50' : ''}`}
                                     >
                                       <option value="">Not Assigned</option>
                                       {course.batches.map((batch) => (
@@ -259,7 +264,7 @@ const ManageStudents = () => {
                                       ))}
                                     </select>
                                   ) : (
-                                    <div className="px-6 py-4 text-sm text-gray-500 italic">Not Selected</div>
+                                    <div className="px-6 py-4 text-sm text-gray-400 italic">Not Selected</div>
                                   )}
                                 </td>
                               );
@@ -290,7 +295,9 @@ const ManageStudents = () => {
                     <div key={course.courseId} className="p-4 border-b border-gray-200">
                       <div className="flex justify-between items-center">
                         <div>
-                          <span className="font-bold text-gray-900">{course.courseCode}</span>
+                          <span className="font-bold text-gray-900">
+                            {course.courseCode} {['PEC', 'OEC'].includes(course.category) ? '(Elective)' : ''}
+                          </span>
                           <span className="block text-gray-400 text-sm">{course.courseTitle}</span>
                         </div>
                         <div>

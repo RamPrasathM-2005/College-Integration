@@ -11,7 +11,7 @@ const useManageStudentsHandlers = (
 ) => {
   const assignStaff = (student, courseId, sectionId, staffId) => {
     try {
-      const course = availableCourses.find((c) => c.courseId === courseId);
+      const course = availableCourses.find((c) => String(c.courseId) === String(courseId));
       if (!course) {
         setError(`No course found for ID ${courseId}`);
         showErrorToast('Error', `No course found for ID ${courseId}`);
@@ -19,8 +19,8 @@ const useManageStudentsHandlers = (
       }
       const isElective = ['PEC', 'OEC'].includes(course.category);
       if (isElective && !student.selectedElectiveIds?.includes(String(courseId))) {
-        setError('Cannot assign this elective to a student who did not select it.');
-        showErrorToast('Error', 'Cannot assign this elective to a student who did not select it.');
+        setError(`Student ${student.rollnumber} did not select elective course ${course.courseCode}`);
+        showErrorToast('Error', `Student ${student.rollnumber} did not select elective course ${course.courseCode}`);
         return false;
       }
       const section = course.batches.find((b) => String(b.sectionId) === String(sectionId) && String(b.staffId) === String(staffId));
@@ -30,7 +30,16 @@ const useManageStudentsHandlers = (
         return false;
       }
 
-      console.log('Assigning:', { student: student.rollnumber, courseId, courseCode: course.courseCode, sectionId, staffId, sectionName: section.sectionName });
+      console.log('Assigning:', {
+        student: student.rollnumber,
+        courseId,
+        courseCode: course.courseCode,
+        sectionId,
+        staffId,
+        sectionName: section.sectionName,
+        isElective,
+        selectedElectiveIds: student.selectedElectiveIds,
+      });
 
       setPendingAssignments((prev) => ({
         ...prev,
@@ -50,9 +59,9 @@ const useManageStudentsHandlers = (
           s.rollnumber === student.rollnumber
             ? {
                 ...s,
-                enrolledCourses: s.enrolledCourses.some((c) => c.courseId === courseId)
+                enrolledCourses: s.enrolledCourses.some((c) => String(c.courseId) === String(courseId))
                   ? s.enrolledCourses.map((c) =>
-                      c.courseId === courseId
+                      String(c.courseId) === String(courseId)
                         ? {
                             ...c,
                             courseId: String(courseId),
@@ -102,7 +111,7 @@ const useManageStudentsHandlers = (
       setStudents((prev) =>
         prev.map((s) =>
           s.rollnumber === student.rollnumber
-            ? { ...s, enrolledCourses: s.enrolledCourses.filter((c) => c.courseId !== courseId) }
+            ? { ...s, enrolledCourses: s.enrolledCourses.filter((c) => String(c.courseId) !== String(courseId)) }
             : s
         )
       );
@@ -138,7 +147,10 @@ const useManageStudentsHandlers = (
     }
 
     students.forEach((student) => {
-      assignStaff(student, course.courseId, batch1.sectionId, batch1.staffId);
+      const isElective = ['PEC', 'OEC'].includes(course.category);
+      if (!isElective || (student.selectedElectiveIds || []).includes(String(course.courseId))) {
+        assignStaff(student, course.courseId, batch1.sectionId, batch1.staffId);
+      }
     });
   };
 
