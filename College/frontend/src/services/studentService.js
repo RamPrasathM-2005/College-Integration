@@ -14,9 +14,13 @@ export const fetchStudentDetails = async () => {
   }
 };
 
-export const fetchSemesters = async () => {
+export const fetchSemesters = async (batchYear) => {
   try {
-    const response = await api.get('/student/semesters');
+    console.log('Fetching semesters for batchYear:', batchYear);
+    const response = await api.get('/student/semesters', {
+      params: { batchYear, timestamp: Date.now() }, // Bypass cache
+    });
+    console.log('Semesters response:', response.data);
     if (response.data.status === 'success') {
       return response.data.data;
     } else {
@@ -74,9 +78,13 @@ export const allocateElectives = async (semesterId, selections) => {
   }
 };
 
-export const fetchEnrolledCourses = async (semesterId) => {
+export const fetchEnrolledCourses = async (userId, semesterId) => {
   try {
-    const response = await api.get('/student/enrolled-courses', { params: { semesterId } });
+    console.log('Fetching enrolled courses for userId:', userId, 'semesterId:', semesterId);
+    const response = await api.get('/student/enrolled-courses', {
+      params: { semesterId, timestamp: Date.now() }, // Bypass cache
+    });
+    console.log('Enrolled courses response:', response.data);
     if (response.data.status === 'success') {
       return response.data.data;
     } else {

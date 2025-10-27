@@ -37,22 +37,34 @@ const StudentDashboard = () => {
         if (!studentData) {
           throw new Error('No student data returned');
         }
+        console.log('Student data:', studentData);
         setStudentDetails(studentData);
 
         const semesterData = await fetchSemesters(String(studentData.batchYear || ''));
+        console.log('Fetched semesters:', semesterData);
         if (!semesterData || semesterData.length === 0) {
           console.warn('No semesters found for batch:', studentData.batchYear);
-        }
-        setSemesters(semesterData);
-
-        const activeSemester = semesterData.find((sem) => sem.isActive === 'YES') || semesterData[0];
-        if (activeSemester) {
-          setSelectedSemester(activeSemester.semesterId);
+          setSemesters([]);
+          setSelectedSemester('');
         } else {
-          console.warn('No active semester found');
+          setSemesters(semesterData);
+          // Only set selectedSemester if not already set
+          if (!selectedSemester) {
+            const activeSemester = semesterData.find((sem) => sem.isActive === 'YES') || semesterData[0];
+            console.log('Active semester:', activeSemester);
+            if (activeSemester) {
+              setSelectedSemester(activeSemester.semesterId.toString());
+              console.log('Set initial selectedSemester:', activeSemester.semesterId);
+            } else {
+              console.warn('No active semester found');
+            }
+          }
         }
       } catch (err) {
         console.error('Error in fetchStudentData:', err);
+        if (err.response?.status === 401) {
+          navigate('/login');
+        }
         setError(`Failed to fetch student data: ${err.message}`);
       } finally {
         setLoading(false);
@@ -60,40 +72,53 @@ const StudentDashboard = () => {
     };
 
     fetchStudentData();
-  }, [navigate]);
+  }, [navigate]); // Removed selectedSemester from dependencies
 
   useEffect(() => {
     const fetchCoursesAndAttendance = async () => {
       if (!selectedSemester) {
-        console.warn('No semester selected, skipping fetchCoursesAndAttendance');
+        console.warn('No semester selected, setting courses to empty');
+        setCourses([]);
+        setAttendanceSummary({});
         return;
       }
 
       try {
         setLoading(true);
         const userId = getUserId();
+        console.log('Fetching courses for userId:', userId, 'semesterId:', selectedSemester);
         if (!userId) {
           throw new Error('User ID not found');
         }
 
         const coursesData = await fetchEnrolledCourses(userId, selectedSemester);
+        console.log('Fetched courses:', coursesData);
         setCourses(coursesData || []);
 
         const attendanceData = await fetchAttendanceSummary(userId, selectedSemester);
         setAttendanceSummary(attendanceData || {});
       } catch (err) {
         console.error('Error in fetchCoursesAndAttendance:', err);
-        setError(`Failed to fetch courses or attendance: ${err.message}`);
+        if (err.response?.status === 401) {
+          navigate('/login');
+        }
+        setError(
+          err.response?.status === 404
+            ? 'No courses found for this semester.'
+            : `Failed to fetch courses or attendance: ${err.message}`
+        );
       } finally {
         setLoading(false);
       }
     };
 
     fetchCoursesAndAttendance();
-  }, [selectedSemester]);
+  }, [selectedSemester, navigate]);
 
   const handleSemesterChange = (e) => {
-    setSelectedSemester(e.target.value);
+    const newSemesterId = e.target.value;
+    console.log('Dropdown changed, new semesterId:', newSemesterId);
+    setSelectedSemester(newSemesterId);
   };
 
   const handleChooseCourses = () => {
@@ -160,7 +185,7 @@ const StudentDashboard = () => {
               <option value="">No semesters available</option>
             ) : (
               semesters.map((sem) => (
-                <option key={sem.semesterId} value={sem.semesterId}>
+                <option key={sem.semesterId} value={sem.semesterId.toString()}>
                   Semester {sem.semesterNumber} ({sem.startDate} - {sem.endDate})
                 </option>
               ))
@@ -193,8 +218,8 @@ const StudentDashboard = () => {
                   <tr key={course.courseId} className="border-t">
                     <td className="px-4 py-2">{course.courseCode || 'N/A'}</td>
                     <td className="px-4 py-2">{course.courseName || 'N/A'}</td>
-                    <td className="px-4 py-2">{course.batch || 'N/A'}</td>
-                    <td className="px-4 py-2">{course.staff || 'N/A'}</td>
+                    <td className="px-4 py-2">{course.section || 'N/A'}</td>
+                    <td className="px-4 py-2">{course.staff || 'Not Assigned'}</td>
                   </tr>
                 ))}
               </tbody>
