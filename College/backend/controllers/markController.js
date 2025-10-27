@@ -1224,6 +1224,7 @@ export const exportCourseWiseCsv = catchAsync(async (req, res) => {
   const staffId = getStaffId(req);
 
   try {
+    // Fetch course details
     const [course] = await pool.query(
       'SELECT courseId FROM Course WHERE courseCode = ?',
       [courseCode]
@@ -1233,6 +1234,7 @@ export const exportCourseWiseCsv = catchAsync(async (req, res) => {
     }
     const courseId = course[0].courseId;
 
+    // Verify if staff is assigned to the course
     const [staffCourseCheck] = await pool.query(
       'SELECT sectionId FROM StaffCourse WHERE courseId = ? AND Userid = ?',
       [courseId, staffId]
@@ -1245,14 +1247,20 @@ export const exportCourseWiseCsv = catchAsync(async (req, res) => {
       });
     }
 
+    // Fetch course outcomes with their types using LEFT JOIN
     const [cos] = await pool.query(
-      'SELECT coId, coNumber, coType FROM CourseOutcome WHERE courseId = ? ORDER BY coNumber',
+      `SELECT co.coId, co.coNumber, ct.coType 
+       FROM CourseOutcome co 
+       LEFT JOIN COType ct ON co.coId = ct.coId 
+       WHERE co.courseId = ? 
+       ORDER BY co.coNumber`,
       [courseId]
     );
     if (!cos.length) {
       return res.status(404).json({ status: 'error', message: 'No course outcomes found' });
     }
 
+    // Fetch students enrolled in the course and staff's section
     const [students] = await pool.query(
       `SELECT DISTINCT sd.regno, u.username AS name 
        FROM student_details sd
@@ -1267,23 +1275,28 @@ export const exportCourseWiseCsv = catchAsync(async (req, res) => {
       return res.status(404).json({ status: 'error', message: 'No students found in your section' });
     }
 
+    // Fetch consolidated marks for course outcomes
     const [coMarks] = await pool.query(
       'SELECT regno, coId, consolidatedMark FROM StudentCOMarks WHERE coId IN (?) AND regno IN (?)',
       [cos.map(co => co.coId), students.map(s => s.regno)]
     );
 
+    // Map course outcome marks by student
     const coMarksMap = coMarks.reduce((acc, cm) => {
       if (!acc[cm.regno]) acc[cm.regno] = {};
-      acc[cm.regno][cm.coId] = cm.consolidatedMark;
+      // Ensure consolidatedMark is a number, default to 0 if null or invalid
+      acc[cm.regno][cm.coId] = Number(cm.consolidatedMark) || 0;
       return acc;
     }, {});
 
+    // Calculate averages for theory, practical, experiential, and final average
     const calculateAverages = (regno) => {
       let theorySum = 0, theoryCount = 0, pracSum = 0, pracCount = 0, expSum = 0, expCount = 0;
       const marks = {};
       cos.forEach(co => {
-        const coMark = coMarksMap[regno]?.[co.coId] || 0;
-        marks[co.coNumber] = coMark.toFixed(2);
+        // Ensure coMark is a number, default to 0 if undefined or invalid
+        const coMark = Number(coMarksMap[regno]?.[co.coId] || 0);
+        marks[co.coNumber] = coMark.toFixed(2); // Safe to call toFixed on a number
         if (co.coType === 'THEORY') {
           theorySum += coMark;
           theoryCount++;
@@ -1293,7 +1306,7 @@ export const exportCourseWiseCsv = catchAsync(async (req, res) => {
         } else if (co.coType === 'EXPERIENTIAL') {
           expSum += coMark;
           expCount++;
-        }
+        } // NULL coType is ignored
       });
       const avgTheory = theoryCount ? (theorySum / theoryCount).toFixed(2) : '0.00';
       const avgPractical = pracCount ? (pracSum / pracCount).toFixed(2) : '0.00';
@@ -1309,6 +1322,7 @@ export const exportCourseWiseCsv = catchAsync(async (req, res) => {
       return { ...marks, avgTheory, avgPractical, avgExperiential, finalAvg };
     };
 
+    // Define CSV header
     const header = [
       { id: 'regNo', title: 'Reg No' },
       { id: 'name', title: 'Name' },
@@ -1319,6 +1333,7 @@ export const exportCourseWiseCsv = catchAsync(async (req, res) => {
       { id: 'finalAvg', title: 'Final Avg' },
     ];
 
+    // Prepare CSV data
     const data = students.map(student => {
       const averages = calculateAverages(student.regno);
       return {
@@ -1328,6 +1343,7 @@ export const exportCourseWiseCsv = catchAsync(async (req, res) => {
       };
     });
 
+    // Generate CSV file
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `${courseCode}_marks_${timestamp}.csv`;
     const filePath = path.join(os.tmpdir(), filename);
@@ -1338,23 +1354,24 @@ export const exportCourseWiseCsv = catchAsync(async (req, res) => {
     });
     await csvWriter.writeRecords(data);
 
+    // Send the file as a download
     res.download(filePath, filename, (err) => {
       if (err) {
         console.error('Error sending file:', err);
       }
+      // Clean up the temporary file
       fs.unlink(filePath, (unlinkErr) => {
         if (unlinkErr) console.error('Error deleting file:', unlinkErr);
       });
     });
   } catch (err) {
-    console.error('Error in exportCourseWiseCsv:', err);
+    console.error('Error in exportCourseWiseCsv:', err.stack);
     res.status(500).json({ 
       status: 'error', 
       message: `Export failed: ${err.message}. Check if course ${courseCode} and staff ${staffId} are valid.` 
     });
   }
 });
-
 export const getMyCourses = catchAsync(async (req, res) => {
   const userId = getStaffId(req); // Returns Userid (e.g., '2')
   console.log('getMyCourses - userId:', userId, 'userId type:', typeof userId);
