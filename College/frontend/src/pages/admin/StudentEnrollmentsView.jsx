@@ -65,7 +65,7 @@ const StudentEnrollmentsView = () => {
 
   useEffect(() => {
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [filters.batch, filters.dept, filters.sem]);
 
   // Client-side filtering based on selected field and query

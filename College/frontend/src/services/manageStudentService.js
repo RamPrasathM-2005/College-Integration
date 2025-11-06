@@ -1,5 +1,5 @@
-import { showErrorToast } from '../utils/swalConfig';
-import { api } from '../services/authService';
+import { showErrorToast } from '../utils/swalConfig.js';
+import { api } from '../services/authService.js';
 
 const API_BASE = 'http://localhost:4000/api/admin';
 
