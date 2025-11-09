@@ -28,6 +28,7 @@ import BatchRegulationAllocation from './pages/admin/BatchRegulationAllocation';
 import AdminAttendance from './pages/admin/AttendanceAdmin';
 import Report from './pages/admin/Reports';
 import StudentEnrollmentsView from './pages/admin/StudentEnrollmentsView';
+import CgpaAllocation from './pages/admin/CgpaAllocation.jsx'
 // import UpdateStudentSem from './pages/admin/ManageStudents/UpdateStudentSem.jsx'; 
 
 // Staff Pages
@@ -89,6 +90,7 @@ const routes = [
       { path: 'adminattendance', element: <AdminAttendance /> },
       { path: 'report', element: <Report /> },
       { path: 'student-staff-mapping', element: <StudentEnrollmentsView /> },
+      {path : 'cgpa-allocation', element: <CgpaAllocation/>},
       // { path: 'student-sem-update', element: <UpdateStudentSem/ > },
       { path: '*', element: <NotFound /> },
     ],

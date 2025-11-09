@@ -590,6 +590,36 @@ const initDatabase = async () => {
             (7, 'Civil Engineering', 'CIVIL')
         `);
 
+
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS GradePoint (
+                grade   ENUM('O','A+','A','B+','B','U') PRIMARY KEY,
+                point   TINYINT NOT NULL
+            )
+        `);
+
+        await connection.execute(`
+            INSERT IGNORE INTO GradePoint (grade, point) VALUES
+                ('O',10),('A+',9),('A',8),('B+',7),('B',6),('U',0)
+        `);
+
+        // Recreate StudentGrade using courseCode (not courseId)
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS StudentGrade (
+                gradeId        INT PRIMARY KEY AUTO_INCREMENT,
+                regno          VARCHAR(50) NOT NULL,
+                courseCode     VARCHAR(20) NOT NULL,
+                grade          ENUM('O','A+','A','B+','B','U') NOT NULL,
+                createdAt      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updatedAt      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE (regno, courseCode),
+                CONSTRAINT fk_sg_student FOREIGN KEY (regno) REFERENCES student_details(regno)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_sg_course_code FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
+                    ON UPDATE CASCADE ON DELETE CASCADE
+            )
+        `);
+
         // Insert default regulations (2023, 2019, 2015) for each department
         const [departments] = await connection.execute('SELECT Deptid FROM department');
         const deptIds = departments.map(row => row.Deptid);
