@@ -61,6 +61,7 @@ const getStudentCGPA = async (regno, upToSemesterId) => {
 };
 
 // === UPLOAD GRADES (WIDE CSV FORMAT) ===
+
 export const uploadGrades = catchAsync(async (req, res) => {
   const file = req.file;
   if (!file) {
@@ -77,21 +78,44 @@ export const uploadGrades = catchAsync(async (req, res) => {
         if (!regno) return;
 
         Object.keys(row).forEach(key => {
-          const grade = row[key]?.trim().toUpperCase();
-          if (key !== 'regno' && ['O','A+','A','B+','B','U'].includes(grade)) {
-            records.push({
-              regno,
-              courseCode: key.trim(),
-              grade
-            });
+          const rawGrade = row[key]?.trim();
+
+          // SKIP: regno column itself
+          if (key === 'regno') return;
+
+          // SKIP: empty, dash (-), or whitespace
+          if (!rawGrade || rawGrade === '-' || rawGrade === '') return;
+
+          const grade = rawGrade.toUpperCase();
+
+          // Only accept valid grades
+          if (!['O', 'A+', 'A', 'B+', 'B', 'U'].includes(grade)) {
+            console.warn(`Invalid grade skipped: ${regno} → ${key} = "${rawGrade}"`);
+            return;
           }
+
+          records.push({
+            regno,
+            courseCode: key.trim(),
+            grade
+          });
         });
       })
       .on('end', resolve)
       .on('error', reject);
   });
 
+  // Clean up uploaded file
   fs.unlinkSync(file.path);
+
+  if (records.length === 0) {
+    return res.json({
+      status: 'success',
+      message: 'No valid grades found in file',
+      inserted: 0,
+      updated: 0
+    });
+  }
 
   const conn = await pool.getConnection();
   await conn.beginTransaction();
@@ -107,31 +131,36 @@ export const uploadGrades = catchAsync(async (req, res) => {
 
     let inserted = 0;
     let updated = 0;
+    let skippedCourses = 0;
 
     for (const r of records) {
       // Validate course exists
-      const [course] = await conn.execute(
+      const [courseRows] = await conn.execute(
         'SELECT courseId FROM Course WHERE courseCode = ?',
         [r.courseCode]
       );
 
-      if (!course.length) {
-        throw new Error(`Course not found in Course table: ${r.courseCode}`);
+      if (courseRows.length === 0) {
+        console.warn(`Course not found (skipped): ${r.courseCode}`);
+        skippedCourses++;
+        continue;
       }
 
       const [result] = await conn.execute(stmt, [r.regno, r.courseCode, r.grade]);
 
       if (result.affectedRows === 1) inserted++;
-      if (result.affectedRows === 2) updated++; // ON DUPLICATE KEY UPDATE
+      if (result.affectedRows === 2) updated++;
     }
 
     await conn.commit();
 
     res.json({
       status: 'success',
-      message: `${records.length} grades processed`,
+      message: `${records.length} valid grades processed`,
       inserted,
-      updated
+      updated,
+      skippedCourses,
+      totalProcessed: inserted + updated
     });
   } catch (error) {
     await conn.rollback();
@@ -154,6 +183,7 @@ export const viewGPA = catchAsync(async (req, res) => {
 });
 
 // === VIEW CGPA ===
+
 export const viewCGPA = catchAsync(async (req, res) => {
   const { regno, upToSemesterId } = req.query;
 

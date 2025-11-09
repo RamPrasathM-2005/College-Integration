@@ -1,3 +1,4 @@
+// src/services/studentService.js
 import { api } from './authService';
 
 export const fetchStudentDetails = async () => {
@@ -18,7 +19,7 @@ export const fetchSemesters = async (batchYear) => {
   try {
     console.log('Fetching semesters for batchYear:', batchYear);
     const response = await api.get('/student/semesters', {
-      params: { batchYear, timestamp: Date.now() }, // Bypass cache
+      params: { batchYear }
     });
     console.log('Semesters response:', response.data);
     if (response.data.status === 'success') {
@@ -34,7 +35,9 @@ export const fetchSemesters = async (batchYear) => {
 
 export const fetchMandatoryCourses = async (semesterId) => {
   try {
-    const response = await api.get('/student/courses/mandatory', { params: { semesterId } });
+    const response = await api.get('/student/courses/mandatory', {
+      params: { semesterId }
+    });
     if (response.data.status === 'success') {
       return response.data.data;
     } else {
@@ -48,7 +51,9 @@ export const fetchMandatoryCourses = async (semesterId) => {
 
 export const fetchElectiveBuckets = async (semesterId) => {
   try {
-    const response = await api.get('/student/elective-buckets', { params: { semesterId } });
+    const response = await api.get('/student/elective-buckets', {
+      params: { semesterId }
+    });
     if (response.data.status === 'success') {
       return response.data.data;
     } else {
@@ -66,7 +71,6 @@ export const allocateElectives = async (semesterId, selections) => {
       semesterId,
       selections
     });
-    
     if (response.data.status === 'success') {
       return response.data;
     } else {
@@ -78,11 +82,11 @@ export const allocateElectives = async (semesterId, selections) => {
   }
 };
 
-export const fetchEnrolledCourses = async (userId, semesterId) => {
+export const fetchEnrolledCourses = async (semesterId) => {
   try {
-    console.log('Fetching enrolled courses for userId:', userId, 'semesterId:', semesterId);
+    console.log('Fetching enrolled courses for semesterId:', semesterId);
     const response = await api.get('/student/enrolled-courses', {
-      params: { semesterId, timestamp: Date.now() }, // Bypass cache
+      params: { semesterId }
     });
     console.log('Enrolled courses response:', response.data);
     if (response.data.status === 'success') {
@@ -98,7 +102,10 @@ export const fetchEnrolledCourses = async (userId, semesterId) => {
 
 export const fetchAttendanceSummary = async (semesterId) => {
   try {
-    const response = await api.get('/student/attendance-summary', { params: { semesterId } });
+    console.log('Fetching attendance summary for semesterId:', semesterId);
+    const response = await api.get('/student/attendance-summary', {
+      params: { semesterId }
+    });
     if (response.data.status === 'success') {
       return response.data.data;
     } else {
