@@ -7,7 +7,6 @@ import fs from 'fs';
 
 const upload = multer({ dest: 'tmp/' });
 
-// === GET GPA (CURRENT SEMESTER ONLY) ===
 const getStudentGPA = async (regno, semesterId) => {
   const [rows] = await pool.execute(`
     SELECT c.credits, gp.point
@@ -32,7 +31,7 @@ const getStudentGPA = async (regno, semesterId) => {
   return totalCredits > 0 ? (totalPoints / totalCredits).toFixed(2) : null;
 };
 
-// === GET CGPA (ALL SEMESTERS UP TO CURRENT) ===
+
 const getStudentCGPA = async (regno, upToSemesterId) => {
   const [rows] = await pool.execute(`
     SELECT c.credits, gp.point
@@ -60,7 +59,6 @@ const getStudentCGPA = async (regno, upToSemesterId) => {
   return totalCredits > 0 ? (totalPoints / totalCredits).toFixed(2) : null;
 };
 
-// === UPLOAD GRADES (WIDE CSV FORMAT) ===
 
 export const uploadGrades = catchAsync(async (req, res) => {
   const file = req.file;
@@ -170,7 +168,7 @@ export const uploadGrades = catchAsync(async (req, res) => {
   }
 });
 
-// === VIEW GPA ===
+
 export const viewGPA = catchAsync(async (req, res) => {
   const { regno, semesterId } = req.query;
 
@@ -182,7 +180,6 @@ export const viewGPA = catchAsync(async (req, res) => {
   res.json({ gpa: gpa || '-' });
 });
 
-// === VIEW CGPA ===
 
 export const viewCGPA = catchAsync(async (req, res) => {
   const { regno, upToSemesterId } = req.query;
@@ -195,7 +192,7 @@ export const viewCGPA = catchAsync(async (req, res) => {
   res.json({ cgpa: cgpa || '-' });
 });
 
-// === GET STUDENTS LIST ===
+
 export const getStudentsForGrade = catchAsync(async (req, res) => {
   const { branch, batch, degree } = req.query;
 
