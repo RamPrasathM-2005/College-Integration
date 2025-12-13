@@ -197,30 +197,31 @@ const CgpaAllocation = () => {
     }
   };
 
-  const importCSV = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !currentSemesterId) {
-      toast.error('Please select semester first');
-      return;
-    }
+const importCSV = async (e) => {
+  const file = e.target.files[0];
+  if (!file || !currentSemesterId) {
+    toast.error('Please select semester first');
+    return;
+  }
 
-    const fd = new FormData();
-    fd.append('file', file);
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('semesterId', currentSemesterId); // CRITICAL LINE
 
-    setLoading(true);
-    try {
-      await api.post('/admin/grades/import', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      toast.success('Grades imported successfully');
-      await refreshStudentsAndCalculateAll();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Import failed');
-    } finally {
-      setLoading(false);
-      e.target.value = '';
-    }
-  };
+  setLoading(true);
+  try {
+    await api.post('/admin/grades/import', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    toast.success('Grades imported & GPA/CGPA saved!');
+    await refreshStudentsAndCalculateAll();
+  } catch (err) {
+    toast.error(err.response?.data?.message || 'Import failed');
+  } finally {
+    setLoading(false);
+    e.target.value = '';
+  }
+};
 
   const calculateForStudent = async (regno) => {
     if (!currentSemesterId) return;
@@ -303,8 +304,13 @@ const CgpaAllocation = () => {
 
         <div className="flex flex-wrap gap-3 justify-end">
           <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700">
-            <Upload className="w-4 h-4" /> Import CSV
-            <input type="file" accept=".csv" onChange={importCSV} className="hidden" />
+              <Upload className="w-4 h-4" /> Import CSV/XLSX
+              <input 
+                type="file" 
+                accept=".csv,.xlsx" 
+                onChange={importCSV} 
+                className="hidden" 
+              />
           </label>
           <a href={sampleCSV} download="sample_grades.csv" className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
             <Download className="w-4 h-4" /> Sample

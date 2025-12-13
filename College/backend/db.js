@@ -619,6 +619,23 @@ const initDatabase = async () => {
                     ON UPDATE CASCADE ON DELETE CASCADE
             )
         `);
+        // 26) StudentSemesterGPA - Stores calculated GPA and CGPA per student per semester for analytics
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS StudentSemesterGPA (
+                studentGPAId INT PRIMARY KEY AUTO_INCREMENT,
+                regno VARCHAR(50) NOT NULL,
+                semesterId INT NOT NULL,
+                gpa DECIMAL(4,2) NULL,
+                cgpa DECIMAL(4,2) NULL,
+                createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE (regno, semesterId),
+                CONSTRAINT fk_ssg_student FOREIGN KEY (regno) REFERENCES student_details(regno)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_ssg_semester FOREIGN KEY (semesterId) REFERENCES Semester(semesterId)
+                    ON UPDATE CASCADE ON DELETE CASCADE
+            )
+        `);
 
         // Insert default regulations (2023, 2019, 2015) for each department
         const [departments] = await connection.execute('SELECT Deptid FROM department');

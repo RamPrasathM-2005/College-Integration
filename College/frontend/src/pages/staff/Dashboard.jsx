@@ -1,11 +1,11 @@
-import React, { useState, useEffect, Component } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser } from '../../services/authService';
 import { getMyCourses } from '../../services/staffService';
 
 // Error Boundary Component
-class ErrorBoundary extends Component {
+class ErrorBoundary extends React.Component {
   state = { hasError: false, error: null };
 
   static getDerivedStateFromError(error) {
@@ -20,11 +20,11 @@ class ErrorBoundary extends Component {
     if (this.state.hasError) {
       return (
         <div className="p-6 text-center text-red-500">
-          <h2>Something went wrong.</h2>
-          <p>{this.state.error.message}</p>
+          <h2 className="text-2xl font-bold mb-4">Something went wrong.</h2>
+          <p className="mb-4">{this.state.error?.message}</p>
           <button
             onClick={() => this.setState({ hasError: false, error: null })}
-            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
           >
             Try Again
           </button>
@@ -47,150 +47,172 @@ const Dashboard = () => {
 
   const user = getCurrentUser();
 
-  const colors = ['bg-purple-500', 'bg-gray-400', 'bg-yellow-500', 'bg-blue-500', 'bg-green-500', 'bg-red-500'];
+  const colors = [
+    'bg-purple-500',
+    'bg-gray-400',
+    'bg-yellow-500',
+    'bg-blue-500',
+    'bg-green-500',
+    'bg-red-500',
+  ];
 
   useEffect(() => {
     const fetchCourses = async () => {
       try {
         if (!user?.staffId) {
-          throw new Error('Staff ID not found in user data');
+          throw new Error('Staff ID not found. Please log in again.');
         }
         const courseList = await getMyCourses(user.staffId);
-        // Filter out invalid courses and map with fallbacks
+
         const validCourses = Array.isArray(courseList)
           ? courseList
-              .filter(course => course && typeof course === 'object')
+              .filter((course) => course && typeof course === 'object')
               .map((course, index) => ({
                 ...course,
                 id: course.id || `course-${index}`,
                 title: course.title || 'Untitled Course',
                 bgColor: colors[index % colors.length],
-                semester:  course.semester || 'Unknown Semester',
+                semester: course.semester || 'Unknown Semester',
                 degree: course.degree || 'Unknown Degree',
                 branch: course.branch || 'Unknown Branch',
                 batch: course.batch || 'Unknown Batch',
+                sectionName: course.sectionName || '',
               }))
           : [];
+
         setCourses(validCourses);
       } catch (err) {
         setError(err.message || 'Failed to load courses');
+        console.error(err);
       } finally {
         setLoading(false);
       }
     };
+
     fetchCourses();
   }, []);
 
-  let filteredCourses = courses.filter(course => {
-    if (!course || typeof course !== 'object') return false;
-    const title = course.title || '';
-    const id = course.id || '';
-    return title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           id.toLowerCase().includes(searchQuery.toLowerCase());
+  let filteredCourses = courses.filter((course) => {
+    if (!course) return false;
+    const title = (course.title || '').toLowerCase();
+    const id = (course.id || '').toLowerCase();
+    const query = searchQuery.toLowerCase();
+    return title.includes(query) || id.includes(query);
   });
 
-  filteredCourses.sort((a, b) => {
-    if (!a?.title || !b?.title) return 0;
-    if (sortBy === 'Sort by name') return a.title.localeCompare(b.title);
-    return 0;
-  });
+  if (sortBy === 'Sort by name') {
+    filteredCourses.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+  }
 
   const handleCourseClick = (course) => {
-    if (course && course.id) {
+    if (course?.id) {
       navigate(`/staff/options/${course.id}`, { state: { course } });
     }
   };
 
   if (loading) {
-    return <div className="p-6 text-center">Loading courses...</div>;
+    return (
+      <div className="p-6 text-center text-gray-600">
+        <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-blue-600"></div>
+        <p className="mt-4 text-lg">Loading your courses...</p>
+      </div>
+    );
   }
 
   return (
     <ErrorBoundary>
       <div className="p-6 bg-gray-100 min-h-screen">
-        <header className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
-          {/* <h1 className="text-2xl font-bold text-gray-900">Hi, {user?.name.toUpperCase()}! 👋</h1> */}
-        </header>
+
+        {/* "Hi, Staff!" greeting removed as requested */}
 
         <div className="mb-6">
-          <h2 className="text-xl font-semibold text-blue-700">Course Overview</h2>
+          <h2 className="text-2xl font-semibold text-blue-700">Course Overview</h2>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-6 flex flex-col sm:flex-row sm:items-center gap-4">
+        {/* Filters Bar */}
+        <div className="bg-white rounded-xl shadow-sm p-5 mb-8 flex flex-col lg:flex-row gap-4 items-center">
           <select
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-auto"
+            className="px-none border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
-            <option value="In progress">In progress</option>
-            <option value="All">All courses</option>
-            <option value="Completed">Completed</option>
-            <option value="Not started">Not started</option>
+            <option>In progress</option>
+            <option>All courses</option>
+            <option>Completed</option>
+            <option>Not started</option>
           </select>
 
-          <div className="flex-1 relative w-full">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Search"
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Search by course code or name..."
+              className="w-full pl-11 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
 
           <select
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-auto"
+            className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
           >
-            <option value="Sort by name">Sort by name</option>
+            <option>Sort by name</option>
           </select>
 
           <select
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-auto"
+            className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
             value={viewMode}
             onChange={(e) => setViewMode(e.target.value)}
           >
-            <option value="Summary">Summary</option>
-            <option value="Card">Card</option>
-            <option value="List">List</option>
+            <option>Summary</option>
+            <option>Card</option>
+            <option>List</option>
           </select>
         </div>
 
-        {error && <p className="text-red-500 text-center mb-4">{error}</p>}
+        {/* Error Message */}
+        {error && (
+          <div className="text-center text-red-600 bg-red-50 py-4 rounded-lg mb-6">
+            {error}
+          </div>
+        )}
 
-        <div className={viewMode === 'Card' ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' : 'space-y-4'}>
+        {/* Courses Grid / List */}
+        <div className={viewMode === 'Card' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6' : 'space-y-4'}>
           {filteredCourses.map((course) => (
             <div
               key={course.id}
               onClick={() => handleCourseClick(course)}
-              className={`bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow p-6 cursor-pointer ${
-                viewMode === 'Card' ? 'flex flex-col items-start' : ''
-              }`}
+              className="bg-white rounded-xl shadow hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden transform hover:-translate-y-1"
             >
-              <div className={`w-16 h-16 ${course.bgColor} rounded-lg flex-shrink-0 mb-4`}></div>
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-medium text-blue-600 hover:text-blue-700 mb-1">
-                      {course.id} - {course.title} ({course.branch} {course.degree} {course.batch} Batch - {course.sectionName})
-                    </h3>
-                    <p className="text-sm text-gray-600 mb-3">{course.semester}</p>
-                  </div>
+              <div className={`h-32 ${course.bgColor} opacity-90`}></div>
+              <div className="p-6 -mt-12">
+                <div className={`w-20 h-20 ${course.bgColor} rounded-xl shadow-lg`}></div>
+                <div className="mt-4">
+                  <h3 className="text-lg font-semibold text-blue-700 line-clamp-2">
+                    {course.id} - {course.title}
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {course.branch} {course.degree} • {course.batch} Batch
+                    {course.sectionName ? ` • ${course.sectionName}` : ''}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2">{course.semester}</p>
                 </div>
               </div>
             </div>
           ))}
         </div>
 
+        {/* Empty State – Clean Illustration Only */}
         {filteredCourses.length === 0 && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <Search className="w-8 h-8 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No courses found</h3>
-            <p className="text-gray-600">Try adjusting your search criteria.</p>
+          <div className="flex justify-center items-center min-h-screen -mt-32">
+            <img
+              src="/no-courses-illustration.png"
+              alt=""
+              className="w-80 h-auto object-contain drop-shadow-2xl"
+            />
           </div>
         )}
       </div>
