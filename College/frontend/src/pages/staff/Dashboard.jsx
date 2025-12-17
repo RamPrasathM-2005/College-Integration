@@ -90,7 +90,7 @@ const Dashboard = () => {
     };
 
     fetchCourses();
-  }, []);
+  }, [user]);
 
   let filteredCourses = courses.filter((course) => {
     if (!course) return false;
@@ -110,6 +110,10 @@ const Dashboard = () => {
     }
   };
 
+  const handleRequestCourses = () => {
+    navigate('/staff/request-courses'); 
+  };
+
   if (loading) {
     return (
       <div className="p-6 text-center text-gray-600">
@@ -123,10 +127,15 @@ const Dashboard = () => {
     <ErrorBoundary>
       <div className="p-6 bg-gray-100 min-h-screen">
 
-        {/* "Hi, Staff!" greeting removed as requested */}
-
-        <div className="mb-6">
+        {/* Course Overview Header with Request Button */}
+        <div className="mb-6 flex justify-between items-center">
           <h2 className="text-2xl font-semibold text-blue-700">Course Overview</h2>
+          <button
+            onClick={handleRequestCourses}
+            className="px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-all duration-300 shadow-md hover:shadow-lg"
+          >
+            Request Courses
+          </button>
         </div>
 
         {/* Filters Bar */}
@@ -210,7 +219,7 @@ const Dashboard = () => {
           <div className="flex justify-center items-center min-h-screen -mt-32">
             <img
               src="/no-courses-illustration.png"
-              alt=""
+              alt="No courses"
               className="w-80 h-auto object-contain drop-shadow-2xl"
             />
           </div>

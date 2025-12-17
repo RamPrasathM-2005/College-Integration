@@ -637,6 +637,26 @@ const initDatabase = async () => {
             )
         `);
 
+
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS CourseRequest (
+                requestId INT PRIMARY KEY AUTO_INCREMENT,
+                staffId INT NOT NULL,
+                courseId INT NOT NULL,
+                status ENUM('PENDING', 'ACCEPTED', 'REJECTED', 'WITHDRAWN') DEFAULT 'PENDING',  
+                requestedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                approvedAt DATETIME NULL,
+                rejectedAt DATETIME NULL,
+                withdrawnAt DATETIME NULL,
+                createdBy VARCHAR(150),
+                updatedBy VARCHAR(150),
+                updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_request (staffId, courseId),
+                CONSTRAINT fk_request_staff FOREIGN KEY (staffId) REFERENCES users(Userid) ON DELETE CASCADE,
+                CONSTRAINT fk_request_course FOREIGN KEY (courseId) REFERENCES Course(courseId) ON DELETE CASCADE
+            );
+        `);
+
         // Insert default regulations (2023, 2019, 2015) for each department
         const [departments] = await connection.execute('SELECT Deptid FROM department');
         const deptIds = departments.map(row => row.Deptid);

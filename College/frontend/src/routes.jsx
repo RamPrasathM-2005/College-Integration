@@ -29,6 +29,7 @@ import AdminAttendance from './pages/admin/AttendanceAdmin';
 import Report from './pages/admin/Reports';
 import StudentEnrollmentsView from './pages/admin/StudentEnrollmentsView';
 import CgpaAllocation from './pages/admin/CgpaAllocation.jsx'
+import RequestCoursesAdmin from './pages/admin/RequestCoursesAdmin.jsx';
 // import UpdateStudentSem from './pages/admin/ManageStudents/UpdateStudentSem.jsx'; 
 
 // Staff Pages
@@ -37,6 +38,7 @@ import Attendance from './pages/staff/Attendance';
 import MarksAllocation from './pages/staff/MarksAllocation';
 import Options from './pages/staff/Options';
 import InternalMarks from './pages/staff/InternalMarks';
+import RequestCoursesStaff from './pages/staff/RequestCoursesStaff.jsx'
 
 // Student Pages
 import StudentDashboard from './pages/student/StudentDashboard';
@@ -91,6 +93,7 @@ const routes = [
       { path: 'report', element: <Report /> },
       { path: 'student-staff-mapping', element: <StudentEnrollmentsView /> },
       {path : 'cgpa-allocation', element: <CgpaAllocation/>},
+      {path: 'request-courses', element: <RequestCoursesAdmin/>},
       // { path: 'student-sem-update', element: <UpdateStudentSem/ > },
       { path: '*', element: <NotFound /> },
     ],
@@ -110,6 +113,7 @@ const routes = [
       { path: 'marks-allocation/:courseId/:sectionId', element: <MarksAllocation /> },
       { path: 'attendance', element: <Attendance /> },
       { path: 'internal-marks/:courseId', element: <InternalMarks /> },
+      { path: 'request-courses', element: <RequestCoursesStaff/>},
       { path: '*', element: <NotFound /> },
     ],
   },
