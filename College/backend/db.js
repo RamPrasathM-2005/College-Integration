@@ -286,19 +286,20 @@ const initDatabase = async () => {
         // 11) Section - Stores sections for each course
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS Section (
-                sectionId INT PRIMARY KEY AUTO_INCREMENT,
-                courseId INT NOT NULL,
-                sectionName VARCHAR(10) NOT NULL,
-                capacity INT NOT NULL CHECK (capacity > 0),
-                isActive ENUM('YES','NO') DEFAULT 'YES',
-                createdBy VARCHAR(150),
-                updatedBy VARCHAR(150),
-                createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                CONSTRAINT fk_section_course FOREIGN KEY (courseId) REFERENCES Course(courseId)
-                    ON UPDATE CASCADE ON DELETE RESTRICT,
-                UNIQUE (courseId, sectionName)
-            )
+            sectionId INT PRIMARY KEY AUTO_INCREMENT,
+            courseId INT NOT NULL,
+            sectionName VARCHAR(10) NOT NULL,
+            capacity INT NOT NULL DEFAULT 40 CHECK (capacity > 0),
+            isActive ENUM('YES','NO') DEFAULT 'YES',
+            createdBy VARCHAR(150),
+            updatedBy VARCHAR(150),
+            createdDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updatedDate DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            CONSTRAINT fk_section_course FOREIGN KEY (courseId) REFERENCES Course(courseId)
+                ON UPDATE CASCADE ON DELETE RESTRICT,
+            UNIQUE (courseId, sectionName)
+);
+
         `);
 
         // 12) StudentCourse - Enrolls students in courses with sections
@@ -409,7 +410,7 @@ const initDatabase = async () => {
                     ON UPDATE CASCADE ON DELETE CASCADE,
                 CONSTRAINT fk_tt_section FOREIGN KEY (sectionId) REFERENCES Section(sectionId)
                     ON UPDATE CASCADE ON DELETE SET NULL,
-                UNIQUE (semesterId, dayOfWeek, periodNumber)
+                 UNIQUE (semesterId, dayOfWeek, periodNumber) 
             )
         `);
 
@@ -587,6 +588,36 @@ const initDatabase = async () => {
             (5, 'Electrical Engineering', 'EEE'),
             (6, 'Artificial Intelligence and Data Science', 'AIDS'),
             (7, 'Civil Engineering', 'CIVIL')
+        `);
+
+
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS GradePoint (
+                grade   ENUM('O','A+','A','B+','B','U') PRIMARY KEY,
+                point   TINYINT NOT NULL
+            )
+        `);
+
+        await connection.execute(`
+            INSERT IGNORE INTO GradePoint (grade, point) VALUES
+                ('O',10),('A+',9),('A',8),('B+',7),('B',6),('U',0)
+        `);
+
+        // Recreate StudentGrade using courseCode (not courseId)
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS StudentGrade (
+                gradeId        INT PRIMARY KEY AUTO_INCREMENT,
+                regno          VARCHAR(50) NOT NULL,
+                courseCode     VARCHAR(20) NOT NULL,
+                grade          ENUM('O','A+','A','B+','B','U') NOT NULL,
+                createdAt      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updatedAt      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE (regno, courseCode),
+                CONSTRAINT fk_sg_student FOREIGN KEY (regno) REFERENCES student_details(regno)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_sg_course_code FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
+                    ON UPDATE CASCADE ON DELETE CASCADE
+            )
         `);
 
         // Insert default regulations (2023, 2019, 2015) for each department

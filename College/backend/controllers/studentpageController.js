@@ -57,42 +57,41 @@ export const getStudentDetails = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: rows[0] });
 });
 
-export const getSemesters = catchAsync(async (req, res) => {
-  // Get student's batch from their profile
-  const [studentRows] = await pool.execute(
-    `SELECT sd.batch 
-     FROM student_details sd 
-     JOIN users u ON sd.Userid = u.Userid 
-     WHERE u.Userid = ? AND u.status = 'active'`,
-    [req.user.Userid]
-  );
+// export const getSemesters = catchAsync(async (req, res) => {
+//   const { batchYear } = req.query;
 
-  if (studentRows.length === 0) {
-    return res.status(404).json({ status: "failure", message: "Student not found" });
-  }
+//   if (!req.user || !req.user.Userid) {
+//     console.log('Authentication failed: No user or Userid');
+//     return res.status(401).json({ status: "failure", message: "User not authenticated" });
+//   }
 
-  const batch = studentRows[0].batch;
+//   const [studentRows] = await pool.execute(
+//     `SELECT batch FROM student_details WHERE Userid = ?`,
+//     [req.user.Userid]
+//   );
 
-  const [rows] = await pool.execute(
-    `SELECT 
-      s.semesterId,
-      s.semesterNumber,
-      s.startDate,
-      s.endDate,
-      s.isActive
-     FROM Semester s
-     JOIN Batch b ON s.batchId = b.batchId
-     WHERE b.batch = ? AND b.IsActive = 'YES'
-     ORDER BY s.semesterNumber`,
-    [batch]
-  );
+//   if (studentRows.length === 0) {
+//     console.log('No student found for Userid:', req.user.Userid);
+//     return res.status(404).json({ status: "failure", message: "Student not found" });
+//   }
 
-  if (rows.length === 0) {
-    return res.status(404).json({ status: "failure", message: "No semesters found for this batch" });
-  }
+//   const batch = batchYear || studentRows[0].batch;
+//   console.log('Fetching semesters for batch:', batch);
 
-  res.status(200).json({ status: "success", data: rows });
-});
+//   const [semesters] = await pool.execute(
+//     `SELECT s.semesterId, s.semesterNumber, s.startDate, s.endDate, s.isActive
+//      FROM Semester s
+//      JOIN Batch b ON s.batchId = b.batchId
+//      WHERE b.batch = ? AND b.isActive = 'YES'`,
+//     [batch]
+//   );
+
+//   console.log('Semesters fetched:', semesters);
+//   res.status(200).json({
+//     status: "success",
+//     data: semesters || [],
+//   });
+// });
 
 export const getMandatoryCourses = catchAsync(async (req, res) => {
   const { semesterId } = req.query;
@@ -240,58 +239,64 @@ export const allocateElectives = catchAsync(async (req, res) => {
   }
 });
 
-export const getStudentEnrolledCourses = catchAsync(async (req, res) => {
-  const { semesterId } = req.query;
+// export const getStudentEnrolledCourses = catchAsync(async (req, res) => {
+//   const { semesterId } = req.query;
 
-  if (!req.user || !req.user.Userid) {
-    return res.status(401).json({ status: "failure", message: "User not authenticated" });
-  }
+//   if (!req.user || !req.user.Userid) {
+//     console.log('Authentication failed: No user or Userid');
+//     return res.status(401).json({ status: "failure", message: "User not authenticated" });
+//   }
 
-  // Get student's regno
-  const [studentRows] = await pool.execute(
-    `SELECT sd.regno 
-     FROM student_details sd 
-     JOIN users u ON sd.Userid = u.Userid 
-     WHERE u.Userid = ? AND u.status = 'active'`,
-    [req.user.Userid]
-  );
+//   // Get student's regno
+//   const [studentRows] = await pool.execute(
+//     `SELECT sd.regno 
+//      FROM student_details sd 
+//      JOIN users u ON sd.Userid = u.Userid 
+//      WHERE u.Userid = ? AND u.status = 'active'`,
+//     [req.user.Userid]
+//   );
 
-  if (studentRows.length === 0) {
-    return res.status(404).json({ status: "failure", message: "Student not found" });
-  }
-  const regno = studentRows[0].regno;
+//   if (studentRows.length === 0) {
+//     console.log('No student found for Userid:', req.user.Userid);
+//     return res.status(404).json({ status: "failure", message: "Student not found" });
+//   }
+//   const regno = studentRows[0].regno;
+//   console.log('Regno:', regno, 'SemesterId:', semesterId);
 
-  let query = `
-    SELECT 
-      sc.courseId,
-      c.courseCode, 
-      c.courseTitle AS courseName, 
-      sec.sectionName AS section,
-      u.username AS staff,
-      c.credits,
-      c.category
-     FROM StudentCourse sc
-     JOIN Course c ON sc.courseId = c.courseId
-     JOIN Section sec ON sc.sectionId = sec.sectionId
-     LEFT JOIN StaffCourse stc ON sc.courseId = stc.courseId AND sc.sectionId = stc.sectionId
-     LEFT JOIN users u ON stc.Userid = u.Userid
-     WHERE sc.regno = ? AND c.isActive = 'YES' AND sec.isActive = 'YES'
-  `;
-  const params = [regno];
+//   let query = `
+//     SELECT 
+//       sc.courseId,
+//       c.courseCode, 
+//       c.courseTitle AS courseName, 
+//       sec.sectionName AS section,
+//       u.username AS staff,
+//       c.credits,
+//       c.category
+//     FROM StudentCourse sc
+//     JOIN Course c ON sc.courseId = c.courseId
+//     JOIN Section sec ON sc.sectionId = sec.sectionId
+//     LEFT JOIN StaffCourse stc ON sc.courseId = stc.courseId AND sc.sectionId = stc.sectionId
+//     LEFT JOIN users u ON stc.Userid = u.Userid
+//     WHERE sc.regno = ? AND c.isActive = 'YES' AND sec.isActive = 'YES'
+//   `;
+//   const params = [regno];
 
-  if (semesterId) {
-    query += ` AND c.semesterId = ?`;
-    params.push(semesterId);
-  }
+//   if (semesterId) {
+//     query += ` AND c.semesterId = ?`;
+//     params.push(semesterId);
+//   }
 
-  query += ` ORDER BY c.courseCode`;
+//   query += ` ORDER BY c.courseCode`;
+//   console.log('Executing query:', query, 'Params:', params);
 
-  const [rows] = await pool.execute(query, params);
-  res.status(200).json({
-    status: "success",
-    data: rows,
-  });
-});
+//   const [rows] = await pool.execute(query, params);
+//   console.log('Query results:', rows);
+
+//   res.status(200).json({
+//     status: "success",
+//     data: rows || [],
+//   });
+// });
 
 export const getAttendanceSummary = catchAsync(async (req, res) => {
   const { semesterId } = req.query;
@@ -390,4 +395,112 @@ export const getElectiveSelections = catchAsync(async (req, res) => {
     console.error("Error fetching elective selections:", err);
     res.status(400).json({ status: "failure", message: err.message || "Failed to fetch elective selections" });
   }
+});
+
+export const getStudentEnrolledCourses = catchAsync(async (req, res) => {
+  const { semesterId } = req.query;
+
+  if (!req.user || !req.user.Userid) {
+    console.log('Authentication failed: No user or Userid');
+    return res.status(401).json({ status: "failure", message: "User not authenticated" });
+  }
+
+  const [studentRows] = await pool.execute(
+    `SELECT sd.regno 
+     FROM student_details sd 
+     JOIN users u ON sd.Userid = u.Userid 
+     WHERE u.Userid = ? AND u.status = 'active'`,
+    [req.user.Userid]
+  );
+
+  if (studentRows.length === 0) {
+    console.log('No student found for Userid:', req.user.Userid);
+    return res.status(404).json({ status: "failure", message: "Student not found" });
+  }
+  const regno = studentRows[0].regno;
+  console.log('Regno:', regno, 'SemesterId:', semesterId);
+
+  let query = `
+    SELECT 
+      sc.courseId,
+      c.courseCode, 
+      c.courseTitle AS courseName, 
+      sec.sectionName AS section,
+      u.username AS staff,
+      c.credits,
+      c.category
+    FROM StudentCourse sc
+    JOIN Course c ON sc.courseId = c.courseId
+    JOIN Section sec ON sc.sectionId = sec.sectionId
+    LEFT JOIN StaffCourse stc ON sc.courseId = stc.courseId AND sc.sectionId = stc.sectionId
+    LEFT JOIN users u ON stc.Userid = u.Userid
+    WHERE sc.regno = ? AND c.isActive = 'YES' AND sec.isActive = 'YES'
+  `;
+  const params = [regno];
+
+  if (semesterId) {
+    query += ` AND c.semesterId = ?`;
+    params.push(semesterId);
+  }
+
+  query += ` ORDER BY c.courseCode`;
+  console.log('Executing query:', query, 'Params:', params);
+
+  const [rows] = await pool.execute(query, params);
+  console.log('Query results:', rows);
+
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  });
+
+  res.status(200).json({
+    status: "success",
+    data: rows || [],
+  });
+});
+
+// getSemesters
+export const getSemesters = catchAsync(async (req, res) => {
+  const { batchYear } = req.query;
+
+  if (!req.user || !req.user.Userid) {
+    console.log('Authentication failed: No user or Userid');
+    return res.status(401).json({ status: "failure", message: "User not authenticated" });
+  }
+
+  const [studentRows] = await pool.execute(
+    `SELECT batch FROM student_details WHERE Userid = ?`,
+    [req.user.Userid]
+  );
+
+  if (studentRows.length === 0) {
+    console.log('No student found for Userid:', req.user.Userid);
+    return res.status(404).json({ status: "failure", message: "Student not found" });
+  }
+
+  const batch = batchYear || studentRows[0].batch;
+  console.log('Fetching semesters for batch:', batch);
+
+  const [semesters] = await pool.execute(
+    `SELECT s.semesterId, s.semesterNumber, s.startDate, s.endDate, s.isActive
+     FROM Semester s
+     JOIN Batch b ON s.batchId = b.batchId
+     WHERE b.batch = ? AND b.isActive = 'YES'`,
+    [batch]
+  );
+
+  console.log('Semesters fetched:', semesters);
+
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  });
+
+  res.status(200).json({
+    status: "success",
+    data: semesters || [],
+  });
 });
