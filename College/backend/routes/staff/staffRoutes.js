@@ -20,6 +20,21 @@ import {
   updateStudentCOMarkByCoId,
   getStudentCOMarks
 } from '../../controllers/markController.js';
+
+import {
+  getAvailableCoursesForStaff,
+  sendCourseRequest,
+  cancelCourseRequest,
+  leaveCourse,
+  getMyRequests,
+  getPendingRequestsForAdmin,
+  acceptCourseRequest,
+  rejectCourseRequest,
+  getAllCoursesForStaff,
+  getRecentRequestHistory,
+  resendRejectedRequest,
+} from '../../controllers/requestCourseController.js';
+
 import { protect } from '../../controllers/auth/authController.js';
 import upload from '../../Uploads/upload.js';
 
@@ -45,4 +60,16 @@ router.get('/students/:courseCode', protect, getStudentsForCourse);
 router.get('/students/:courseCode/section/:sectionId', protect, getStudentsForSection);
 router.get('/marks/co/:courseCode', protect, getStudentCOMarks);
 
+
+router.get('/available-courses', protect, getAvailableCoursesForStaff);
+router.get('/all-courses', protect, getAllCoursesForStaff); // New: All courses including status
+router.get('/my-requests', protect, getMyRequests);
+router.get('/recent-history', protect, getRecentRequestHistory); // New: Top 5 recent history
+router.post('/request/:courseId', protect, sendCourseRequest);
+router.delete('/request/:requestId', protect, cancelCourseRequest);
+router.post('/resend/:requestId', protect, resendRejectedRequest); // New: Resend rejected
+router.delete('/leave/:staffCourseId', protect, leaveCourse);
+router.get('/pending-requests', protect, getPendingRequestsForAdmin);
+router.post('/accept/:requestId', protect, acceptCourseRequest);
+router.post('/reject/:requestId', protect, rejectCourseRequest);
 export default router;

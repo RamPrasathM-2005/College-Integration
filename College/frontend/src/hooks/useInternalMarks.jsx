@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { getCOsForCourse, getStudentCOMarks, exportCourseWiseCsv } from '../services/staffService';
-import { calculateInternalMarks as calcInternalMarks } from '../utils/calculations';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 
@@ -14,77 +13,121 @@ const useInternalMarks = (courseCode) => {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!courseCode || courseCode.startsWith('course-') || !courseCode.match(/^[A-Za-z0-9]+$/)) {
+      // Allow alphanumeric and underscores
+      if (!courseCode || !courseCode.match(/^[A-Za-z0-9_]+$/)) {
         console.error('Invalid courseCode:', courseCode);
         setError('Invalid course code provided');
         setLoading(false);
         return;
       }
+
       try {
         setError('');
         setLoading(true);
-        console.log('useInternalMarks - Fetching data for courseCode:', courseCode);
 
-        // 1. Fetch course outcomes
+        // 1. Fetch COs (Primary Course)
         const cos = await getCOsForCourse(courseCode);
-        console.log('getCOsForCourse response in useInternalMarks:', cos);
         if (!Array.isArray(cos)) {
-          console.error('Error: getCOsForCourse did not return an array:', cos);
-          setError(
-            cos?.debug
-              ? `Course '${courseCode}' ${cos.debug.courseOnly.length > 0 ? 'exists' : 'not found'}. User assignment: ${cos.debug.staffCourseCheck.length > 0 ? 'found' : 'not found'}.`
-              : 'No course outcomes found for this course'
-          );
+          setError('No course outcomes found for this course');
           setCourseOutcomes([]);
           setLoading(false);
           return;
         }
-
         setCourseOutcomes(cos);
 
-        // Fetch consolidated marks which include students and their CO marks
-        const comarksResponse = await getStudentCOMarks(courseCode);
-        console.log('getStudentCOMarks response:', comarksResponse);
+        // 2. Fetch Consolidated Marks (Merged)
+        const marksData = await getStudentCOMarks(courseCode);
 
-        if (!comarksResponse || !Array.isArray(comarksResponse.data.students) || comarksResponse.data.students.length === 0) {
-          console.warn('No consolidated marks or students found for course:', courseCode);
-          setError('No students or marks found for this course');
+        if (!marksData || !Array.isArray(marksData.students)) {
+          console.warn('No students found for course:', courseCode);
           setStudents([]);
           setLoading(false);
           return;
         }
 
-        // Map the data to the expected format: students with marks { coId: consolidatedMark }
-        const processedStudents = comarksResponse.data.students.map(student => {
+        // 3. Process Students & Normalize IDs
+        const processedStudents = marksData.students.map(student => {
           const marksByCoId = {};
-          Object.entries(student.marks).forEach(([coNumber, markData]) => {
-            marksByCoId[markData.coId] = Number(markData.consolidatedMark);
-          });
+          
+          if (student.marks) {
+            // student.marks is keyed by CO Number (e.g., "CO1")
+            Object.entries(student.marks).forEach(([coNum, markData]) => {
+              // We must find the Primary CO that matches this CO Number
+              // This aligns marks from "Course B" to "Course A" IDs
+              const primaryCO = cos.find(c => c.coNumber === coNum);
+              
+              if (primaryCO) {
+                marksByCoId[primaryCO.coId] = Number(markData.consolidatedMark || 0);
+              }
+            });
+          }
+
           return {
             ...student,
-            marks: marksByCoId,  // Now marks is { coId: number }
+            marks: marksByCoId // Now all marks use Primary CO IDs
           };
         });
 
-        console.log('Processed students with CO marks:', processedStudents.length, 'students');
+        processedStudents.sort((a, b) => a.regno.localeCompare(b.regno));
+
         setStudents(processedStudents);
         setLoading(false);
+
       } catch (err) {
         console.error('Error fetching data in useInternalMarks:', err);
-        setError(
-          err.response?.data?.message +
-            (err.response?.data?.debug
-              ? `. Debug: Course '${courseCode}' ${err.response.data.debug.courseOnly.length > 0 ? 'exists' : 'not found'}. User assignment: ${err.response.data.debug.staffCourseCheck.length > 0 ? 'found' : 'not found'}.`
-              : '') || 'Failed to fetch course data'
-        );
+        setError(err.message || 'Failed to fetch course data');
         setLoading(false);
       }
     };
+
     fetchData();
   }, [courseCode]);
 
-  const calculateInternalMarks = (rollnumber) => {
-    return calcInternalMarks(rollnumber, courseOutcomes, students);
+  const calculateInternalMarks = (regno) => {
+    const student = students.find((s) => s.regno === regno);
+    
+    const defaultResult = { avgTheory: '0.00', avgPractical: '0.00', avgExperiential: '0.00', finalAvg: '0.00' };
+    
+    if (!student || !student.marks || !courseOutcomes.length) {
+      return defaultResult;
+    }
+
+    let theorySum = 0, theoryCount = 0;
+    let pracSum = 0, pracCount = 0;
+    let expSum = 0, expCount = 0;
+
+    courseOutcomes.forEach((co) => {
+      // Now we can safely use co.coId because we normalized it above
+      const mark = parseFloat(student.marks[co.coId]);
+
+      if (!isNaN(mark)) {
+        if (co.coType === 'THEORY') {
+          theorySum += mark;
+          theoryCount++;
+        } else if (co.coType === 'PRACTICAL') {
+          pracSum += mark;
+          pracCount++;
+        } else if (co.coType === 'EXPERIENTIAL') {
+          expSum += mark;
+          expCount++;
+        }
+      }
+    });
+
+    const avgTheory = theoryCount ? (theorySum / theoryCount).toFixed(2) : '0.00';
+    const avgPractical = pracCount ? (pracSum / pracCount).toFixed(2) : '0.00';
+    const avgExperiential = expCount ? (expSum / expCount).toFixed(2) : '0.00';
+
+    const activeAverages = [];
+    if (theoryCount > 0) activeAverages.push(parseFloat(avgTheory));
+    if (pracCount > 0) activeAverages.push(parseFloat(avgPractical));
+    if (expCount > 0) activeAverages.push(parseFloat(avgExperiential));
+
+    const finalAvg = activeAverages.length > 0 
+      ? (activeAverages.reduce((a, b) => a + b, 0) / activeAverages.length).toFixed(2) 
+      : '0.00';
+
+    return { avgTheory, avgPractical, avgExperiential, finalAvg };
   };
 
   const handleExportCourseWiseCsv = async (courseCode) => {

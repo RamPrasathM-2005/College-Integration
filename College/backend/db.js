@@ -619,6 +619,43 @@ const initDatabase = async () => {
                     ON UPDATE CASCADE ON DELETE CASCADE
             )
         `);
+        // 26) StudentSemesterGPA - Stores calculated GPA and CGPA per student per semester for analytics
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS StudentSemesterGPA (
+                studentGPAId INT PRIMARY KEY AUTO_INCREMENT,
+                regno VARCHAR(50) NOT NULL,
+                semesterId INT NOT NULL,
+                gpa DECIMAL(4,2) NULL,
+                cgpa DECIMAL(4,2) NULL,
+                createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE (regno, semesterId),
+                CONSTRAINT fk_ssg_student FOREIGN KEY (regno) REFERENCES student_details(regno)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_ssg_semester FOREIGN KEY (semesterId) REFERENCES Semester(semesterId)
+                    ON UPDATE CASCADE ON DELETE CASCADE
+            )
+        `);
+
+
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS CourseRequest (
+                requestId INT PRIMARY KEY AUTO_INCREMENT,
+                staffId INT NOT NULL,
+                courseId INT NOT NULL,
+                status ENUM('PENDING', 'ACCEPTED', 'REJECTED', 'WITHDRAWN') DEFAULT 'PENDING',  
+                requestedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                approvedAt DATETIME NULL,
+                rejectedAt DATETIME NULL,
+                withdrawnAt DATETIME NULL,
+                createdBy VARCHAR(150),
+                updatedBy VARCHAR(150),
+                updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_request (staffId, courseId),
+                CONSTRAINT fk_request_staff FOREIGN KEY (staffId) REFERENCES users(Userid) ON DELETE CASCADE,
+                CONSTRAINT fk_request_course FOREIGN KEY (courseId) REFERENCES Course(courseId) ON DELETE CASCADE
+            );
+        `);
 
         // Insert default regulations (2023, 2019, 2015) for each department
         const [departments] = await connection.execute('SELECT Deptid FROM department');

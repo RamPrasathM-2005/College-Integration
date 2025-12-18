@@ -1,5 +1,68 @@
-import React from 'react';
-import { X, BookOpen, Users, Edit2, Trash2, UserPlus } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { X, BookOpen, Users, Edit2, Trash2, UserPlus, Mail, Building, Hash, GraduationCap, Calendar, Layers } from 'lucide-react';
+
+// --- Reusable Modern Modal Wrapper ---
+const ModalWrapper = ({ title, children, onClose, onSave, saveText = "Save", saveIcon: SaveIcon, width = "max-w-xl" }) => {
+  useEffect(() => {
+    // 1. Lock body scroll
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
+
+  return createPortal(
+    <>
+      {/* 
+         FIX: This style tag forces React-Toastify to appear ABOVE the modal.
+         The Modal is z-9999, so we set Toastify to z-100000 
+      */}
+      <style>{`
+        .Toastify__toast-container {
+          z-index: 100000 !important;
+        }
+      `}</style>
+
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all duration-300">
+        <div className={`bg-white rounded-2xl shadow-2xl w-full ${width} relative flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200`}>
+          
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-white rounded-t-2xl z-10">
+            <h3 className="text-xl font-bold text-slate-900">{title}</h3>
+            <button 
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
+            {children}
+          </div>
+
+          {/* Footer */}
+          <div className="px-6 py-4 bg-white border-t border-slate-100 flex items-center justify-end gap-3 rounded-b-2xl">
+            <button
+              onClick={onClose}
+              className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 focus:ring-4 focus:ring-slate-100 transition-all shadow-sm"
+            >
+              Close
+            </button>
+            <button
+              onClick={onSave}
+              className="px-5 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl focus:ring-4 focus:ring-indigo-100 transition-all shadow-md flex items-center gap-2 hover:shadow-lg"
+            >
+              {SaveIcon && <SaveIcon className="w-4 h-4" />}
+              {saveText}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>,
+    document.body
+  );
+};
 
 const StaffDetailsModal = ({
   selectedStaff,
@@ -12,118 +75,158 @@ const StaffDetailsModal = ({
   handleRemoveCourse,
   setShowAllocateCourseModal,
 }) => {
+
+  const handleClose = () => {
+    setShowStaffDetailsModal(false);
+  };
+
+  const handleAllocateClick = () => {
+    setShowStaffDetailsModal(false);
+    setShowAllocateCourseModal(true);
+    setOperationFromModal(true);
+  };
+
   return (
-    <div className="fixed inset-0 backdrop-blur-md bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50 transition-all duration-300">
-      <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-        <div className="p-8">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">{selectedStaff.name}</h2>
-            <button
-              onClick={() => setShowStaffDetailsModal(false)}
-              className="text-gray-400 hover:text-gray-600 transition-colors duration-200"
-            >
-              <X size={24} />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div>
-              <p className="text-sm font-semibold text-gray-700">Staff ID</p>
-              <p className="text-sm text-gray-600">{selectedStaff.staffId}</p>
+    <ModalWrapper
+      title="Staff Profile & Allocations"
+      onClose={handleClose}
+      onSave={handleAllocateClick}
+      saveText="Allocate New Course"
+      saveIcon={UserPlus}
+      width="max-w-2xl"
+    >
+      <div className="space-y-6">
+        
+        {/* Staff Profile Card */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-4 mb-4 border-b border-slate-100 pb-4">
+            <div className="w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
+              {selectedStaff.name.charAt(0)}
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-700">Email</p>
-              <p className="text-sm text-gray-600">{selectedStaff.email || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-gray-700">Department</p>
-              <p className="text-sm text-gray-600">{selectedStaff.departmentName}</p>
+              <h2 className="text-xl font-bold text-slate-900">{selectedStaff.name}</h2>
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <span className="flex items-center gap-1"><Hash className="w-3 h-3" /> {selectedStaff.staffId}</span>
+              </div>
             </div>
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Allocated Courses ({selectedStaff.allocatedCourses.length})
-          </h3>
-          <div className="space-y-4 max-h-64 overflow-y-auto">
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="p-2 bg-white rounded-lg text-slate-400 shadow-sm">
+                <Mail className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase">Email</p>
+                <p className="text-sm font-medium text-slate-800 break-all">{selectedStaff.email || 'N/A'}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="p-2 bg-white rounded-lg text-slate-400 shadow-sm">
+                <Building className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase">Department</p>
+                <p className="text-sm font-medium text-slate-800">{selectedStaff.departmentName}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Allocated Courses Section */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+               Allocated Courses 
+               <span className="text-sm font-medium bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">
+                 {selectedStaff.allocatedCourses.length}
+               </span>
+             </h3>
+          </div>
+
+          <div className="space-y-3">
             {selectedStaff.allocatedCourses.length > 0 ? (
               selectedStaff.allocatedCourses.map(course => (
                 <div
                   key={course.id}
-                  className="bg-white border border-gray-100 rounded-xl p-4 hover:shadow-md transition-all duration-200"
+                  className="group bg-white border border-slate-200 rounded-xl p-4 hover:border-indigo-300 hover:shadow-md transition-all duration-200"
                 >
-                  <div className="flex justify-between items-start gap-4">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-gray-900 text-sm">{course.courseCode} - {course.name}</h4>
-                      <div className="flex flex-wrap gap-2 mt-2 text-xs text-gray-600">
-                        <span className="inline-flex items-center px-2 py-1 rounded-md bg-indigo-50 text-indigo-700">
-                          Section: {course.batch}
-                        </span>
-                        <span className="inline-flex items-center px-2 py-1 rounded-md bg-green-50 text-green-700">
-                          Semester: {course.semester}
-                        </span>
-                        <span className="inline-flex items-center px-2 py-1 rounded-md bg-purple-50 text-purple-700">
-                          Batch: {course.year}
-                        </span>
+                  {/* Course Header */}
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                        <BookOpen className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm">{course.courseCode}</h4>
+                        <p className="text-sm text-slate-600 font-medium">{course.name}</p>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => handleViewStudents(course.courseCode, course.sectionId)}
-                        className="inline-flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 border border-indigo-100"
-                        title="View Students"
-                      >
-                        <Users size={12} />
-                        View Students
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedStaffCourse(course);
-                          setSelectedSectionId(course.sectionId);
-                          setShowEditBatchModal(true);
-                          setOperationFromModal(true);
-                        }}
-                        className="inline-flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 border border-amber-100"
-                        title="Edit Section"
-                      >
-                        <Edit2 size={12} />
-                        Edit Section
-                      </button>
-                      <button
-                        onClick={() => handleRemoveCourse(selectedStaff, course.id)}
-                        className="inline-flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 border border-red-100"
-                        title="Remove Course"
-                      >
-                        <Trash2 size={12} />
-                        Remove
-                      </button>
+                  </div>
+
+                  {/* Badges */}
+                  <div className="flex flex-wrap gap-2 mb-4 pl-[52px]">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 text-xs font-semibold border border-indigo-100">
+                       <Layers className="w-3 h-3" /> Section {course.batch}
                     </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-50 text-green-700 text-xs font-semibold border border-green-100">
+                       <GraduationCap className="w-3 h-3" /> Sem {course.semester}
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 text-xs font-semibold border border-purple-100">
+                       <Calendar className="w-3 h-3" /> Batch {course.year}
+                    </div>
+                  </div>
+
+                  {/* Actions Toolbar */}
+                  <div className="flex items-center gap-2 pt-3 border-t border-slate-100 pl-[52px]">
+                    <button
+                      onClick={() => handleViewStudents(course.courseCode, course.sectionId)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                    >
+                      <Users size={14} /> View Students
+                    </button>
+                    
+                    <div className="w-px h-4 bg-slate-200"></div>
+
+                    <button
+                      onClick={() => {
+                        setSelectedStaffCourse(course);
+                        setSelectedSectionId(course.sectionId);
+                        setShowEditBatchModal(true);
+                        setOperationFromModal(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                    >
+                      <Edit2 size={14} /> Edit Section
+                    </button>
+
+                    <div className="w-px h-4 bg-slate-200"></div>
+
+                    <button
+                      onClick={() => handleRemoveCourse(selectedStaff, course.id)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-red-600 hover:bg-red-50 transition-colors ml-auto"
+                    >
+                      <Trash2 size={14} /> Remove
+                    </button>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl py-8">
-                <div className="text-center">
-                  <BookOpen size={32} className="text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-600 font-semibold">No courses allocated</p>
-                  <p className="text-sm text-gray-500 mt-1">Assign courses to this staff member</p>
+              <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl py-10 flex flex-col items-center justify-center text-center">
+                <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-3">
+                  <BookOpen className="w-6 h-6 text-slate-300" />
                 </div>
+                <p className="text-slate-900 font-semibold">No courses allocated</p>
+                <p className="text-sm text-slate-500 mt-1 max-w-xs">
+                  This staff member hasn't been assigned to any courses yet.
+                </p>
               </div>
             )}
           </div>
-          <div className="mt-6">
-            <button
-              onClick={() => {
-                setShowStaffDetailsModal(false);
-                setShowAllocateCourseModal(true);
-                setOperationFromModal(true);
-              }}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-1 w-full justify-center"
-            >
-              <UserPlus size={16} />
-              Allocate Course
-            </button>
-          </div>
         </div>
+        
       </div>
-    </div>
+    </ModalWrapper>
   );
 };
 

@@ -1,18 +1,28 @@
 import React from 'react';
-import { ChevronLeft, Users, FileText, BarChart3, Calculator } from 'lucide-react';
+import { ChevronLeft, BarChart3, Calculator } from 'lucide-react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 const Options = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { courseId } = useParams();
+  const { courseId } = useParams(); // This might be "CSE233_IT32" now
 
-  // Fallback course if state not passed
-  const course = location.state?.course ?? {
-    id: courseId,
-    title: 'Course Details',
-    semester: '2025 - 2026 ODD SEMESTER',
-  };
+  // Retrieve course object from state
+  const course = location.state?.course;
+
+  // Safety check: if state is lost (e.g. refresh), we might need to fetch or redirect
+  // For now, we assume simple fallback based on URL param
+  const displayTitle = course ? course.title : 'Course Details';
+  const displayCode = course ? (course.displayCode || course.id) : courseId;
+  const displaySemester = course ? course.semester : '';
+
+  // GENERATE URL PARAMETERS
+  // If merged, course.id is "CSE233_IT32" and sectionId is "5_8"
+  // If single, course.id is "CSE233" and sectionId is "5"
+  const targetCourseId = course?.id || courseId;
+  
+  // Handle section ID: use compositeSectionId if available (from our new backend), else fallback
+  const targetSectionId = course?.compositeSectionId || course?.sectionId || 'unknown';
 
   const options = [
     {
@@ -21,7 +31,8 @@ const Options = () => {
       description: 'Manage course outcomes, tools, and student marks',
       icon: BarChart3,
       color: 'bg-blue-500 hover:bg-blue-600',
-      path: `/staff/marks-allocation/${course.id}/${course.sectionId}`, // Updated to include sectionId
+      // Pass the composite IDs in the URL
+      path: `/staff/marks-allocation/${targetCourseId}/${targetSectionId}`, 
     },
     {
       id: 'internal',
@@ -29,7 +40,7 @@ const Options = () => {
       description: 'View consolidated internal marks and averages',
       icon: Calculator,
       color: 'bg-indigo-500 hover:bg-indigo-600',
-      path: `/staff/internal-marks/${course.id}`,
+      path: `/staff/internal-marks/${targetCourseId}`,
     },
     // {
     //   id: 'attendance',
@@ -37,13 +48,17 @@ const Options = () => {
     //   description: 'Track and manage student attendance',
     //   icon: Users,
     //   color: 'bg-purple-500 hover:bg-purple-600',
-    //   path: `/staff/attendance/${course.id}`,
+    //   path: `/staff/attendance/${targetCourseId}`,
     // },
   ];
 
   const handleBack = () => navigate('/staff/dashboard');
 
-  const handleOptionClick = (path) => navigate(path, { state: { course } });
+  const handleOptionClick = (path) => {
+    // We pass the entire merged course object to the next page
+    // So the next page knows if it needs to split the IDs to fetch data
+    navigate(path, { state: { course } }); 
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -54,15 +69,27 @@ const Options = () => {
             <div className="flex items-center">
               <button
                 onClick={handleBack}
-                className="mr-4 p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                className="mr-4 p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">
-                  {course.title}
+                <h1 className="text-xl font-bold text-gray-900">
+                  <span className="text-blue-600 mr-2">{displayCode}:</span>
+                  {displayTitle}
                 </h1>
-                <p className="text-sm text-gray-500">{course.semester}</p>
+                <p className="text-sm text-gray-500 font-medium">{displaySemester}</p>
+                
+                {/* Optional: Show badges for merged departments */}
+                {course?.departments && course.departments.length > 1 && (
+                  <div className="flex gap-2 mt-2">
+                    {course.departments.map(dept => (
+                      <span key={dept} className="px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                        {dept} Dept
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -78,15 +105,15 @@ const Options = () => {
               <button
                 key={option.id}
                 onClick={() => handleOptionClick(option.path)}
-                className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 p-6 text-left border border-gray-200 hover:border-gray-300"
+                className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 p-6 text-left border border-gray-200 hover:border-blue-300 group"
               >
                 <div className="flex items-center mb-4">
-                  <div className={`p-3 rounded-lg ${option.color} text-white mr-4`}>
+                  <div className={`p-3 rounded-lg ${option.color} text-white mr-4 shadow-sm group-hover:scale-110 transition-transform`}>
                     <Icon className="h-6 w-6" />
                   </div>
-                  <h3 className="text-lg font-medium text-gray-900">{option.title}</h3>
+                  <h3 className="text-lg font-bold text-gray-900">{option.title}</h3>
                 </div>
-                <p className="text-gray-600 text-sm">{option.description}</p>
+                <p className="text-gray-600 text-sm leading-relaxed">{option.description}</p>
               </button>
             );
           })}
