@@ -70,6 +70,8 @@ import {
   updateTimetableEntry,
   deleteTimetableEntry,
   getTimetableByFilters,
+  getElectiveBucketsBySemester,
+  getCoursesInBucket,
 } from "../../controllers/timetableController.js";
 import { exportCourseWiseCsvAdmin, getConsolidatedMarks } from "../../controllers/markController.js";
 import { getDepartments } from "../../controllers/departmentController.js";
@@ -96,6 +98,11 @@ import { protect } from "../../controllers/auth/authController.js";
 import { getStudentEnrollments } from "../../controllers/studentEnrollmentViewController.js";
 import { getElectiveSelections } from "../../controllers/studentpageController.js";
 import { getCOsForCourseAdmin, getStudentCOMarksAdmin, updateStudentCOMarkAdmin } from "../../controllers/markController.js";
+import multer from 'multer';
+import { uploadGrades, viewGPA, viewCGPA } from '../../controllers/gradeController.js';
+import { getStudentsForGrade } from '../../controllers/gradeController.js';
+
+const upload = multer({ dest: 'tmp/' });
 
 const router = express.Router();
 
@@ -195,7 +202,8 @@ router.get("/timetable/semester/:semesterId", protect, getTimetable);
 router.post("/timetable/entry", protect, createTimetableEntry);
 router.put("/timetable/entry/:timetableId", protect, updateTimetableEntry);
 router.delete("/timetable/entry/:timetableId", protect, deleteTimetableEntry);
-
+router.get("/elective-buckets/:semesterId", getElectiveBucketsBySemester);
+router.get("/bucket-courses/:bucketId", getCoursesInBucket);
 /* =========================
    📌 Elective Bucket Routes
    ========================= */
@@ -236,5 +244,13 @@ router.get('/export/course/:courseCode', protect, exportCourseWiseCsvAdmin);
 
 
 router.get("/elective-selections", getElectiveSelections);
+
+
+
+
+router.post('/grades/import', protect, upload.single('file'), uploadGrades);
+router.get('/grades/gpa', protect, viewGPA);     
+router.get('/grades/cgpa', protect, viewCGPA);       
+router.get('/grades/students-grade', protect, getStudentsForGrade);
 
 export default router;

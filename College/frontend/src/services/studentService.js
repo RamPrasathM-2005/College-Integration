@@ -1,4 +1,5 @@
-import { api } from "./authService.js";
+// src/services/studentService.js
+import { api } from './authService';
 
 export const fetchStudentDetails = async () => {
   try {
@@ -19,10 +20,14 @@ export const fetchStudentDetails = async () => {
   }
 };
 
-export const fetchSemesters = async () => {
+export const fetchSemesters = async (batchYear) => {
   try {
-    const response = await api.get("/student/semesters");
-    if (response.data.status === "success") {
+    console.log('Fetching semesters for batchYear:', batchYear);
+    const response = await api.get('/student/semesters', {
+      params: { batchYear }
+    });
+    console.log('Semesters response:', response.data);
+    if (response.data.status === 'success') {
       return response.data.data;
     } else {
       throw new Error(response.data.message || "Failed to fetch semesters");
@@ -37,10 +42,10 @@ export const fetchSemesters = async () => {
 
 export const fetchMandatoryCourses = async (semesterId) => {
   try {
-    const response = await api.get("/student/courses/mandatory", {
-      params: { semesterId },
+    const response = await api.get('/student/courses/mandatory', {
+      params: { semesterId }
     });
-    if (response.data.status === "success") {
+    if (response.data.status === 'success') {
       return response.data.data;
     } else {
       throw new Error(
@@ -57,10 +62,10 @@ export const fetchMandatoryCourses = async (semesterId) => {
 
 export const fetchElectiveBuckets = async (semesterId) => {
   try {
-    const response = await api.get("/student/elective-buckets", {
-      params: { semesterId },
+    const response = await api.get('/student/elective-buckets', {
+      params: { semesterId }
     });
-    if (response.data.status === "success") {
+    if (response.data.status === 'success') {
       return response.data.data;
     } else {
       throw new Error(
@@ -81,8 +86,7 @@ export const allocateElectives = async (semesterId, selections) => {
       semesterId,
       selections,
     });
-
-    if (response.data.status === "success") {
+    if (response.data.status === 'success') {
       return response.data;
     } else {
       throw new Error(response.data.message || "Failed to allocate electives");
@@ -97,10 +101,12 @@ export const allocateElectives = async (semesterId, selections) => {
 
 export const fetchEnrolledCourses = async (semesterId) => {
   try {
-    const response = await api.get("/student/enrolled-courses", {
-      params: { semesterId },
+    console.log('Fetching enrolled courses for semesterId:', semesterId);
+    const response = await api.get('/student/enrolled-courses', {
+      params: { semesterId }
     });
-    if (response.data.status === "success") {
+    console.log('Enrolled courses response:', response.data);
+    if (response.data.status === 'success') {
       return response.data.data;
     } else {
       throw new Error(
@@ -117,10 +123,11 @@ export const fetchEnrolledCourses = async (semesterId) => {
 
 export const fetchAttendanceSummary = async (semesterId) => {
   try {
-    const response = await api.get("/student/attendance-summary", {
-      params: { semesterId },
+    console.log('Fetching attendance summary for semesterId:', semesterId);
+    const response = await api.get('/student/attendance-summary', {
+      params: { semesterId }
     });
-    if (response.data.status === "success") {
+    if (response.data.status === 'success') {
       return response.data.data;
     } else {
       throw new Error(

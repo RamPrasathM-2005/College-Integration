@@ -14,21 +14,22 @@ import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
 
 // Admin Pages
-import AdminDashboard from "./pages/admin/Dashboard";
-import ManageSemesters from "./pages/admin/ManageSemesters/ManageSemsters";
-import ManageCourses from "./pages/admin/ManageCourses/ManageCourses";
-import ManageStaff from "./pages/admin/ManageStaffs/ManageStaff";
-import ManageStudents from "./pages/admin/ManageStudents/ManageStudents";
-import Timetable from "./pages/admin/Timetable";
-import ManageRegulations from "./pages/admin/ManageRegulations";
-import OverallConsolidatedMarks from "./pages/admin/OverallConsolidatedMarks";
-import SubjectWiseMarks from "./pages/admin/SubjectWiseMarks";
-import CourseRecommendation from "./pages/admin/CourseRecommendation";
-import BatchRegulationAllocation from "./pages/admin/BatchRegulationAllocation";
-import AdminAttendance from "./pages/admin/AttendanceAdmin";
-import Report from "./pages/admin/Reports";
-import StudentEnrollmentsView from "./pages/admin/StudentEnrollmentsView";
-// import UpdateStudentSem from './pages/admin/ManageStudents/UpdateStudentSem.jsx';
+import AdminDashboard from './pages/admin/Dashboard';
+import ManageSemesters from './pages/admin/ManageSemesters/ManageSemsters';
+import ManageCourses from './pages/admin/ManageCourses/ManageCourses';
+import ManageStaff from './pages/admin/ManageStaffs/ManageStaff';
+import ManageStudents from './pages/admin/ManageStudents/ManageStudents';
+import Timetable from './pages/admin/Timetable';
+import ManageRegulations from './pages/admin/ManageRegulations';
+import OverallConsolidatedMarks from './pages/admin/OverallConsolidatedMarks';
+import SubjectWiseMarks from './pages/admin/SubjectWiseMarks';
+import CourseRecommendation from './pages/admin/CourseRecommendation';
+import BatchRegulationAllocation from './pages/admin/BatchRegulationAllocation';
+import AdminAttendance from './pages/admin/AttendanceAdmin';
+import Report from './pages/admin/Reports';
+import StudentEnrollmentsView from './pages/admin/StudentEnrollmentsView';
+import CgpaAllocation from './pages/admin/CgpaAllocation.jsx'
+// import UpdateStudentSem from './pages/admin/ManageStudents/UpdateStudentSem.jsx'; 
 
 // Staff Pages
 import StaffDashboard from "./pages/staff/Dashboard";
@@ -43,8 +44,9 @@ import ChooseCourse from "./pages/student/ChooseCourse";
 
 // NotFound
 import NotFound from "./pages/NotFound";
-import StudentStaffMapping from "./pages/admin/StudentEnrollmentsView";
-//import StudentEnrollmentsView from "./pages/admin/StudentEnrollmentsView";
+// import StudentStaffMapping from "./pages/admin/StudentEnrollmentsView";
+//  import StudentEnrollmentsView from "./pages/admin/StudentEnrollmentsView";
+
 import AttendanceReport from "./pages/admin/AttendanceReports";
 
 // ProtectedRoute
@@ -75,21 +77,22 @@ const routes = [
     ),
     children: [
       { index: true, element: <AdminDashboard /> },
-      { path: "dashboard", element: <AdminDashboard /> },
-      { path: "manage-semesters", element: <ManageSemesters /> },
-      { path: "manage-regulations", element: <ManageRegulations /> },
-      { path: "manage-batches", element: <BatchRegulationAllocation /> },
-      { path: "manage-courses", element: <ManageCourses /> },
-      { path: "manage-staff", element: <ManageStaff /> },
-      { path: "manage-students", element: <ManageStudents /> },
-      { path: "timetable", element: <Timetable /> },
-      { path: "consolidated-marks", element: <OverallConsolidatedMarks /> },
-      { path: "subjectWise-marks", element: <SubjectWiseMarks /> },
-      { path: "course-recommendation", element: <CourseRecommendation /> },
-      { path: "adminattendance", element: <AdminAttendance /> },
-      { path: "report", element: <Report /> },
-      { path: "student-staff-mapping", element: <StudentEnrollmentsView /> },
-      { path: "attendance-report", element: <AttendanceReport /> },
+      { path: 'dashboard', element: <AdminDashboard /> },
+      { path: 'manage-semesters', element: <ManageSemesters /> },
+      { path: 'manage-regulations', element: <ManageRegulations /> },
+      { path: 'manage-batches', element: <BatchRegulationAllocation /> },
+      { path: 'manage-courses', element: <ManageCourses /> },
+      { path: 'manage-staff', element: <ManageStaff /> },
+      { path: 'manage-students', element: <ManageStudents /> },
+      { path: 'timetable', element: <Timetable /> },
+      { path: 'consolidated-marks', element: <OverallConsolidatedMarks /> },
+      { path: 'subjectWise-marks', element: <SubjectWiseMarks /> },
+      { path: 'course-recommendation', element: <CourseRecommendation /> },
+      { path: 'adminattendance', element: <AdminAttendance /> },
+      { path: "/admin/attendance-report", element: <AttendanceReport />} ,
+      { path: 'report', element: <Report /> },
+      { path: 'student-staff-mapping', element: <StudentEnrollmentsView /> },
+      {path : 'cgpa-allocation', element: <CgpaAllocation/>},
       // { path: 'student-sem-update', element: <UpdateStudentSem/ > },
       { path: "*", element: <NotFound /> },
     ],
