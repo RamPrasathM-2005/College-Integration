@@ -31,6 +31,9 @@ import StudentEnrollmentsView from './pages/admin/StudentEnrollmentsView';
 import CgpaAllocation from './pages/admin/CgpaAllocation.jsx'
 import RequestCoursesAdmin from './pages/admin/RequestCoursesAdmin.jsx';
 // import UpdateStudentSem from './pages/admin/ManageStudents/UpdateStudentSem.jsx'; 
+import CreateCBCS from './pages/admin/CBCS/CreateCBCS.jsx';
+import CBCSList from './pages/admin/CBCS/CBCSList.jsx';
+import CBCSDetail from './pages/admin/CBCS/CBCSDetail.jsx';
 
 // Staff Pages
 
@@ -39,17 +42,18 @@ import Attendance from "./pages/staff/Attendance";
 import MarksAllocation from "./pages/staff/MarksAllocation";
 import Options from "./pages/staff/Options";
 import InternalMarks from "./pages/staff/InternalMarks";
-import StaffDashboard from './pages/staff/Dashboard';
-import Attendance from './pages/staff/Attendance';
-import MarksAllocation from './pages/staff/MarksAllocation';
-import Options from './pages/staff/Options';
-import InternalMarks from './pages/staff/InternalMarks';
+// import StaffDashboard from './pages/staff/Dashboard';
+// import Attendance from './pages/staff/Attendance';
+// import MarksAllocation from './pages/staff/MarksAllocation';
+// import Options from './pages/staff/Options';
+// import InternalMarks from './pages/staff/InternalMarks';
 import RequestCoursesStaff from './pages/staff/RequestCoursesStaff.jsx'
 
 // Student Pages
 import StudentDashboard from "./pages/student/StudentDashboard";
 import ChooseCourse from "./pages/student/ChooseCourse";
 
+import StudentCBCS from './pages/student/StudentCBCS.jsx';
 // NotFound
 import NotFound from "./pages/NotFound";
 // import StudentStaffMapping from "./pages/admin/StudentEnrollmentsView";
@@ -102,6 +106,9 @@ const routes = [
       { path: 'student-staff-mapping', element: <StudentEnrollmentsView /> },
       {path : 'cgpa-allocation', element: <CgpaAllocation/>},
       {path: 'request-courses', element: <RequestCoursesAdmin/>},
+      {path:'create-cbcs',element:<CreateCBCS />},
+      {path:'cbcs-list',element:<CBCSList />},
+      {path:'cbcs-detail/:id',element:<CBCSDetail />},
       // { path: 'student-sem-update', element: <UpdateStudentSem/ > },
       { path: "*", element: <NotFound /> },
     ],
@@ -145,6 +152,7 @@ const routes = [
       { index: true, element: <StudentDashboard /> },
       { path: "dashboard", element: <StudentDashboard /> },
       { path: "choose-course", element: <ChooseCourse /> },
+      { path: 'stu/:regno/:batchId/:deptId/:semesterId',element:<StudentCBCS />},
       { path: "*", element: <NotFound /> },
     ],
   },

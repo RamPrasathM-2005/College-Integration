@@ -16,6 +16,8 @@ import adminattendance from './routes/admin/adminattendanceroutes.js';
 import attendanceReportRoutes from './routes/admin/attendanceReportRoutes.js'
 import studentRoutes from './routes/student/studentRoutes.js';
  import verticalRoutes from './routes/admin/verticalRoutes.js';
+import cbcsRouter from './routes/cbcsRoutes.js';
+
 dotenv.config({ path: './config.env' });
 
 const app = express();
@@ -141,6 +143,7 @@ app.use('/api/admin/attendance', sanitizeInput, adminattendance);
 app.use("/api/admin/attendanceReports", attendanceReportRoutes);
 app.use('/api/student', sanitizeInput, studentRoutes);
 app.use('/api/admin', sanitizeInput, verticalRoutes);
+app.use('/api/cbcs', cbcsRouter);
 
 // Global CORS fallback for any response (add this new middleware)
 app.use((req, res, next) => {
