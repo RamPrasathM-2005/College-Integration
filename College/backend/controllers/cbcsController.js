@@ -299,7 +299,7 @@ export const getAllCbcs = async (req, res) => {
           c.Deptid,
           d.DeptName,
           c.semesterId,
-          s.semesterNo
+          s.semesterNumber,
           c.total_students,
           c.complete,
           c.isActive,
@@ -330,6 +330,7 @@ export const getAllCbcs = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+
 // Get particular CBCS by ID
 export const getCbcsById = async (req, res) => {
   try {

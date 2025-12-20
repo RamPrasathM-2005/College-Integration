@@ -14,16 +14,23 @@ import {
   Calendar,
   Building,
   Save,
-  Zap, // For FCFS icon
-  Brain // For Optimal icon
+  Zap, 
+  Brain,
+  Shield // Icon for Degree
 } from 'lucide-react';
 
+import { api, getCurrentUser } from '../../../services/authService';
+
 const CreateCBCS = () => {
+  // Get current user to use real ID instead of hardcoded 101
+  const currentUser = getCurrentUser();
+
   // State management
   const [filters, setFilters] = useState({
     batchId: '',
     semesterId: '',
-    deptId: ''
+    deptId: '',
+    degree: '' // Added Degree to filters
   });
   const [courses, setCourses] = useState(null);
   const [selectedCourses, setSelectedCourses] = useState({});
@@ -48,15 +55,18 @@ const CreateCBCS = () => {
     { id: 'OPTIMAL', name: 'Optimal Allocation', icon: Brain, description: 'AI-optimized allocation based on preferences and capacity' }
   ];
 
+  // Degree Options (Matching your requirement: Be, BTech)
+  const degreeOptions = ["BE", "BTech", "ME", "MTech", "MBA", "MCA"];
+
   // Fetch batches on component mount
   useEffect(() => {
     const fetchBatches = async () => {
       setLoadingBatches(true);
       try {
-        const response = await fetch('http://localhost:4000/api/admin/batches');
-        const data = await response.json();
-        if (data.success) {
-          setBatches(data.batches || []);
+        const response = await api.get('/admin/batches');
+        const data = response.data;
+        if (data.success || data.status === 'success') {
+          setBatches(data.batches || data.data || []);
         } else {
           setError('Failed to fetch batches');
           setBatches([]);
@@ -77,10 +87,15 @@ const CreateCBCS = () => {
     const fetchDepartments = async () => {
       setLoadingDepts(true);
       try {
-        const response = await fetch('http://localhost:4000/api/departments');
-        const data = await response.json();
-        if (data.success) {
-          setDepartments(data.departments || []);
+        const response = await api.get('/departments');
+        const data = response.data;
+        if (data.success || data.status === 'success') {
+          const deptList = (data.departments || data.data || []).map(d => ({
+            id: d.Deptid || d.id,
+            name: d.Deptname || d.name,
+            acronym: d.Deptacronym // Backend needs acronym (e.g. "CSE") for branch
+          }));
+          setDepartments(deptList);
         } else {
           setError('Failed to fetch departments');
           setDepartments([]);
@@ -96,28 +111,39 @@ const CreateCBCS = () => {
     fetchDepartments();
   }, []);
 
-  // Fetch semesters when batch and department are selected
+  // Fetch semesters when batch, department, AND degree are selected
   useEffect(() => {
     const fetchSemesters = async () => {
-      if (!filters.batchId || !filters.deptId) {
+      if (!filters.batchId || !filters.deptId || !filters.degree) {
         setSemesters([]);
         return;
       }
       
       setLoadingSemesters(true);
       try {
-        const response = await fetch(
-          `http://localhost:4000/api/admin/semester/by-batch-branch?batchId=${filters.batchId}&branchId=${filters.deptId}`
-        );
-        const data = await response.json();
-        if (data.success) {
-          setSemesters(data.semesters || []);
+        // Map IDs back to string names for the backend logic
+        const selectedBatchObj = batches.find(b => (b.batchId || b.id).toString() === filters.batchId.toString());
+        const selectedDeptObj = departments.find(d => d.id.toString() === filters.deptId.toString());
+
+        // Using api instance with the specific string parameters the backend requires
+        const response = await api.get('/admin/semesters/by-batch-branch', {
+          params: {
+            batch: selectedBatchObj?.batch,   // e.g. "2021"
+            branch: selectedDeptObj?.acronym, // e.g. "CSE"
+            degree: filters.degree            // e.g. "BE"
+          }
+        });
+
+        const data = response.data;
+        if (data.success || data.status === 'success') {
+          setSemesters(data.semesters || data.data || []);
+          setError(''); // Clear error if successful
         } else {
-          setError('Failed to fetch semesters');
+          setError(data.message || 'Failed to fetch semesters');
           setSemesters([]);
         }
       } catch (err) {
-        setError('Error fetching semesters');
+        setError(err.response?.data?.message || 'Error fetching semesters');
         setSemesters([]);
       } finally {
         setLoadingSemesters(false);
@@ -125,7 +151,7 @@ const CreateCBCS = () => {
     };
     
     fetchSemesters();
-  }, [filters.batchId, filters.deptId]);
+  }, [filters.batchId, filters.deptId, filters.degree, batches, departments]);
 
   // Fetch courses based on filters
   const fetchCourses = async () => {
@@ -139,16 +165,20 @@ const CreateCBCS = () => {
     setSuccess('');
     setSelectedCourses({});
     try {
-      const response = await fetch(
-        `http://localhost:4000/api/cbcs/course?Deptid=${filters.deptId}&batchId=${filters.batchId}&semesterId=${filters.semesterId}`
-      );
-      const data = await response.json();
+      const response = await api.get('/cbcs/course', {
+        params: {
+          Deptid: filters.deptId,
+          batchId: filters.batchId,
+          semesterId: filters.semesterId
+        }
+      });
+      const data = response.data;
       
-      if (data.success) {
-        setCourses(data.courses);
-        // Initialize expanded state for all groups
+      if (data.success || data.status === 'success') {
+        const courseData = data.courses || data.data;
+        setCourses(courseData);
         const initialExpanded = {};
-        Object.keys(data.courses).forEach(group => {
+        Object.keys(courseData).forEach(group => {
           initialExpanded[group] = true;
         });
         setExpandedGroups(initialExpanded);
@@ -173,7 +203,6 @@ const CreateCBCS = () => {
       if (newSelected[key]) {
         delete newSelected[key];
       } else {
-        // Create the subject object with correct structure
         newSelected[key] = {
           subject_id: course.courseId,
           name: course.courseTitle,
@@ -248,7 +277,6 @@ const CreateCBCS = () => {
   const calculateTotalStudents = () => {
     if (!courses || Object.keys(selectedCourses).length === 0) return 0;
     
-    // Get the maximum total_students from selected courses
     let maxStudents = 0;
     Object.keys(selectedCourses).forEach(key => {
       const [bucketName, courseId] = key.split('-');
@@ -258,7 +286,7 @@ const CreateCBCS = () => {
       }
     });
     
-    return maxStudents > 0 ? maxStudents : 120; // Fallback to 120 if no student count
+    return maxStudents > 0 ? maxStudents : 120;
   };
 
   // Submit CBCS creation
@@ -272,30 +300,20 @@ const CreateCBCS = () => {
     setError('');
     setSuccess('');
     try {
-      // Prepare the payload with correct structure including type
       const payload = {
         Deptid: parseInt(filters.deptId),
         batchId: parseInt(filters.batchId),
         semesterId: parseInt(filters.semesterId),
-        createdBy: 101, // This should come from auth context
+        createdBy: currentUser?.Userid || 101, 
         total_students: calculateTotalStudents(),
-        type: cbcsType, // Add the CBCS type here
+        type: cbcsType,
         subjects: Object.values(selectedCourses)
       };
 
-      console.log('Submitting CBCS with payload:', payload); // For debugging
+      const response = await api.post('/cbcs/create', payload);
+      const data = response.data;
 
-      const response = await fetch('http://localhost:4000/api/cbcs/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
+      if (data.success || data.status === 'success') {
         setSuccess(`CBCS created successfully with ${cbcsType === 'FCFS' ? 'FCFS' : 'Optimal'} allocation!`);
         setSelectedCourses({});
         setCourses(null);
@@ -303,7 +321,7 @@ const CreateCBCS = () => {
         setError(data.message || 'Failed to create CBCS');
       }
     } catch (err) {
-      setError('Error creating CBCS: ' + err.message);
+      setError('Error creating CBCS: ' + (err.response?.data?.message || err.message));
     } finally {
       setLoading(false);
     }
@@ -373,7 +391,26 @@ const CreateCBCS = () => {
           transition={{ delay: 0.1 }}
           className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8"
         >
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4"> {/* Increased cols for Degree */}
+            
+            {/* Degree Select */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Shield className="inline w-4 h-4 mr-1" />
+                Degree
+              </label>
+              <select
+                value={filters.degree}
+                onChange={(e) => setFilters({ ...filters, degree: e.target.value, semesterId: '' })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition-colors"
+              >
+                <option value="">Select Degree</option>
+                {degreeOptions.map(deg => (
+                  <option key={deg} value={deg}>{deg}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Batch Select */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -382,14 +419,14 @@ const CreateCBCS = () => {
               </label>
               <select
                 value={filters.batchId}
-                onChange={(e) => setFilters({ ...filters, batchId: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                onChange={(e) => setFilters({ ...filters, batchId: e.target.value, semesterId: '' })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition-colors"
                 disabled={loadingBatches}
               >
-                <option value="">{loadingBatches ? 'Loading batches...' : 'Select Batch'}</option>
+                <option value="">{loadingBatches ? 'Loading...' : 'Select Batch'}</option>
                 {batches.map(batch => (
-                  <option key={batch.id} value={batch.id}>
-                    {batch.name}
+                  <option key={batch.batchId || batch.id} value={batch.batchId || batch.id}>
+                    {batch.batch || batch.name}
                   </option>
                 ))}
               </select>
@@ -403,11 +440,11 @@ const CreateCBCS = () => {
               </label>
               <select
                 value={filters.deptId}
-                onChange={(e) => setFilters({ ...filters, deptId: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                onChange={(e) => setFilters({ ...filters, deptId: e.target.value, semesterId: '' })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition-colors"
                 disabled={loadingDepts}
               >
-                <option value="">{loadingDepts ? 'Loading departments...' : 'Select Department'}</option>
+                <option value="">{loadingDepts ? 'Loading...' : 'Select Department'}</option>
                 {departments.map(dept => (
                   <option key={dept.id} value={dept.id}>
                     {dept.name}
@@ -425,17 +462,17 @@ const CreateCBCS = () => {
               <select
                 value={filters.semesterId}
                 onChange={(e) => setFilters({ ...filters, semesterId: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                disabled={loadingSemesters || !filters.batchId || !filters.deptId}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition-colors"
+                disabled={loadingSemesters || !filters.batchId || !filters.deptId || !filters.degree}
               >
                 <option value="">
-                  {loadingSemesters ? 'Loading semesters...' : 
-                   !filters.batchId || !filters.deptId ? 'Select batch and dept first' : 
-                   'Select Semester'}
+                  {loadingSemesters ? 'Loading...' : 
+                   !filters.degree ? 'Select degree first' : 
+                   semesters.length === 0 ? 'No Semesters Found' : 'Select Semester'}
                 </option>
                 {semesters.map(sem => (
-                  <option key={sem.id} value={sem.id}>
-                    {sem.name}
+                  <option key={sem.semesterId || sem.id} value={sem.semesterId || sem.id}>
+                    Semester {sem.semesterNumber || sem.name}
                   </option>
                 ))}
               </select>
@@ -445,17 +482,10 @@ const CreateCBCS = () => {
             <div className="flex items-end">
               <button
                 onClick={fetchCourses}
-                disabled={fetching || !filters.batchId || !filters.semesterId || !filters.deptId}
-                className="w-full px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center"
+                disabled={fetching || !filters.semesterId}
+                className="w-full px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 transition-colors font-medium flex items-center justify-center"
               >
-                {fetching ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Loading...
-                  </>
-                ) : (
-                  'Get Courses'
-                )}
+                {fetching ? 'Loading...' : 'Get Courses'}
               </button>
             </div>
           </div>
@@ -546,7 +576,7 @@ const CreateCBCS = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">
-                    Ready to Create CBCS ({cbcsType === 'FCFS' ? 'First Come First Serve' : 'Optimal Allocation'})
+                    Ready to Create CBCS ({cbcsType})
                   </h3>
                   <p className="text-sm text-gray-600">
                     {Object.keys(selectedCourses).length} course(s) selected • 
@@ -559,26 +589,16 @@ const CreateCBCS = () => {
                 <button
                   onClick={() => setSelectedCourses({})}
                   disabled={Object.keys(selectedCourses).length === 0}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors font-medium"
                 >
                   Clear All
                 </button>
                 <button
                   onClick={submitCBCS}
                   disabled={loading || Object.keys(selectedCourses).length === 0}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center"
+                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 transition-colors font-medium flex items-center"
                 >
-                  {loading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Create CBCS ({cbcsType})
-                    </>
-                  )}
+                  {loading ? 'Creating...' : <><CheckCircle className="h-4 w-4 mr-2" /> Create CBCS</>}
                 </button>
               </div>
             </div>
@@ -594,7 +614,6 @@ const CreateCBCS = () => {
               transition={{ delay: 0.2 }}
               className="space-y-6"
             >
-              {/* Course Groups */}
               {Object.entries(courses).map(([groupName, groupCourses]) => (
                 <motion.div
                   key={groupName}
@@ -621,8 +640,8 @@ const CreateCBCS = () => {
                           }
                           className={`px-3 py-1 text-sm rounded-lg border transition-colors ${
                             isAllSelectedInGroup(groupName, groupCourses)
-                              ? 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200'
-                              : 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200'
+                              ? 'bg-red-100 text-red-700 border-red-300'
+                              : 'bg-green-100 text-green-700 border-green-300'
                           }`}
                         >
                           {isAllSelectedInGroup(groupName, groupCourses) ? 'Deselect All' : 'Select All'}
@@ -641,7 +660,7 @@ const CreateCBCS = () => {
                     </div>
                   </div>
 
-                  {/* Group Courses */}
+                  {/* Group Courses List */}
                   <AnimatePresence>
                     {expandedGroups[groupName] && (
                       <motion.div
@@ -661,47 +680,22 @@ const CreateCBCS = () => {
                           >
                             <div className="flex items-start justify-between">
                               <div className="flex-1">
-                                <div className="flex items-start justify-between mb-3">
-                                  <div className="flex-1">
-                                    <h4 className="text-lg font-semibold text-gray-900 mb-1">
-                                      {course.courseCode} - {course.courseTitle}
-                                    </h4>
-                                    <div className="flex flex-wrap gap-2 mb-3">
-                                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(course.category)}`}>
-                                        {course.category}
-                                      </span>
-                                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTypeColor(course.type)}`}>
-                                        {course.type}
-                                      </span>
-                                      <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-medium border border-amber-200">
-                                        {course.credits} Credits
-                                      </span>
-                                    </div>
-                                  </div>
-                                  
-                                  <button
-                                    onClick={() => toggleCourseSelection(groupName, course)}
-                                    className={`ml-4 px-4 py-2 rounded-lg font-medium transition-colors flex items-center ${
-                                      isCourseSelected(groupName, course.courseId)
-                                        ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
-                                        : 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
-                                    }`}
-                                  >
-                                    {isCourseSelected(groupName, course.courseId) ? (
-                                      <>
-                                        <Minus className="h-4 w-4 mr-1" />
-                                        Remove
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Plus className="h-4 w-4 mr-1" />
-                                        Add
-                                      </>
-                                    )}
-                                  </button>
+                                <h4 className="text-lg font-semibold text-gray-900 mb-1">
+                                  {course.courseCode} - {course.courseTitle}
+                                </h4>
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(course.category)}`}>
+                                    {course.category}
+                                  </span>
+                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTypeColor(course.type)}`}>
+                                    {course.type}
+                                  </span>
+                                  <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-medium border border-amber-200">
+                                    {course.credits} Credits
+                                  </span>
                                 </div>
 
-                                {/* Course Details */}
+                                {/* Course Details Grid */}
                                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-sm text-gray-600 mb-3">
                                   <div className="flex items-center">
                                     <Clock className="h-4 w-4 mr-1" />
@@ -722,7 +716,7 @@ const CreateCBCS = () => {
                                   </div>
                                 </div>
 
-                                {/* Sections */}
+                                {/* Sections Details */}
                                 {course.sections.length > 0 && (
                                   <div className="mt-3">
                                     <h5 className="text-sm font-medium text-gray-700 mb-2">Sections:</h5>
@@ -734,9 +728,7 @@ const CreateCBCS = () => {
                                         >
                                           Section {section.sectionName} 
                                           {section.staff.length > 0 && (
-                                            <span className="ml-1 text-xs">
-                                              ({section.staff.length} staff)
-                                            </span>
+                                            <span className="ml-1 text-xs">({section.staff.length} staff)</span>
                                           )}
                                         </div>
                                       ))}
@@ -744,6 +736,20 @@ const CreateCBCS = () => {
                                   </div>
                                 )}
                               </div>
+                              <button
+                                onClick={() => toggleCourseSelection(groupName, course)}
+                                className={`ml-4 px-4 py-2 rounded-lg font-medium transition-colors flex items-center ${
+                                  isCourseSelected(groupName, course.courseId)
+                                    ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
+                                    : 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
+                                }`}
+                              >
+                                {isCourseSelected(groupName, course.courseId) ? (
+                                  <><Minus className="h-4 w-4 mr-1" /> Remove</>
+                                ) : (
+                                  <><Plus className="h-4 w-4 mr-1" /> Add</>
+                                )}
+                              </button>
                             </div>
                           </div>
                         ))}
@@ -764,12 +770,8 @@ const CreateCBCS = () => {
             className="text-center py-12"
           >
             <BookOpen className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              No courses loaded
-            </h3>
-            <p className="text-gray-500">
-              Select batch, semester, and department to view available courses
-            </p>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No courses loaded</h3>
+            <p className="text-gray-500">Select Degree, Batch, and Department to view available courses</p>
           </motion.div>
         )}
       </div>

@@ -106,7 +106,7 @@ const routes = [
       { path: 'student-staff-mapping', element: <StudentEnrollmentsView /> },
       {path : 'cgpa-allocation', element: <CgpaAllocation/>},
       {path: 'request-courses', element: <RequestCoursesAdmin/>},
-      {path:'create-cbcs',element:<CreateCBCS />},
+      {path:'cbcs-creation',element:<CreateCBCS />},
       {path:'cbcs-list',element:<CBCSList />},
       {path:'cbcs-detail/:id',element:<CBCSDetail />},
       // { path: 'student-sem-update', element: <UpdateStudentSem/ > },
