@@ -29,6 +29,7 @@ import AdminAttendance from './pages/admin/AttendanceAdmin';
 import Report from './pages/admin/Reports';
 import StudentEnrollmentsView from './pages/admin/StudentEnrollmentsView';
 import CgpaAllocation from './pages/admin/CgpaAllocation.jsx'
+import NptelCourses from './pages/admin/ManageCourses/ManageNptelCourses.jsx';
 // import UpdateStudentSem from './pages/admin/ManageStudents/UpdateStudentSem.jsx'; 
 
 // Staff Pages
@@ -41,6 +42,7 @@ import InternalMarks from './pages/staff/InternalMarks';
 // Student Pages
 import StudentDashboard from './pages/student/StudentDashboard';
 import ChooseCourse from './pages/student/ChooseCourse';
+import NptelSelection from './pages/student/NptelSelection.jsx';
 
 // NotFound
 import NotFound from "./pages/NotFound";
@@ -90,7 +92,8 @@ const routes = [
       { path: 'adminattendance', element: <AdminAttendance /> },
       { path: 'report', element: <Report /> },
       { path: 'student-staff-mapping', element: <StudentEnrollmentsView /> },
-      {path : 'cgpa-allocation', element: <CgpaAllocation/>},
+      { path: 'cgpa-allocation', element: <CgpaAllocation/>},
+      { path: 'nptel-courses', element: <NptelCourses/>},
       // { path: 'student-sem-update', element: <UpdateStudentSem/ > },
       { path: '*', element: <NotFound /> },
     ],
@@ -124,6 +127,7 @@ const routes = [
       { index: true, element: <StudentDashboard /> },
       { path: 'dashboard', element: <StudentDashboard /> },
       { path: 'choose-course', element: <ChooseCourse /> },
+      { path: 'nptel-selection', element: <NptelSelection /> },
       { path: '*', element: <NotFound /> },
     ],
   },

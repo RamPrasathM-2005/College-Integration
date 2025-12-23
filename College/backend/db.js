@@ -577,6 +577,73 @@ const initDatabase = async () => {
             )
         `);
 
+                // 26) NptelCourse - Stores NPTEL (OEC/PEC) courses linked to a semester
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS NptelCourse (
+                nptelCourseId INT PRIMARY KEY AUTO_INCREMENT,
+                courseTitle VARCHAR(255) NOT NULL,
+                courseCode VARCHAR(50) NOT NULL,
+                type ENUM('OEC', 'PEC') NOT NULL,
+                credits INT NOT NULL CHECK (credits > 0),
+                semesterId INT NOT NULL,
+                isActive ENUM('YES','NO') DEFAULT 'YES',
+                createdBy VARCHAR(150),
+                updatedBy VARCHAR(150),
+                createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT fk_nptel_semester FOREIGN KEY (semesterId) REFERENCES Semester(semesterId)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                UNIQUE KEY uq_nptel_code_semester (courseCode, semesterId),
+                INDEX idx_nptel_semester (semesterId),
+                INDEX idx_nptel_code (courseCode)
+            )
+        `);
+
+
+                // 27) StudentNptelEnrollment - Student enrolls in NPTEL courses (intent)
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS StudentNptelEnrollment (
+                enrollmentId INT PRIMARY KEY AUTO_INCREMENT,
+                regno VARCHAR(50) NOT NULL,
+                nptelCourseId INT NOT NULL,
+                semesterId INT NOT NULL,
+                enrolledAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                isActive ENUM('YES','NO') DEFAULT 'YES',
+                CONSTRAINT fk_snptel_student FOREIGN KEY (regno) REFERENCES student_details(regno)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_snptel_course FOREIGN KEY (nptelCourseId) REFERENCES NptelCourse(nptelCourseId)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_snptel_semester FOREIGN KEY (semesterId) REFERENCES Semester(semesterId)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                UNIQUE KEY uq_student_nptel (regno, nptelCourseId),
+                INDEX idx_regno (regno),
+                INDEX idx_nptel (nptelCourseId)
+            )
+        `);
+
+        // 28) NptelCreditTransfer - Request credit transfer after completion
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS NptelCreditTransfer (
+                transferId INT PRIMARY KEY AUTO_INCREMENT,
+                enrollmentId INT NOT NULL,
+                regno VARCHAR(50) NOT NULL,
+                nptelCourseId INT NOT NULL,
+                grade ENUM('O','A+','A','B+','B','U') NOT NULL,
+                status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+                requestedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewedAt TIMESTAMP NULL,
+                reviewedBy VARCHAR(150) NULL,
+                remarks VARCHAR(500) NULL,
+                CONSTRAINT fk_transfer_enrollment FOREIGN KEY (enrollmentId) REFERENCES StudentNptelEnrollment(enrollmentId)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_transfer_student FOREIGN KEY (regno) REFERENCES student_details(regno)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                CONSTRAINT fk_transfer_nptel FOREIGN KEY (nptelCourseId) REFERENCES NptelCourse(nptelCourseId)
+                    ON UPDATE CASCADE ON DELETE CASCADE,
+                UNIQUE KEY uq_enrollment_transfer (enrollmentId)
+            )
+        `);
+
         // Insert initial department data (aligned with branchMap)
         await connection.execute(`
             INSERT IGNORE INTO department (Deptid, Deptname, Deptacronym)

@@ -10,6 +10,20 @@ import {
   getUserId,
   getElectiveSelections,
 } from "../../controllers/studentpageController.js";
+
+
+import {
+  getNptelCourses,
+  enrollNptel,
+  getStudentNptelEnrollments,
+  requestCreditTransfer,
+  getOecPecProgress,
+} from "../../controllers/nptelStudentController.js";
+
+// ... existing routes ...
+
+
+
 import { protect} from "../../controllers/auth/authController.js";
 
 const router = express.Router();
@@ -41,5 +55,13 @@ router.get("/enrolled-courses", getStudentEnrolledCourses);
 router.get("/attendance-summary", getAttendanceSummary);
 
 router.get('/elective-selections', protect, getElectiveSelections);
+
+
+
+router.get("/nptel-courses", getNptelCourses);
+router.post("/nptel-enroll", enrollNptel);
+router.get("/nptel-enrollments", getStudentNptelEnrollments);
+router.post("/nptel-credit-transfer", requestCreditTransfer);
+router.get("/oec-pec-progress", getOecPecProgress);
 
 export default router;

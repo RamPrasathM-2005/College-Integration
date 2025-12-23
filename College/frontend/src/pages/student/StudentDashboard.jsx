@@ -1,4 +1,3 @@
-// src/components/student/StudentDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getUserRole } from '../../utils/auth';
@@ -7,6 +6,7 @@ import {
   fetchSemesters,
   fetchEnrolledCourses,
   fetchAttendanceSummary,
+  fetchOecPecProgress, // ← Added for progress
 } from '../../services/studentService';
 
 const StudentDashboard = () => {
@@ -16,10 +16,11 @@ const StudentDashboard = () => {
   const [courses, setCourses] = useState([]);
   const [studentDetails, setStudentDetails] = useState(null);
   const [attendanceSummary, setAttendanceSummary] = useState({});
+  const [progress, setProgress] = useState(null); // ← New state for OEC/PEC progress
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // FIRST: Load everything and FORCE the correct current semester
+  // Load student details, semesters, and OEC/PEC progress
   useEffect(() => {
     const loadDashboard = async () => {
       if (!getUserRole() || getUserRole() !== 'student') {
@@ -45,16 +46,23 @@ const StudentDashboard = () => {
 
         setSemesters(semList);
 
-        // 3. FIND THE LATEST ACTIVE SEMESTER (THIS IS THE KEY)
+        // 3. Set current/active semester
         const activeSems = semList.filter(s => s.isActive === 'YES');
         const currentSem = activeSems.length > 0
-          ? activeSems.sort((a, b) => b.semesterNumber - a.semesterNumber)[0]  // latest active
-          : semList[semList.length - 1]; // fallback
+          ? activeSems.sort((a, b) => b.semesterNumber - a.semesterNumber)[0]
+          : semList[semList.length - 1];
 
         const correctId = currentSem.semesterId.toString();
-        console.log('CURRENT SEMESTER FORCED →', correctId, currentSem);
-
         setSelectedSemester(correctId);
+
+        // 4. Fetch OEC/PEC progress (regulation-based)
+        try {
+          const prog = await fetchOecPecProgress();
+          setProgress(prog);
+        } catch (err) {
+          console.warn('Could not fetch OEC/PEC progress:', err);
+          setProgress(null);
+        }
 
       } catch (err) {
         console.error('Dashboard failed:', err);
@@ -67,7 +75,7 @@ const StudentDashboard = () => {
     loadDashboard();
   }, [navigate]);
 
-  // SECOND: Load courses & attendance when selectedSemester changes
+  // Load enrolled courses & attendance when semester changes
   useEffect(() => {
     if (!selectedSemester || semesters.length === 0) return;
 
@@ -212,7 +220,7 @@ const StudentDashboard = () => {
       </div>
 
       {/* Attendance Summary */}
-      <div className="bg-white rounded-3xl shadow-2xl p-10 border border-gray-200">
+      <div className="bg-white rounded-3xl shadow-2xl p-10 mb-10 border border-gray-200">
         <h2 className="text-4xl font-bold text-gray-800 mb-10">Attendance Summary</h2>
         {attendanceSummary.totalDays ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
@@ -239,6 +247,56 @@ const StudentDashboard = () => {
         ) : (
           <p className="text-center text-gray-500 text-2xl py-16 italic">
             No attendance data yet.
+          </p>
+        )}
+      </div>
+
+      {/* OEC/PEC Progress Card */}
+      <div className="bg-white rounded-3xl shadow-2xl p-10 border border-gray-200">
+        <h2 className="text-4xl font-bold text-gray-800 mb-10">OEC/PEC Progress (Regulation Requirement)</h2>
+        {progress ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            <div className="p-10 bg-indigo-50 rounded-3xl border-4 border-indigo-300 text-center">
+              <p className="text-5xl font-bold text-indigo-700">
+                {progress.completed.OEC} / {progress.required.OEC}
+              </p>
+              <p className="text-2xl mt-4">OEC Completed</p>
+              <p className="text-lg mt-2 text-gray-600">
+                Remaining: <strong>{progress.remaining.OEC}</strong>
+              </p>
+              <p className="text-sm mt-4">
+                From NPTEL: {progress.fromNptel.OEC} | From College: {progress.fromCollege.OEC}
+              </p>
+              {progress.remaining.OEC === 0 && (
+                <p className="text-green-600 font-bold mt-4">✓ Fully Completed!</p>
+              )}
+              {progress.remaining.OEC > 0 && (
+                <p className="text-red-600 mt-4">Need {progress.remaining.OEC} more OEC</p>
+              )}
+            </div>
+
+            <div className="p-10 bg-purple-50 rounded-3xl border-4 border-purple-300 text-center">
+              <p className="text-5xl font-bold text-purple-700">
+                {progress.completed.PEC} / {progress.required.PEC}
+              </p>
+              <p className="text-2xl mt-4">PEC Completed</p>
+              <p className="text-lg mt-2 text-gray-600">
+                Remaining: <strong>{progress.remaining.PEC}</strong>
+              </p>
+              <p className="text-sm mt-4">
+                From NPTEL: {progress.fromNptel.PEC} | From College: {progress.fromCollege.PEC}
+              </p>
+              {progress.remaining.PEC === 0 && (
+                <p className="text-green-600 font-bold mt-4">✓ Fully Completed!</p>
+              )}
+              {progress.remaining.PEC > 0 && (
+                <p className="text-red-600 mt-4">Need {progress.remaining.PEC} more PEC</p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-center text-gray-500 text-2xl py-16 italic">
+            No regulation assigned or OEC/PEC data not available.
           </p>
         )}
       </div>

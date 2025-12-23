@@ -32,6 +32,7 @@ const AdminSidebar = () => {
     { to: "/admin/report", icon: Download, label: "Report" },
     { to: "/admin/student-staff-mapping", icon: User, label: "Staff Course Mapping"},
     { to: "/admin/cgpa-allocation", icon: Calendar, label: "Cgpa allocation"},
+    { to: "/admin/nptel-courses", icon: Book, label: "NPTEL Courses" },
   ];
 
   const handleLogout = async () => {

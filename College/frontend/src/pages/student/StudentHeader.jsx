@@ -14,6 +14,10 @@ const StudentHeader = () => {
     navigate('/student/choose-course');
   };
 
+  const handleNptelSelection = () => {
+    navigate('/student/nptel-selection');
+  };
+
   const handleLogout = async () => {
     try {
       await logout();
@@ -41,6 +45,12 @@ const StudentHeader = () => {
           className="px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
         >
           Choose Courses
+        </button>
+        <button
+          onClick={handleNptelSelection}
+          className="px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+        >
+          CHOOSE NPTEL
         </button>
         <button
           onClick={handleLogout}
