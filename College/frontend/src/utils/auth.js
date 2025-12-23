@@ -1,5 +1,5 @@
 
-import { getCurrentUser } from "../services/authService";
+import { getCurrentUser } from "../services/authService.js";
 
 export const isAuthenticated = () => {
   const user = getCurrentUser();

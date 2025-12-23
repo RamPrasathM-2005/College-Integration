@@ -15,6 +15,8 @@ import attendanceRoutes from './routes/staff/staffattendanceroutes.js';
 import adminattendance from './routes/admin/adminattendanceroutes.js';
 import attendanceReportRoutes from './routes/admin/attendanceReportRoutes.js'
 import studentRoutes from './routes/student/studentRoutes.js';
+ import verticalRoutes from './routes/admin/verticalRoutes.js';
+import cbcsRouter from './routes/cbcsRoutes.js';
 
 dotenv.config({ path: './config.env' });
 
@@ -140,8 +142,8 @@ app.use('/api/staff/attendance', sanitizeInput, attendanceRoutes);
 app.use('/api/admin/attendance', sanitizeInput, adminattendance);
 app.use("/api/admin/attendanceReports", attendanceReportRoutes);
 app.use('/api/student', sanitizeInput, studentRoutes);
-
-// Health check (bypass limiter if needed by placing early, but ok here)
+app.use('/api/admin', sanitizeInput, verticalRoutes);
+app.use('/api/cbcs', cbcsRouter);
 
 // Global CORS fallback for any response (add this new middleware)
 app.use((req, res, next) => {

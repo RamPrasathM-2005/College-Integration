@@ -24,6 +24,7 @@ import {
 
 
 
+import { getStudentGpaHistory } from "../../controllers/gradeController.js";
 import { protect} from "../../controllers/auth/authController.js";
 
 const router = express.Router();
@@ -55,6 +56,7 @@ router.get("/enrolled-courses", getStudentEnrolledCourses);
 router.get("/attendance-summary", getAttendanceSummary);
 
 router.get('/elective-selections', protect, getElectiveSelections);
+router.get('/gpa-history', getStudentGpaHistory);
 
 
 

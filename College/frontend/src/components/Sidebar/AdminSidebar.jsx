@@ -1,138 +1,153 @@
 import React, { useState } from 'react';
-import { Home, Book, Users, Calendar, X, Menu, LogOut, Settings, BookImage, User, Download } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { logout } from '../../services/authService'; // Import logout function
+import { logout } from '../../services/authService';
+
+import {
+  LayoutDashboard,
+  CalendarDays,
+  ShieldCheck,
+  GitMerge,
+  Library,
+  UserCheck,
+  Users,
+  CalendarClock,
+  Calculator,
+  BarChart3,
+  Sparkles,
+  ClipboardCheck,
+  FilePieChart,
+  FileSearch,
+  Network,
+  Award,
+  MessageSquarePlus,
+  MousePointerClick,
+  Info,
+  ListChecks,
+  X,      
+  LogOut,  
+  Menu      
+} from "lucide-react";
 
 const AdminSidebar = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false); // Added missing state
   const navigate = useNavigate();
 
-  // Mock user data (replace with actual auth context or state management)
-  const currentUser = {
-    name: "Admin User",
-    role: "Administrator",
-    email: "admin@example.com"
-  };
-
   const sidebarItems = [
-    { to: "/admin/dashboard", icon: Home, label: "Dashboard" },
-    { to: "/admin/manage-semesters", icon: Calendar, label: "Manage Semesters" },
-    { to: "/admin/manage-regulations", icon: BookImage, label: "Manage Regulations"},
-    { to: "/admin/manage-batches", icon: Settings, label: "Allocate Regulation to Batch" },
-    { to: "/admin/manage-courses", icon: Book, label: "Manage Courses" },
-    { to: "/admin/manage-staff", icon: Users, label: "Allocate Staff to Course" },
+    { to: "/admin/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+    { to: "/admin/manage-semesters", icon: CalendarDays, label: "Manage Semesters" },
+    { to: "/admin/manage-regulations", icon: ShieldCheck, label: "Manage Regulations" },
+    { to: "/admin/manage-batches", icon: GitMerge, label: "Allocate Regulation to Batch" },
+    { to: "/admin/manage-courses", icon: Library, label: "Manage Courses" },
+    { to: "/admin/manage-staff", icon: UserCheck, label: "Allocate Staff to Course" },
     { to: "/admin/manage-students", icon: Users, label: "Allocate Students to Staff" },
-    { to: "/admin/timetable", icon: Calendar, label: "Timetable" },
-    { to: '/admin/consolidated-marks', icon: Book, label: 'Consolidated Marks' },
-    { to: "/admin/subjectwise-marks", icon: Book, label: "Subjectwise Marks" },
-    { to: "/admin/course-recommendation", icon: BookImage, label: "Course Recommendation"},
-    { to: "/admin/adminattendance", icon: User, label: "Attendance"},
-    {to: "/admin/attendanceReport", icon: User, label: "AttendanceReport"},
-    { to: "/admin/report", icon: Download, label: "Report" },
-    { to: "/admin/student-staff-mapping", icon: User, label: "Staff Course Mapping"},
-    { to: "/admin/cgpa-allocation", icon: Calendar, label: "Cgpa allocation"},
+    { to: "/admin/student-staff-mapping", icon: Network, label: "Staff Course Mapping" },
+    { to: "/admin/timetable", icon: CalendarClock, label: "Timetable" },
+    { to: "/admin/adminattendance", icon: ClipboardCheck, label: "Attendance" },
+    { to: "/admin/consolidated-marks", icon: Calculator, label: "Consolidated Marks" },
+    { to: "/admin/subjectwise-marks", icon: BarChart3, label: "Subjectwise Marks" },
+    { to: "/admin/cgpa-allocation", icon: Award, label: "CGPA Allocation" },
+    { to: "/admin/course-recommendation", icon: Sparkles, label: "Course Recommendation" },
+    { to: "/admin/request-courses", icon: MessageSquarePlus, label: "Request Courses" },
+    { to: "/admin/attendance-report", icon: FilePieChart, label: "Attendance Report" },
+    { to: "/admin/report", icon: FileSearch, label: "General Report" },
+    { to: "/admin/cbcs-creation", icon: MousePointerClick, label: "CBCS Creation" }, 
+    { to: "/admin/cbcs-detail", icon: Info, label: "CBCS Details" },
+    { to: "/admin/cbcs-list", icon: ListChecks, label: "CBCS List" },
     { to: "/admin/nptel-courses", icon: Book, label: "NPTEL Courses" },
   ];
 
   const handleLogout = async () => {
     try {
-      await logout(); // Call logout from authService
-      navigate('/login'); // Redirect to login
+      await logout();
+      navigate('/login');
     } catch (err) {
       console.error('Logout error:', err);
     }
-    setIsOpen(false); // Close sidebar on mobile
-    setIsProfileOpen(false); // Close profile dropdown
-  };
-
-  const handleViewProfile = () => {
-    // Implement navigation to profile page or modal
-    console.log("View profile clicked");
-    setIsProfileOpen(false); // Close dropdown after action
+    setIsOpen(false);
   };
 
   return (
     <>
-      {/* Mobile overlay */}
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
+
       {isOpen && (
         <div 
-          className="fixed inset-0 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 backdrop-blur-sm z-40 lg:hidden bg-black/50"
           onClick={() => setIsOpen(false)}
         />
       )}
 
-      {/* Profile dropdown overlay for mobile */}
-      {isProfileOpen && (
-        <div 
-          className="fixed inset-0 z-30"
-          onClick={() => setIsProfileOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
       <div className={`
         fixed inset-y-0 left-0 z-50
-        w-64 bg-gray-800 text-white
+        w-64 bg-[#11101d] text-white
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        flex flex-col
+        flex flex-col shadow-2xl font-sans
       `}>
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-700 flex-shrink-0">
-          <h2 className="text-2xl font-bold">Admin Panel</h2>
+        
+        <div className="flex items-center justify-between h-20 px-6 border-b border-[#1d1b31] shrink-0">
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="w-8 h-8 text-indigo-500" />
+            <span className="text-xl font-bold tracking-wide">Admin Panel</span>
+          </div>
           <button 
             onClick={() => setIsOpen(false)}
-            className="lg:hidden p-2 rounded-lg hover:bg-gray-700"
+            className="lg:hidden p-2 text-gray-400 hover:text-white"
           >
-            <X className="w-5 h-5" />
+            {/* This was causing the error because X wasn't imported */}
+            <X className="w-6 h-6" />
           </button>
         </div>
 
-        {/* Navigation - scrollable area */}
-        <nav className="flex-1 overflow-y-auto py-4">
-          <ul className="space-y-2 px-3">
+        <nav className="flex-1 overflow-y-auto no-scrollbar py-4 px-3">
+          <ul className="space-y-1.5">
             {sidebarItems.map((item, index) => {
               const Icon = item.icon;
               return (
                 <li key={index}>
                   <NavLink
                     to={item.to}
-                    className={({ isActive }) => `
-                      flex items-center space-x-3 px-4 py-3 rounded-lg
-                      hover:bg-gray-700 hover:text-blue-400 transition-all duration-200
-                      ${isActive ? 'bg-gray-700 text-blue-400' : ''}
-                    `}
                     onClick={() => setIsOpen(false)}
+                    className={({ isActive }) => `
+                      flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200
+                      text-sm font-medium leading-relaxed
+                      ${isActive 
+                        ? 'bg-white text-[#11101d] shadow-md transform scale-[1.02]' 
+                        : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                      }
+                    `}
                   >
-                    <Icon className="w-5 h-5" />
+                    <Icon className="w-5 h-5 shrink-0" />
                     <span>{item.label}</span>
                   </NavLink>
                 </li>
               );
             })}
-            {/* Logout Button */}
-            <li>
+            
+            <li className="pt-4 mt-2 border-t border-[#1d1b31]">
               <button
                 onClick={handleLogout}
-                className="flex items-center space-x-3 px-4 py-3 rounded-lg w-full text-left hover:bg-red-600 hover:text-white transition-all duration-200"
+                className="flex items-center gap-4 px-4 py-3 rounded-xl w-full text-left 
+                           text-gray-400 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200"
               >
-                <LogOut className="w-5 h-5" />
-                <span>Logout</span>
+                {/* This was also missing from imports */}
+                <LogOut className="w-5 h-5 shrink-0" />
+                <span className="font-medium text-sm">Logout</span>
               </button>
             </li>
           </ul>
         </nav>
-
-        {/* Profile Section - fixed at bottom */}
       </div>
 
-      {/* Hamburger button */}
       {!isOpen && (
         <button
-          className="fixed top-4 left-4 z-50 lg:hidden p-2 rounded-lg bg-gray-800 text-white hover:bg-gray-700"
+          className="fixed top-4 left-4 z-50 lg:hidden p-2.5 rounded-lg bg-[#11101d] text-white shadow-lg"
           onClick={() => setIsOpen(true)}
         >
+          {/* This was also missing from imports */}
           <Menu className="w-6 h-6" />
         </button>
       )}

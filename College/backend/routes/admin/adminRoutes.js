@@ -70,6 +70,8 @@ import {
   updateTimetableEntry,
   deleteTimetableEntry,
   getTimetableByFilters,
+  getElectiveBucketsBySemester,
+  getCoursesInBucket,
 } from "../../controllers/timetableController.js";
 import { exportCourseWiseCsvAdmin, getConsolidatedMarks } from "../../controllers/markController.js";
 import { getDepartments } from "../../controllers/departmentController.js";
@@ -210,7 +212,8 @@ router.get("/timetable/semester/:semesterId", protect, getTimetable);
 router.post("/timetable/entry", protect, createTimetableEntry);
 router.put("/timetable/entry/:timetableId", protect, updateTimetableEntry);
 router.delete("/timetable/entry/:timetableId", protect, deleteTimetableEntry);
-
+router.get("/elective-buckets/:semesterId", getElectiveBucketsBySemester);
+router.get("/bucket-courses/:bucketId", getCoursesInBucket);
 /* =========================
    📌 Elective Bucket Routes
    ========================= */

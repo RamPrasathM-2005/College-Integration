@@ -3,15 +3,20 @@ import { api } from './authService';
 
 export const fetchStudentDetails = async () => {
   try {
-    const response = await api.get('/student/details');
-    if (response.data.status === 'success') {
+    const response = await api.get("/student/details");
+    console.log(response);
+    if (response.data.status === "success") {
       return response.data.data;
     } else {
-      throw new Error(response.data.message || 'Failed to fetch student details');
+      throw new Error(
+        response.data.message || "Failed to fetch student details"
+      );
     }
   } catch (error) {
-    console.error('fetchStudentDetails error:', error);
-    throw new Error(error.response?.data?.message || 'Failed to fetch student details');
+    console.error("fetchStudentDetails error:", error);
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch student details"
+    );
   }
 };
 
@@ -25,11 +30,13 @@ export const fetchSemesters = async (batchYear) => {
     if (response.data.status === 'success') {
       return response.data.data;
     } else {
-      throw new Error(response.data.message || 'Failed to fetch semesters');
+      throw new Error(response.data.message || "Failed to fetch semesters");
     }
   } catch (error) {
-    console.error('fetchSemesters error:', error);
-    throw new Error(error.response?.data?.message || 'Failed to fetch semesters');
+    console.error("fetchSemesters error:", error);
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch semesters"
+    );
   }
 };
 
@@ -41,11 +48,15 @@ export const fetchMandatoryCourses = async (semesterId) => {
     if (response.data.status === 'success') {
       return response.data.data;
     } else {
-      throw new Error(response.data.message || 'Failed to fetch mandatory courses');
+      throw new Error(
+        response.data.message || "Failed to fetch mandatory courses"
+      );
     }
   } catch (error) {
-    console.error('fetchMandatoryCourses error:', error);
-    throw new Error(error.response?.data?.message || 'Failed to fetch mandatory courses');
+    console.error("fetchMandatoryCourses error:", error);
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch mandatory courses"
+    );
   }
 };
 
@@ -57,28 +68,34 @@ export const fetchElectiveBuckets = async (semesterId) => {
     if (response.data.status === 'success') {
       return response.data.data;
     } else {
-      throw new Error(response.data.message || 'Failed to fetch elective buckets');
+      throw new Error(
+        response.data.message || "Failed to fetch elective buckets"
+      );
     }
   } catch (error) {
-    console.error('fetchElectiveBuckets error:', error);
-    throw new Error(error.response?.data?.message || 'Failed to fetch elective buckets');
+    console.error("fetchElectiveBuckets error:", error);
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch elective buckets"
+    );
   }
 };
 
 export const allocateElectives = async (semesterId, selections) => {
   try {
-    const response = await api.post('/student/allocate-electives', {
+    const response = await api.post("/student/allocate-electives", {
       semesterId,
-      selections
+      selections,
     });
     if (response.data.status === 'success') {
       return response.data;
     } else {
-      throw new Error(response.data.message || 'Failed to allocate electives');
+      throw new Error(response.data.message || "Failed to allocate electives");
     }
   } catch (error) {
-    console.error('allocateElectives error:', error);
-    throw new Error(error.response?.data?.message || 'Failed to allocate electives');
+    console.error("allocateElectives error:", error);
+    throw new Error(
+      error.response?.data?.message || "Failed to allocate electives"
+    );
   }
 };
 
@@ -92,11 +109,15 @@ export const fetchEnrolledCourses = async (semesterId) => {
     if (response.data.status === 'success') {
       return response.data.data;
     } else {
-      throw new Error(response.data.message || 'Failed to fetch enrolled courses');
+      throw new Error(
+        response.data.message || "Failed to fetch enrolled courses"
+      );
     }
   } catch (error) {
-    console.error('fetchEnrolledCourses error:', error);
-    throw new Error(error.response?.data?.message || 'Failed to fetch enrolled courses');
+    console.error("fetchEnrolledCourses error:", error);
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch enrolled courses"
+    );
   }
 };
 
@@ -109,11 +130,15 @@ export const fetchAttendanceSummary = async (semesterId) => {
     if (response.data.status === 'success') {
       return response.data.data;
     } else {
-      throw new Error(response.data.message || 'Failed to fetch attendance summary');
+      throw new Error(
+        response.data.message || "Failed to fetch attendance summary"
+      );
     }
   } catch (error) {
-    console.error('fetchAttendanceSummary error:', error);
-    throw new Error(error.response?.data?.message || 'Failed to fetch attendance summary');
+    console.error("fetchAttendanceSummary error:", error);
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch attendance summary"
+    );
   }
 };
 

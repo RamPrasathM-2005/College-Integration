@@ -1,4 +1,4 @@
-import { api } from '../services/authService'; // Adjust path to your api.js file
+import { api } from '../services/authService.js'; // Adjust path to your api.js file
 
 const API_BASE = 'http://localhost:4000/api';
 

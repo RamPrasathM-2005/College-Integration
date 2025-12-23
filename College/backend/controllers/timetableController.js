@@ -586,3 +586,65 @@ export const deleteTimetableEntry = catchAsync(async (req, res) => {
     if (connection) connection.release();
   }
 });
+
+// ==================== ELECTIVE BUCKETS ====================
+
+// GET all buckets for a semester
+export const getElectiveBucketsBySemester = async (req, res) => {
+  const { semesterId } = req.params;
+
+  try {
+    const [buckets] = await pool.execute(
+      `SELECT 
+         bucketId,
+         bucketNumber,
+         bucketName,
+         semesterId
+       FROM ElectiveBucket 
+       WHERE semesterId = ? 
+       ORDER BY bucketNumber`,
+      [semesterId]
+    );
+
+    res.json({
+      status: "success",
+      data: buckets,
+    });
+  } catch (error) {
+    console.error("Error fetching elective buckets:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Failed to fetch elective buckets",
+    });
+  }
+};
+
+export const getCoursesInBucket = async (req, res) => {
+  const { bucketId } = req.params;
+
+  try {
+    const [courses] = await pool.execute(
+      `SELECT 
+         c.courseId,
+         c.courseCode,
+         c.courseTitle,
+         c.credits
+       FROM ElectiveBucketCourse ebc
+       JOIN Course c ON ebc.courseId = c.courseId
+       WHERE ebc.bucketId = ?
+       ORDER BY c.courseCode`,
+      [bucketId]
+    );
+
+    res.json({
+      status: "success",
+      data: courses,
+    });
+  } catch (error) {
+    console.error("Error fetching bucket courses:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Failed to fetch courses for this bucket",
+    });
+  }
+};

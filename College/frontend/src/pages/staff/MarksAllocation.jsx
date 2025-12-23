@@ -1,23 +1,93 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom'; // Import createPortal
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Upload, Download, ChevronDown, ChevronUp, Plus, Edit2, Trash2, Save } from 'lucide-react';
+import { 
+  ChevronLeft, Upload, Download, ChevronDown, ChevronUp, 
+  Plus, Edit2, Trash2, Save, X, FileText 
+} from 'lucide-react';
 import useMarkAllocation from '../../hooks/useMarkAllocation';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
-import {
-  getStudentCOMarks
-} from '../../services/staffService';
+import { getStudentCOMarks } from '../../services/staffService';
 
 const MySwal = withReactContent(Swal);
+
+// --- UPDATED Modal Component using Portal ---
+const ModalWrapper = ({ 
+  title, 
+  children, 
+  onClose, 
+  onSave, 
+  saveText = "Save changes", 
+  showFooter = true, 
+  saveDisabled = false,
+  width = "max-w-lg"
+}) => {
+  // Prevent background scrolling when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
+  // Use createPortal to render outside the parent container context
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all duration-300">
+      {/* Modal Container */}
+      <div className={`bg-white rounded-2xl shadow-2xl w-full ${width} relative flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200`}>
+        
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+          <h3 className="text-xl font-bold text-slate-900">{title}</h3>
+          <button 
+            onClick={onClose}
+            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content Body */}
+        <div className="p-6 overflow-y-auto custom-scrollbar">
+          {children}
+        </div>
+
+        {/* Footer */}
+        {showFooter && (
+          <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between rounded-b-2xl">
+            <button className="text-sm text-slate-500 hover:text-slate-700 font-medium hover:underline">
+              Need help?
+            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={onClose}
+                className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 focus:ring-4 focus:ring-slate-100 transition-all shadow-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onSave}
+                disabled={saveDisabled}
+                className={`px-5 py-2.5 text-sm font-semibold text-white rounded-xl focus:ring-4 focus:ring-blue-100 transition-all shadow-md flex items-center gap-2
+                  ${saveDisabled ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-lg'}`}
+              >
+                {saveText}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body // This renders the modal directly into the <body> tag
+  );
+};
 
 const MarksAllocation = () => {
   const { courseId, sectionId } = useParams();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    console.log('courseId from useParams:', courseId, 'sectionId:', sectionId);
-  }, [courseId, sectionId]);
-
+  // --- Hooks & Logic ---
   const {
     partitions,
     setNewPartition,
@@ -27,6 +97,7 @@ const MarksAllocation = () => {
     handlePartitionsConfirmation,
     courseOutcomes,
     students,
+    setStudents,
     selectedCO,
     setSelectedCO,
     selectedTool,
@@ -58,11 +129,11 @@ const MarksAllocation = () => {
 
   const [importFile, setImportFile] = useState(null);
 
+  // --- Helpers ---
   const calculateToolWeightageSum = (tools) => {
     return tools.reduce((sum, tool) => sum + (tool.weightage || 0), 0);
   };
 
-  // Real-time consolidated mark calculation
   const calculateConsolidated = useCallback((student, co) => {
     if (!co || !co.tools || co.tools.length === 0) return 0;
     let consolidated = 0;
@@ -76,6 +147,7 @@ const MarksAllocation = () => {
     return totalWeight > 0 ? Math.round((consolidated / totalWeight) * 100 * 100) / 100 : 0;
   }, []);
 
+  // --- Handlers ---
   const handleSavePartitionsClick = async () => {
     if (
       newPartition.theoryCount < 0 ||
@@ -121,7 +193,6 @@ const MarksAllocation = () => {
   const handleSaveToolsForCOClick = async (coId) => {
     const result = await handleSaveToolsForCO(coId);
     if (result.success) {
-      // Update selectedCO and tempTools with the latest data from courseOutcomes
       const updatedCO = courseOutcomes.find(c => c.coId === coId);
       if (updatedCO) {
         setSelectedCO(updatedCO);
@@ -136,9 +207,7 @@ const MarksAllocation = () => {
   const handleDeleteToolClick = async (tool) => {
     const result = await handleDeleteTool(tool);
     if (result.success) {
-      // Update tempTools after deletion
       setTempTools((prev) => prev.filter(t => t.uniqueId !== tool.uniqueId));
-      // Also update selectedCO.tools if necessary, but since hook handles it, re-set
       if (selectedCO && selectedCO.coId === tool.coId) {
         const updatedCO = courseOutcomes.find(c => c.coId === selectedCO.coId);
         if (updatedCO) {
@@ -176,7 +245,6 @@ const MarksAllocation = () => {
     }
 
     if (allSuccess) {
-      // Refetch CO marks to update consolidated marks after save
       try {
         const updatedCoMarks = await getStudentCOMarks(courseId);
         setStudents((prev) =>
@@ -204,7 +272,6 @@ const MarksAllocation = () => {
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    console.log('Selected file:', file);
     if (file) {
       if (!file.name.toLowerCase().endsWith('.csv')) {
         MySwal.fire('Error', 'Please select a CSV file', 'error');
@@ -219,11 +286,6 @@ const MarksAllocation = () => {
         return;
       }
       setImportFile(file);
-      console.log('Valid file selected:', {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-      });
     } else {
       setImportFile(null);
     }
@@ -234,12 +296,10 @@ const MarksAllocation = () => {
       MySwal.fire('Error', 'Please select a file to import', 'error');
       return;
     }
-    console.log('Initiating import for file:', importFile.name);
     const result = await handleImportMarks(importFile);
     if (result.success) {
       MySwal.fire('Success', 'Marks imported and consolidated CO marks saved successfully', 'success');
       setImportFile(null);
-      document.querySelector('input[type="file"]').value = '';
     } else {
       MySwal.fire('Error', result.error, 'error');
     }
@@ -253,169 +313,291 @@ const MarksAllocation = () => {
     setTempTools(co?.tools ? co.tools.map((t) => ({ ...t, uniqueId: t.toolId })) : []);
   };
 
-  if (loading) {
-    return <div>Loading...</div>;
-  }
-
-  if (error) {
-    MySwal.fire('Error', error, 'error').then(() => setError(''));
-  }
+  if (loading) return <div>Loading...</div>;
+  if (error) MySwal.fire('Error', error, 'error').then(() => setError(''));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header */}
-      <div className="bg-white shadow-lg border-b border-slate-200">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 text-slate-800">
+      
+      {/* --- HEADER --- */}
+      <div className="bg-white shadow-lg border-b border-slate-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="flex items-center justify-between py-6">
+          <div className="flex items-center justify-between py-5">
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => navigate(-1)}
-                className="p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-all duration-200"
+                className="p-2 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all duration-200"
               >
                 <ChevronLeft className="h-6 w-6" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">Marks Allocation</h1>
-                <p className="text-sm text-slate-500 mt-1">{courseId}</p>
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Marks Allocation</h1>
+                <p className="text-sm text-slate-500 font-medium">{courseId}</p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-        {/* Partitions Modal */}
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+        
+        {/* ================= MODALS ================= */}
+
+        {/* 1. Partitions Modal */}
         {showPartitionModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg">
-              <h3 className="text-2xl font-bold text-slate-900 mb-6">Set Course Partitions</h3>
-              <div className="grid grid-cols-3 gap-6 mb-8">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Theory COs</label>
-                  <input
-                    type="number"
-                    value={newPartition.theoryCount}
-                    onChange={(e) => setNewPartition({ ...newPartition, theoryCount: parseInt(e.target.value) || 0 })}
-                    className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Practical COs</label>
-                  <input
-                    type="number"
-                    value={newPartition.practicalCount}
-                    onChange={(e) => setNewPartition({ ...newPartition, practicalCount: parseInt(e.target.value) || 0 })}
-                    className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Experiential COs</label>
-                  <input
-                    type="number"
-                    value={newPartition.experientialCount}
-                    onChange={(e) => setNewPartition({ ...newPartition, experientialCount: parseInt(e.target.value) || 0 })}
-                    className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
-                    min="0"
-                  />
-                </div>
+          <ModalWrapper
+            title="Set Course Partitions"
+            onClose={() => setShowPartitionModal(false)}
+            onSave={handleSavePartitionsClick}
+            saveText="Save Partition"
+          >
+            <p className="text-sm text-slate-500 mb-6">
+              Define the number of Course Outcomes (COs) allocated to each category.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 hover:border-blue-300 transition-colors group">
+                <label className="block text-xs font-bold text-blue-600 uppercase tracking-wide mb-2">Theory</label>
+                <input
+                  type="number"
+                  value={newPartition.theoryCount}
+                  onChange={(e) => setNewPartition({ ...newPartition, theoryCount: parseInt(e.target.value) || 0 })}
+                  className="w-full bg-white p-2.5 border border-blue-200 rounded-lg text-lg font-bold text-slate-900 focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
+                  min="0"
+                />
               </div>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowPartitionModal(false)}
-                  className="px-6 py-3 bg-slate-200 text-slate-700 rounded-xl hover:bg-slate-300 transition-all duration-200 font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSavePartitionsClick}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all duration-200 font-medium shadow-lg"
-                >
-                  Save
-                </button>
+              <div className="bg-green-50/50 p-4 rounded-xl border border-green-100 hover:border-green-300 transition-colors group">
+                <label className="block text-xs font-bold text-green-600 uppercase tracking-wide mb-2">Practical</label>
+                <input
+                  type="number"
+                  value={newPartition.practicalCount}
+                  onChange={(e) => setNewPartition({ ...newPartition, practicalCount: parseInt(e.target.value) || 0 })}
+                  className="w-full bg-white p-2.5 border border-green-200 rounded-lg text-lg font-bold text-slate-900 focus:ring-4 focus:ring-green-100 focus:border-green-500 outline-none transition-all"
+                  min="0"
+                />
+              </div>
+              <div className="bg-purple-50/50 p-4 rounded-xl border border-purple-100 hover:border-purple-300 transition-colors group">
+                <label className="block text-xs font-bold text-purple-600 uppercase tracking-wide mb-2">Experiential</label>
+                <input
+                  type="number"
+                  value={newPartition.experientialCount}
+                  onChange={(e) => setNewPartition({ ...newPartition, experientialCount: parseInt(e.target.value) || 0 })}
+                  className="w-full bg-white p-2.5 border border-purple-200 rounded-lg text-lg font-bold text-slate-900 focus:ring-4 focus:ring-purple-100 focus:border-purple-500 outline-none transition-all"
+                  min="0"
+                />
               </div>
             </div>
-          </div>
+          </ModalWrapper>
         )}
 
-        {/* Course Partitions */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 border border-slate-100">
+        {/* 2. Tool Modal */}
+        {showToolModal && (
+          <ModalWrapper
+            title={editingTool ? 'Edit Assessment Tool' : 'Add Assessment Tool'}
+            onClose={() => setShowToolModal(false)}
+            onSave={handleAddTempToolClick}
+            saveText={editingTool ? 'Update Tool' : 'Add Tool'}
+          >
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Tool Name</label>
+                <input
+                  type="text"
+                  value={newTool.toolName}
+                  onChange={(e) => setNewTool({ ...newTool, toolName: e.target.value })}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all text-slate-900 placeholder:text-slate-400"
+                  placeholder="e.g. Assignment 1"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Weightage (%)</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={newTool.weightage}
+                      onChange={(e) => setNewTool({ ...newTool, weightage: parseInt(e.target.value) || 0 })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all"
+                      placeholder="0"
+                    />
+                    <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                      <span className="text-gray-400 font-medium">%</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Max Marks</label>
+                  <input
+                    type="number"
+                    value={newTool.maxMarks}
+                    onChange={(e) => setNewTool({ ...newTool, maxMarks: parseInt(e.target.value) || 100 })}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all"
+                    placeholder="100"
+                  />
+                </div>
+              </div>
+            </div>
+          </ModalWrapper>
+        )}
+
+        {/* 3. Import Modal */}
+        {showImportModal && (
+          <ModalWrapper
+            title={`Import Marks`}
+            onClose={() => {
+              setShowImportModal(false);
+              setImportFile(null);
+            }}
+            onSave={handleImportClick}
+            saveText="Import Marks"
+            saveDisabled={!importFile}
+          >
+            <div className="space-y-5">
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-start gap-3">
+                <FileText className="w-5 h-5 text-blue-600 mt-0.5" />
+                <div>
+                  <p className="text-sm text-blue-900 font-medium">Target Tool: {selectedTool?.toolName}</p>
+                  <p className="text-xs text-blue-700">Ensure your CSV matches the student list for this section.</p>
+                </div>
+              </div>
+
+              <div className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200 ${importFile ? 'border-blue-500 bg-blue-50/30' : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50'}`}>
+                <div className="flex flex-col items-center justify-center">
+                  <div className={`p-4 rounded-full mb-3 ${importFile ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
+                    <Upload className="w-8 h-8" />
+                  </div>
+                  
+                  <label htmlFor="file-upload" className="cursor-pointer">
+                    <span className="text-blue-600 font-bold hover:underline">Click to upload</span>
+                    <span className="text-slate-500 font-medium"> or drag and drop</span>
+                    <input
+                      id="file-upload"
+                      type="file"
+                      accept=".csv, text/csv"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="text-xs text-slate-400 mt-2 font-medium">CSV files only (Max 5MB)</p>
+                </div>
+              </div>
+
+              {importFile && (
+                <div className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                   <div className="flex items-center overflow-hidden">
+                     <div className="bg-green-100 p-2 rounded-lg text-green-700 mr-3 shrink-0">
+                       <span className="text-xs font-bold">CSV</span>
+                     </div>
+                     <div className="min-w-0">
+                       <p className="text-sm font-semibold text-slate-900 truncate">{importFile.name}</p>
+                       <p className="text-xs text-slate-500">{(importFile.size / 1024).toFixed(1)} KB</p>
+                     </div>
+                   </div>
+                   <button 
+                    onClick={() => {setImportFile(null); document.querySelector('#file-upload').value=''}} 
+                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                   >
+                      <Trash2 className="w-4 h-4" />
+                   </button>
+                </div>
+              )}
+              
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                <h5 className="text-amber-800 text-xs font-bold uppercase mb-2">Required CSV Format</h5>
+                <code className="block bg-white border border-amber-100 rounded p-2 text-xs text-slate-600 font-mono">
+                  regno, marksObtained<br/>
+                  REG101, 85
+                </code>
+              </div>
+            </div>
+          </ModalWrapper>
+        )}
+
+        {/* ================= MAIN CONTENT ================= */}
+
+        {/* 1. Course Partitions Card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xl font-bold text-slate-900">Course Partitions</h3>
+            <div>
+              <h3 className="text-xl font-bold text-slate-900">Course Partitions</h3>
+              <p className="text-sm text-slate-500 mt-1">Overview of CO distribution</p>
+            </div>
             <button
               onClick={() => setShowPartitionModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all duration-200 font-medium shadow-md"
+              className="px-5 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 hover:border-slate-400 transition-all font-semibold shadow-sm text-sm"
             >
               Edit Partitions
             </button>
           </div>
-          <div className="grid grid-cols-3 gap-6">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl">
-              <p className="text-sm font-medium text-blue-600 mb-2">Theory COs</p>
-              <p className="text-3xl font-bold text-blue-800">{partitions.theoryCount}</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-gradient-to-br from-blue-50 to-white border border-blue-100 p-6 rounded-2xl shadow-sm">
+              <p className="text-sm font-semibold text-blue-600 mb-1 uppercase tracking-wider">Theory COs</p>
+              <p className="text-4xl font-extrabold text-blue-900">{partitions.theoryCount}</p>
             </div>
-            <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl">
-              <p className="text-sm font-medium text-green-600 mb-2">Practical COs</p>
-              <p className="text-3xl font-bold text-green-800">{partitions.practicalCount}</p>
+            <div className="bg-gradient-to-br from-green-50 to-white border border-green-100 p-6 rounded-2xl shadow-sm">
+              <p className="text-sm font-semibold text-green-600 mb-1 uppercase tracking-wider">Practical COs</p>
+              <p className="text-4xl font-extrabold text-green-900">{partitions.practicalCount}</p>
             </div>
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl">
-              <p className="text-sm font-medium text-purple-600 mb-2">Experiential COs</p>
-              <p className="text-3xl font-bold text-purple-800">{partitions.experientialCount}</p>
+            <div className="bg-gradient-to-br from-purple-50 to-white border border-purple-100 p-6 rounded-2xl shadow-sm">
+              <p className="text-sm font-semibold text-purple-600 mb-1 uppercase tracking-wider">Experiential COs</p>
+              <p className="text-4xl font-extrabold text-purple-900">{partitions.experientialCount}</p>
             </div>
           </div>
         </div>
 
-        {/* Course Outcomes */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 border border-slate-100">
+        {/* 2. Course Outcomes List */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
           <h3 className="text-xl font-bold text-slate-900 mb-6">Course Outcomes (COs)</h3>
           <div className="space-y-4">
             {courseOutcomes.map((co) => (
-              <div key={co.coId} className="border border-slate-200 rounded-xl overflow-hidden">
-                <div className="flex justify-between items-center p-6 bg-slate-50">
+              <div key={co.coId} className="border border-slate-200 rounded-2xl overflow-hidden transition-all hover:border-blue-300">
+                <div className="flex justify-between items-center p-5 bg-slate-50/50 cursor-pointer" onClick={() => toggleCoCollapse(co.coId)}>
                   <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => toggleCoCollapse(co.coId)}
-                      className="p-2 rounded-lg text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-all duration-200"
-                    >
+                    <button className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all">
                       {coCollapsed[co.coId] ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
                     </button>
                     <div>
-                      <span className="font-semibold text-slate-900">{co.coNumber}</span>
-                      <span className="ml-2 px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">({co.coType})</span>
+                      <span className="font-bold text-slate-900 text-lg">{co.coNumber}</span>
+                      <span className="ml-3 px-3 py-1 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-full shadow-sm">
+                        {co.coType}
+                      </span>
                     </div>
                   </div>
                   <button
-                    onClick={() => handleExportCoWiseCsv(co.coId)}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all duration-200 flex items-center gap-2 font-medium shadow-md"
+                    onClick={(e) => { e.stopPropagation(); handleExportCoWiseCsv(co.coId); }}
+                    className="px-4 py-2 text-sm bg-white border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition-all flex items-center gap-2 font-semibold shadow-sm"
                   >
                     <Download className="w-4 h-4" />
                     Export
                   </button>
                 </div>
                 {!coCollapsed[co.coId] && (
-                  <div className="p-6 border-t border-slate-200">
-                    <h4 className="font-semibold text-slate-900 mb-4">Tools for {co.coNumber}</h4>
-                    <div className="space-y-3">
-                      {co.tools?.map((tool) => (
-                        <div key={tool.toolId} className="bg-slate-50 p-4 rounded-lg">
-                          <div className="flex justify-between items-center">
-                            <span className="font-medium text-slate-900">{tool.toolName}</span>
-                            <div className="flex gap-4 text-sm text-slate-600">
-                              <span>Weightage: <strong className="text-blue-600">{tool.weightage}%</strong></span>
-                              <span>Max Marks: <strong className="text-green-600">{tool.maxMarks}</strong></span>
+                  <div className="p-6 border-t border-slate-200 bg-white animate-in slide-in-from-top-2 duration-200">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="font-bold text-slate-800">Tools configured</h4>
+                      <span className="text-xs text-slate-500 font-medium bg-slate-100 px-2 py-1 rounded">Read-only view</span>
+                    </div>
+                    {(!co.tools || co.tools.length === 0) ? (
+                      <p className="text-slate-400 text-sm italic">No tools configured yet.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {co.tools.map((tool) => (
+                          <div key={tool.toolId} className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                            <span className="font-bold text-slate-900 block mb-2">{tool.toolName}</span>
+                            <div className="flex justify-between text-sm text-slate-600">
+                              <span>Weight: <span className="font-semibold text-blue-600">{tool.weightage}%</span></span>
+                              <span>Max: <span className="font-semibold text-green-600">{tool.maxMarks}</span></span>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                      <p className="text-sm font-medium">
-                        Total Weightage: <span className="text-blue-700 font-bold">{calculateToolWeightageSum(co.tools || [])}%</span>
-                        {calculateToolWeightageSum(co.tools || []) !== 100 && co.tools?.length > 0 && (
-                          <span className="text-red-500 ml-2 font-semibold">(Must be 100% to save)</span>
-                        )}
-                      </p>
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-5 pt-4 border-t border-slate-100 flex items-center gap-2">
+                      <p className="text-sm font-medium text-slate-600">Total Weightage:</p> 
+                      <span className={`text-sm font-bold px-2 py-0.5 rounded ${calculateToolWeightageSum(co.tools || []) === 100 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {calculateToolWeightageSum(co.tools || [])}%
+                      </span>
                     </div>
                   </div>
                 )}
@@ -424,172 +606,75 @@ const MarksAllocation = () => {
           </div>
         </div>
 
-        {/* Tool Modal */}
-        {showToolModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg">
-              <h3 className="text-2xl font-bold text-slate-900 mb-6">{editingTool ? 'Edit Tool' : 'Add Tool'}</h3>
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Tool Name</label>
-                  <input
-                    type="text"
-                    value={newTool.toolName}
-                    onChange={(e) => setNewTool({ ...newTool, toolName: e.target.value })}
-                    className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
-                    placeholder="Enter tool name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Weightage (%)</label>
-                  <input
-                    type="number"
-                    value={newTool.weightage}
-                    onChange={(e) => setNewTool({ ...newTool, weightage: parseInt(e.target.value) || 0 })}
-                    className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
-                    min="0"
-                    max="100"
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Max Marks</label>
-                  <input
-                    type="number"
-                    value={newTool.maxMarks}
-                    onChange={(e) => setNewTool({ ...newTool, maxMarks: parseInt(e.target.value) || 100 })}
-                    className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200"
-                    min="1"
-                    placeholder="100"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 mt-8">
-                <button
-                  onClick={() => setShowToolModal(false)}
-                  className="px-6 py-3 bg-slate-200 text-slate-700 rounded-xl hover:bg-slate-300 transition-all duration-200 font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddTempToolClick}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all duration-200 font-medium shadow-lg"
-                >
-                  {editingTool ? 'Update' : 'Add'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Import Modal */}
-        {showImportModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg">
-              <h3 className="text-2xl font-bold text-slate-900 mb-6">Import Marks for {selectedTool?.toolName}</h3>
-              <div className="mb-6">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Select CSV File</label>
-                <input
-                  type="file"
-                  accept=".csv, text/csv"
-                  onChange={handleFileChange}
-                  className="w-full p-3 border-2 border-dashed border-slate-300 rounded-xl hover:border-blue-400 transition-all duration-200"
-                />
-                {importFile && (
-                  <p className="mt-2 text-sm text-slate-600">
-                    Selected: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
-                  </p>
-                )}
-                <p className="mt-2 text-xs text-slate-500">
-                  Expected CSV format: regNo (or regno),marks (e.g., REG001,85)
-                </p>
-              </div>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setShowImportModal(false);
-                    setImportFile(null);
-                    document.querySelector('input[type="file"]').value = '';
-                  }}
-                  className="px-6 py-3 bg-slate-200 text-slate-700 rounded-xl hover:bg-slate-300 transition-all duration-200 font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleImportClick}
-                  disabled={!importFile}
-                  className={`px-6 py-3 rounded-xl font-medium shadow-lg transition-all duration-200 flex items-center gap-2 ${
-                    importFile
-                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                      : 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                  }`}
-                >
-                  <Upload className="w-4 h-4" />
-                  Import
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Mark Entry Table */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 border border-slate-100">
-          <h3 className="text-xl font-bold text-slate-900 mb-6">Mark Entry</h3>
+        {/* 3. Mark Entry Section */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+          <h3 className="text-xl font-bold text-slate-900 mb-6">Mark Entry & Configuration</h3>
           
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-slate-700 mb-3">Select CO</label>
-            <select
-              value={selectedCO?.coId || ''}
-              onChange={handleSelectCO}
-              className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200 bg-white"
-            >
-              <option value="">Select a CO</option>
-              {courseOutcomes.map(co => (
-                <option key={co.coId} value={co.coId}>{co.coNumber} ({co.coType})</option>
-              ))}
-            </select>
+          <div className="mb-8">
+            <label className="block text-sm font-semibold text-slate-700 mb-3">Select Course Outcome to Manage</label>
+            <div className="relative">
+              <select
+                value={selectedCO?.coId || ''}
+                onChange={handleSelectCO}
+                className="w-full appearance-none p-4 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all bg-white font-medium text-slate-700"
+              >
+                <option value="">-- Choose a CO --</option>
+                {courseOutcomes.map(co => (
+                  <option key={co.coId} value={co.coId}>{co.coNumber} - {co.coType}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none w-5 h-5" />
+            </div>
           </div>
 
           {selectedCO && (
-            <>
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
               {/* Tools Management */}
-              <div className="mb-8 p-6 bg-slate-50 rounded-xl">
-                <div className="flex justify-between items-center mb-6">
-                  <h4 className="text-lg font-semibold text-slate-900">Tools for {selectedCO.coNumber}</h4>
-                  <div className="flex gap-3">
+              <div className="mb-8 p-6 bg-slate-50 rounded-2xl border border-slate-200">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                  <div>
+                    <h4 className="text-lg font-bold text-slate-900">Tools for {selectedCO.coNumber}</h4>
+                    <p className="text-sm text-slate-500">Manage assessment tools and weightage</p>
+                  </div>
+                  <div className="flex gap-3 w-full sm:w-auto">
                     <button
                       onClick={() => {
                         setEditingTool(null);
                         setNewTool({ toolName: '', weightage: 0, maxMarks: 100 });
                         setShowToolModal(true);
                       }}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all duration-200 flex items-center gap-2 font-medium shadow-md"
+                      className="flex-1 sm:flex-none justify-center px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 font-semibold shadow-md shadow-blue-200"
                     >
                       <Plus className="w-4 h-4" />
                       Add Tool
                     </button>
                     <button
                       onClick={() => handleSaveToolsForCOClick(selectedCO.coId)}
-                      className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all duration-200 flex items-center gap-2 font-medium shadow-md"
+                      className="flex-1 sm:flex-none justify-center px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all flex items-center gap-2 font-semibold shadow-md shadow-green-200"
                     >
                       <Save className="w-4 h-4" />
-                      Save
+                      Save Config
                     </button>
                   </div>
                 </div>
 
                 <div className="space-y-3">
+                  {tempTools.length === 0 && (
+                    <div className="text-center py-8 text-slate-400 bg-white rounded-xl border border-dashed border-slate-300">
+                      No tools added yet. Click "Add Tool" to start.
+                    </div>
+                  )}
                   {tempTools.map((tool) => (
-                    <div key={tool.uniqueId} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                    <div key={tool.uniqueId} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:border-blue-300 transition-colors group">
                       <div className="flex justify-between items-center">
                         <div>
-                          <span className="font-medium text-slate-900">{tool.toolName}</span>
-                          <div className="flex gap-4 text-sm text-slate-600 mt-1">
-                            <span>Weightage: <strong className="text-blue-600">{tool.weightage}%</strong></span>
-                            <span>Max Marks: <strong className="text-green-600">{tool.maxMarks}</strong></span>
+                          <span className="font-bold text-slate-900">{tool.toolName}</span>
+                          <div className="flex gap-4 text-sm text-slate-500 mt-1 font-medium">
+                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div> {tool.weightage}% Weight</span>
+                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500"></div> {tool.maxMarks} Marks</span>
                           </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={() => {
                               setEditingTool(tool);
@@ -602,15 +687,10 @@ const MarksAllocation = () => {
                               });
                               setShowToolModal(true);
                             }}
-                            className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-all duration-200"
+                            className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-blue-100 hover:text-blue-600 transition-all"
+                            title="Edit"
                           >
                             <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteToolClick(tool)}
-                            className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all duration-200"
-                          >
-                            <Trash2 className="w-4 h-4" />
                           </button>
                           {tool.toolId && (
                             <button
@@ -618,94 +698,104 @@ const MarksAllocation = () => {
                                 setSelectedTool(tool);
                                 setShowImportModal(true);
                               }}
-                              className="p-2 bg-purple-100 text-purple-600 rounded-lg hover:bg-purple-200 transition-all duration-200"
+                              className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-purple-100 hover:text-purple-600 transition-all"
+                              title="Import Marks"
                             >
                               <Upload className="w-4 h-4" />
                             </button>
                           )}
+                          <button
+                            onClick={() => handleDeleteToolClick(tool)}
+                            className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-red-100 hover:text-red-600 transition-all"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                  <p className="text-sm font-medium">
-                    Total Weightage: <span className="text-blue-700 font-bold">{calculateToolWeightageSum(tempTools)}%</span>
-                    {calculateToolWeightageSum(tempTools) !== 100 && (
-                      <span className="text-red-500 ml-2 font-semibold">(Must be 100% to save)</span>
-                    )}
-                  </p>
+                <div className="mt-4 flex items-center justify-end">
+                   <div className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${calculateToolWeightageSum(tempTools) === 100 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      Total Weightage: {calculateToolWeightageSum(tempTools)}%
+                      {calculateToolWeightageSum(tempTools) !== 100 && <span className="font-normal opacity-80">(Must be 100%)</span>}
+                   </div>
                 </div>
               </div>
 
               {/* Marks Table */}
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-slate-100">
-                      <th className="border-b border-slate-200 p-4 text-left font-semibold text-slate-900">Name</th>
-                      <th className="border-b border-slate-200 p-4 text-left font-semibold text-slate-900">Reg No</th>
-                      {selectedCO.tools?.map(tool => (
-                        <th key={tool.toolId} className="border-b border-slate-200 p-4 text-center font-semibold text-slate-900">
-                          {tool.toolName}
-                          <div className="text-xs text-slate-500 mt-1">({tool.maxMarks})</div>
-                        </th>
-                      ))}
-                      <th className="border-b border-slate-200 p-4 text-center font-semibold text-slate-900">Consolidated</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {students.map((student, index) => (
-                      <tr key={student.regno} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                        <td className="border-b border-slate-200 p-4 font-medium text-slate-900">{student.name}</td>
-                        <td className="border-b border-slate-200 p-4 text-slate-600">{student.regno}</td>
+              <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200">
+                        <th className="p-4 text-left font-bold text-slate-700 text-sm uppercase tracking-wide">Student Name</th>
+                        <th className="p-4 text-left font-bold text-slate-700 text-sm uppercase tracking-wide">Reg No</th>
                         {selectedCO.tools?.map(tool => (
-                          <td key={tool.toolId} className="border-b border-slate-200 p-4">
-                            <input
-                              type="number"
-                              value={student.marks?.[tool.toolId] ?? ''}
-                              onChange={(e) => {
-                                const rawValue = e.target.value;
-                                let value = null;
-                                if (rawValue !== '') {
-                                  const num = parseInt(rawValue);
-                                  if (!isNaN(num) && num >= 0 && num <= tool.maxMarks) {
-                                    value = num;
-                                  } else {
-                                    return; // Invalid, don't update
-                                  }
-                                }
-                                updateStudentMark(tool.toolId, student.regno, value);
-                              }}
-                              className="w-full p-2 border-2 border-slate-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-center"
-                              min="0"
-                              max={tool.maxMarks}
-                              placeholder="0"
-                            />
-                          </td>
+                          <th key={tool.toolId} className="p-4 text-center font-bold text-slate-700 text-sm uppercase tracking-wide">
+                            <div className="flex flex-col items-center">
+                              {tool.toolName}
+                              <span className="text-[10px] bg-white border px-1.5 py-0.5 rounded mt-1 normal-case text-slate-500">Max: {tool.maxMarks}</span>
+                            </div>
+                          </th>
                         ))}
-                        <td className="border-b border-slate-200 p-4 text-center">
-                          <div className="inline-flex px-3 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold">
-                            {calculateConsolidated(student, selectedCO).toFixed(2)}%
-                          </div>
-                        </td>
+                        <th className="p-4 text-center font-bold text-slate-700 text-sm uppercase tracking-wide">Consolidated</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {students.map((student) => (
+                        <tr key={student.regno} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-4 font-semibold text-slate-900">{student.name}</td>
+                          <td className="p-4 text-slate-500 font-mono text-sm">{student.regno}</td>
+                          {selectedCO.tools?.map(tool => (
+                            <td key={tool.toolId} className="p-4">
+                              <input
+                                type="number"
+                                value={student.marks?.[tool.toolId] ?? ''}
+                                onChange={(e) => {
+                                  const rawValue = e.target.value;
+                                  let value = null;
+                                  if (rawValue !== '') {
+                                    const num = parseInt(rawValue);
+                                    if (!isNaN(num) && num >= 0 && num <= tool.maxMarks) {
+                                      value = num;
+                                    } else {
+                                      return;
+                                    }
+                                  }
+                                  updateStudentMark(tool.toolId, student.regno, value);
+                                }}
+                                className="w-full sm:w-24 mx-auto block p-2 border border-slate-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all text-center font-medium text-slate-900"
+                                min="0"
+                                max={tool.maxMarks}
+                                placeholder="-"
+                              />
+                            </td>
+                          ))}
+                          <td className="p-4 text-center">
+                            <div className="inline-flex px-3 py-1 bg-slate-100 text-slate-700 rounded-lg font-bold text-sm border border-slate-200">
+                              {calculateConsolidated(student, selectedCO).toFixed(2)}%
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
               
-              <div className="mt-6 flex justify-end">
+              <div className="mt-8 flex justify-end">
                 <button
                   onClick={handleSaveToolMarksClick}
-                  className="px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all duration-200 font-medium shadow-lg flex items-center gap-2"
+                  className="px-8 py-4 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-all font-bold shadow-xl flex items-center gap-3 transform active:scale-95"
                 >
                   <Save className="w-5 h-5" />
-                  Save Marks
+                  Save All Marks
                 </button>
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>

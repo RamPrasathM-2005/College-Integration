@@ -918,8 +918,8 @@ export const exportCoWiseCsv = catchAsync(async (req, res) => {
       `SELECT co.courseId, c.courseCode 
        FROM CourseOutcome co 
        JOIN Course c ON co.courseId = c.courseId 
-       WHERE co.coId = ? AND c.courseCode = ? AND c.isActive = "YES"`,
-      [coId, 'CSE12003']
+       WHERE co.coId = ? AND c.isActive = "YES"`,
+      [coId]
     );
     if (courseInfo.length === 0) {
       return res.status(404).json({ 
@@ -1372,39 +1372,23 @@ export const exportCourseWiseCsv = catchAsync(async (req, res) => {
     });
   }
 });
+
 export const getMyCourses = catchAsync(async (req, res) => {
-  const userId = getStaffId(req); // Returns Userid (e.g., '2')
-  console.log('getMyCourses - userId:', userId, 'userId type:', typeof userId);
+  const userId = getStaffId(req);
 
   if (!userId) {
-    console.log('getMyCourses - Invalid user ID');
-    return res.status(401).json({ 
-      status: 'error', 
-      message: 'User not authenticated or Userid missing', 
-      data: [] 
-    });
+    return res.status(401).json({ status: 'error', message: 'User not authenticated', data: [] });
   }
 
-  const [courses] = await pool.query(
+  // 1. Fetch Raw Rows (Same as before)
+  const [rows] = await pool.query(
     `SELECT 
-       sc.staffCourseId,
-       sc.Userid AS staffUserId,
-       u.staffId,
-       c.courseCode AS id,
-       c.courseTitle AS title,
-       sc.sectionId,
-       s.sectionName,
-       sc.Deptid,
-       d.Deptname AS departmentName,
-       CONCAT(
-         b.batchYears, ' ',
-         CASE WHEN sem.semesterNumber % 2 = 1 THEN 'ODD' ELSE 'EVEN' END,
-         ' SEMESTER'
-       ) AS semester,
-       sem.semesterNumber,
-       b.degree,
-       b.branch,
-       b.batch
+       sc.staffCourseId, sc.Userid AS staffUserId, u.staffId,
+       c.courseId, c.courseCode, c.courseTitle,
+       sc.sectionId, s.sectionName,
+       sc.Deptid, d.Deptname, d.Deptacronym,
+       b.batchYears, b.degree, b.branch, b.batch,
+       sem.semesterNumber
      FROM StaffCourse sc
      JOIN Course c ON sc.courseId = c.courseId
      JOIN Section s ON sc.sectionId = s.sectionId
@@ -1412,20 +1396,64 @@ export const getMyCourses = catchAsync(async (req, res) => {
      JOIN Semester sem ON c.semesterId = sem.semesterId
      JOIN Batch b ON sem.batchId = b.batchId
      JOIN users u ON sc.Userid = u.Userid
-     WHERE sc.Userid = ?
-       AND c.isActive = 'YES'
-       AND s.isActive = 'YES'
-       AND sem.isActive = 'YES'
-       AND b.isActive = 'YES'
+     WHERE sc.Userid = ? AND c.isActive = 'YES'
      ORDER BY c.courseTitle`,
     [userId]
   );
-  console.log('getMyCourses - Fetched courses:', courses);
+
+  // 2. Grouping Logic
+  const groupedMap = new Map();
+
+  rows.forEach(row => {
+    // Create a unique key based on Title and Batch (so different batches with same subject name don't mix)
+    // We remove branch from the key so CSE and IT get merged
+    const key = `${row.courseTitle}-${row.batchYears}-${row.semesterNumber}`;
+
+    if (!groupedMap.has(key)) {
+      groupedMap.set(key, {
+        // Base details (common across merged courses)
+        title: row.courseTitle,
+        semester: `${row.batchYears} - Sem ${row.semesterNumber}`,
+        degree: row.degree, // e.g., B.E.
+        batch: row.batch,
+        
+        // Arrays for specific details
+        isMerged: false,
+        courseCodes: [row.courseCode], // Keep list: ['CSE233', 'IT32']
+        courseIds: [row.courseId],     // Keep list: [101, 204]
+        sectionIds: [row.sectionId],   // Keep list: [5, 8]
+        departments: [row.Deptacronym], // Keep list: ['CSE', 'IT']
+        
+        // Composite IDs for URL generation (Joined by '_')
+        id: row.courseCode, // Default to single
+        compositeSectionId: String(row.sectionId),
+        
+        // Visual Merged Label
+        displayCode: row.courseCode
+      });
+    } else {
+      // We found a duplicate! Merge it.
+      const existing = groupedMap.get(key);
+      
+      existing.isMerged = true;
+      if (!existing.courseCodes.includes(row.courseCode)) existing.courseCodes.push(row.courseCode);
+      if (!existing.courseIds.includes(row.courseId)) existing.courseIds.push(row.courseId);
+      if (!existing.sectionIds.includes(row.sectionId)) existing.sectionIds.push(row.sectionId);
+      if (!existing.departments.includes(row.Deptacronym)) existing.departments.push(row.Deptacronym);
+      
+      // Update Composite IDs
+      existing.id = existing.courseCodes.join('_'); // Becomes "CSE233_IT32"
+      existing.compositeSectionId = existing.sectionIds.join('_'); // Becomes "5_8"
+      existing.displayCode = existing.courseCodes.join(' / '); // Becomes "CSE233 / IT32"
+    }
+  });
+
+  const mergedCourses = Array.from(groupedMap.values());
 
   res.json({ 
     status: 'success', 
-    results: courses.length, 
-    data: courses 
+    results: mergedCourses.length, 
+    data: mergedCourses 
   });
 });
 

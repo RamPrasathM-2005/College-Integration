@@ -1,33 +1,31 @@
-import React, { useState, useEffect, Component } from 'react';
-import { Search } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  Search, 
+  Filter, 
+  LayoutGrid, 
+  List, 
+  GraduationCap, 
+  Users, 
+  Calendar, 
+  BookOpen,
+  ArrowRight,
+  Plus
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser } from '../../services/authService';
 import { getMyCourses } from '../../services/staffService';
 
-// Error Boundary Component
-class ErrorBoundary extends Component {
+// --- Error Boundary ---
+class ErrorBoundary extends React.Component {
   state = { hasError: false, error: null };
-
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error, errorInfo) {
-    console.error('Error caught by boundary:', error, errorInfo);
-  }
-
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, errorInfo) { console.error('Boundary:', error, errorInfo); }
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-6 text-center text-red-500">
-          <h2>Something went wrong.</h2>
-          <p>{this.state.error.message}</p>
-          <button
-            onClick={() => this.setState({ hasError: false, error: null })}
-            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
-            Try Again
-          </button>
+        <div className="p-8 text-center bg-red-50 rounded-xl border border-red-100 m-6">
+          <p className="text-red-600 font-medium">Something went wrong loading courses.</p>
+          <button onClick={() => this.setState({ hasError: false, error: null })} className="mt-2 text-sm text-red-500 underline">Try Again</button>
         </div>
       );
     }
@@ -35,42 +33,77 @@ class ErrorBoundary extends Component {
   }
 }
 
+// --- Professional Theme Generator ---
+// Returns elegant gradients instead of flat colors for a "unique" look
+const getCourseTheme = (index) => {
+  const themes = [
+    { 
+      gradient: 'from-blue-600 to-indigo-700', 
+      shadow: 'shadow-blue-200',
+      badge: 'bg-blue-500/30' 
+    },
+    { 
+      gradient: 'from-emerald-500 to-teal-700', 
+      shadow: 'shadow-emerald-200',
+      badge: 'bg-emerald-500/30' 
+    },
+    { 
+      gradient: 'from-violet-600 to-purple-800', 
+      shadow: 'shadow-violet-200',
+      badge: 'bg-violet-500/30' 
+    },
+    { 
+      gradient: 'from-slate-700 to-slate-900', 
+      shadow: 'shadow-slate-200',
+      badge: 'bg-slate-600/50' 
+    },
+    { 
+      gradient: 'from-rose-500 to-pink-700', 
+      shadow: 'shadow-rose-200',
+      badge: 'bg-rose-500/30' 
+    },
+    { 
+      gradient: 'from-amber-500 to-orange-700', 
+      shadow: 'shadow-amber-200',
+      badge: 'bg-amber-500/30' 
+    },
+  ];
+  return themes[index % themes.length];
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('In progress');
-  const [sortBy, setSortBy] = useState('Sort by name');
-  const [viewMode, setViewMode] = useState('Summary');
+  const [viewMode, setViewMode] = useState('Card'); // 'Card' or 'List'
+  const [statusFilter, setStatusFilter] = useState('Active');
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const user = getCurrentUser();
 
-  const colors = ['bg-purple-500', 'bg-gray-400', 'bg-yellow-500', 'bg-blue-500', 'bg-green-500', 'bg-red-500'];
-
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        if (!user?.staffId) {
-          throw new Error('Staff ID not found in user data');
-        }
+        if (!user?.staffId) { setLoading(false); return; }
+        
         const courseList = await getMyCourses(user.staffId);
-        // Filter out invalid courses and map with fallbacks
+        
         const validCourses = Array.isArray(courseList)
-          ? courseList
-              .filter(course => course && typeof course === 'object')
-              .map((course, index) => ({
-                ...course,
-                id: course.id || `course-${index}`,
-                title: course.title || 'Untitled Course',
-                bgColor: colors[index % colors.length],
-                semester:  course.semester || 'Unknown Semester',
-                degree: course.degree || 'Unknown Degree',
-                branch: course.branch || 'Unknown Branch',
-                batch: course.batch || 'Unknown Batch',
-              }))
+          ? courseList.filter(c => c && typeof c === 'object').map((course, index) => ({
+              ...course,
+              id: course.id || `course-${index}`,
+              displayId: course.displayCode || course.id,
+              title: course.title || 'Untitled Course',
+              semester: course.semester || 'N/A',
+              degree: course.degree || '',
+              branch: course.branch || (course.departments ? course.departments.join(' / ') : 'General'),
+              batch: course.batch || 'N/A',
+              sectionName: course.sectionName || '',
+              theme: getCourseTheme(index), // Assign theme
+            }))
           : [];
+
         setCourses(validCourses);
       } catch (err) {
         setError(err.message || 'Failed to load courses');
@@ -79,120 +112,203 @@ const Dashboard = () => {
       }
     };
     fetchCourses();
-  }, []);
+  }, [user?.staffId]);
 
-  let filteredCourses = courses.filter(course => {
-    if (!course || typeof course !== 'object') return false;
-    const title = course.title || '';
-    const id = course.id || '';
-    return title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           id.toLowerCase().includes(searchQuery.toLowerCase());
-  });
-
-  filteredCourses.sort((a, b) => {
-    if (!a?.title || !b?.title) return 0;
-    if (sortBy === 'Sort by name') return a.title.localeCompare(b.title);
-    return 0;
-  });
+  const filteredCourses = courses.filter((course) => {
+    const query = searchQuery.toLowerCase();
+    return (
+      (course.title || '').toLowerCase().includes(query) || 
+      (course.displayId || '').toLowerCase().includes(query)
+    );
+  }).sort((a, b) => a.title.localeCompare(b.title));
 
   const handleCourseClick = (course) => {
-    if (course && course.id) {
-      navigate(`/staff/options/${course.id}`, { state: { course } });
-    }
+    if (course?.id) navigate(`/staff/options/${course.id}`, { state: { course } });
   };
 
   if (loading) {
-    return <div className="p-6 text-center">Loading courses...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
   }
 
   return (
     <ErrorBoundary>
-      <div className="p-6 bg-gray-100 min-h-screen">
-        <header className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
-          {/* <h1 className="text-2xl font-bold text-gray-900">Hi, {user?.name.toUpperCase()}! 👋</h1> */}
-        </header>
-
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold text-blue-700">Course Overview</h2>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-6 flex flex-col sm:flex-row sm:items-center gap-4">
-          <select
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-auto"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="In progress">In progress</option>
-            <option value="All">All courses</option>
-            <option value="Completed">Completed</option>
-            <option value="Not started">Not started</option>
-          </select>
-
-          <div className="flex-1 relative w-full">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search"
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          <select
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-auto"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-          >
-            <option value="Sort by name">Sort by name</option>
-          </select>
-
-          <select
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-auto"
-            value={viewMode}
-            onChange={(e) => setViewMode(e.target.value)}
-          >
-            <option value="Summary">Summary</option>
-            <option value="Card">Card</option>
-            <option value="List">List</option>
-          </select>
-        </div>
-
-        {error && <p className="text-red-500 text-center mb-4">{error}</p>}
-
-        <div className={viewMode === 'Card' ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4' : 'space-y-4'}>
-          {filteredCourses.map((course) => (
-            <div
-              key={course.id}
-              onClick={() => handleCourseClick(course)}
-              className={`bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow p-6 cursor-pointer ${
-                viewMode === 'Card' ? 'flex flex-col items-start' : ''
-              }`}
+      <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
+        
+        {/* --- Top Header Area --- */}
+        <div className="bg-white border-b border-gray-200 px-6 py-5 sticky top-0 z-30 shadow-sm">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">My Curriculum</h1>
+              <p className="text-sm text-slate-500">Manage your active courses and assessments</p>
+            </div>
+            
+            <button
+              onClick={() => navigate('/staff/request-courses')}
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition-all shadow-md hover:shadow-lg active:scale-95"
             >
-              <div className={`w-16 h-16 ${course.bgColor} rounded-lg flex-shrink-0 mb-4`}></div>
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-medium text-blue-600 hover:text-blue-700 mb-1">
-                      {course.id} - {course.title} ({course.branch} {course.degree} {course.batch} Batch - {course.sectionName})
-                    </h3>
-                    <p className="text-sm text-gray-600 mb-3">{course.semester}</p>
-                  </div>
-                </div>
+              <Plus className="w-5 h-5" />
+              <span>Request Course</span>
+            </button>
+          </div>
+        </div>
+
+        {/* --- Toolbar (Search & Filter) --- */}
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="flex flex-col md:flex-row gap-4 mb-8">
+            {/* Search Bar */}
+            <div className="flex-1 relative group">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+              </div>
+              <input
+                type="text"
+                className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all shadow-sm"
+                placeholder="Search course name or code..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            {/* Filters */}
+            <div className="flex gap-3">
+              <div className="relative">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="appearance-none pl-4 pr-10 py-3 border border-gray-200 rounded-xl bg-white text-gray-700 font-medium hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer shadow-sm"
+                >
+                  <option>Active</option>
+                  <option>Archived</option>
+                  <option>All</option>
+                </select>
+                <Filter className="w-4 h-4 text-gray-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-1 flex shadow-sm">
+                <button
+                  onClick={() => setViewMode('Card')}
+                  className={`p-2 rounded-lg transition-all ${viewMode === 'Card' ? 'bg-gray-100 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  <LayoutGrid className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => setViewMode('List')}
+                  className={`p-2 rounded-lg transition-all ${viewMode === 'List' ? 'bg-gray-100 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  <List className="w-5 h-5" />
+                </button>
               </div>
             </div>
-          ))}
-        </div>
-
-        {filteredCourses.length === 0 && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <Search className="w-8 h-8 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No courses found</h3>
-            <p className="text-gray-600">Try adjusting your search criteria.</p>
           </div>
-        )}
+
+          {/* --- Error Message --- */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-100 flex justify-between items-center">
+              <span>{error}</span>
+              <button onClick={() => setError('')} className="text-sm font-bold hover:underline">Dismiss</button>
+            </div>
+          )}
+
+          {/* --- Content Grid --- */}
+          {filteredCourses.length === 0 ? (
+            <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-gray-300">
+              <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900">No courses found</h3>
+              <p className="text-gray-500 mt-1">Try adjusting your search or filters.</p>
+            </div>
+          ) : (
+            <div className={viewMode === 'Card' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "space-y-4"}>
+              {filteredCourses.map((course) => (
+                viewMode === 'Card' ? (
+                  // === CARD VIEW ===
+                  <div
+                    key={course.id}
+                    onClick={() => handleCourseClick(course)}
+                    className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer border border-gray-100 relative flex flex-col h-full hover:-translate-y-1"
+                  >
+                    {/* Unique Professional Banner */}
+                    <div className={`relative h-36 bg-gradient-to-br ${course.theme.gradient} p-5 flex flex-col justify-between overflow-hidden`}>
+                      {/* Abstract Decoration */}
+                      <div className="absolute -right-4 -top-8 w-24 h-24 rounded-full bg-white opacity-10 blur-xl"></div>
+                      <div className="absolute left-10 -bottom-10 w-32 h-32 rounded-full bg-white opacity-5 blur-2xl"></div>
+                      
+                      {/* Glass Badge for ID */}
+                      <div className="flex justify-between items-start z-10">
+                        <span className={`px-3 py-1 rounded-lg backdrop-blur-md ${course.theme.badge} border border-white/20 text-white text-xs font-bold tracking-wide shadow-sm`}>
+                          {course.displayId}
+                        </span>
+                        {course.sectionName && (
+                          <span className="bg-white/20 backdrop-blur-sm px-2 py-0.5 rounded text-white text-[10px] font-bold border border-white/10">
+                            SEC {course.sectionName}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Info Overlap Hint */}
+                      <div className="z-10 text-white/80 text-xs font-medium flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-2 group-hover:translate-y-0">
+                         View Details <ArrowRight className="w-3 h-3" />
+                      </div>
+                    </div>
+
+                    {/* Card Body */}
+                    <div className="p-5 flex-1 flex flex-col">
+                      <h3 className="text-lg font-bold text-slate-800 mb-1 leading-snug line-clamp-2 group-hover:text-blue-700 transition-colors">
+                        {course.title}
+                      </h3>
+                      
+                      <p className="text-xs text-slate-500 font-medium mb-4 uppercase tracking-wide">
+                        {course.degree} • {course.semester}
+                      </p>
+
+                      <div className="mt-auto space-y-2 border-t border-gray-50 pt-3">
+                        <div className="flex items-center text-sm text-slate-600">
+                           <Users className="w-4 h-4 mr-2 text-slate-400" />
+                           <span className="truncate">{course.branch}</span>
+                        </div>
+                        <div className="flex items-center text-sm text-slate-600">
+                           <Calendar className="w-4 h-4 mr-2 text-slate-400" />
+                           <span>Batch {course.batch}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  // === LIST VIEW (Clean & Linear) ===
+                  <div
+                    key={course.id}
+                    onClick={() => handleCourseClick(course)}
+                    className="group bg-white rounded-xl border border-gray-200 p-4 flex flex-col md:flex-row items-center gap-4 hover:shadow-md hover:border-blue-300 transition-all cursor-pointer"
+                  >
+                    {/* Small Colored Box */}
+                    <div className={`w-16 h-16 rounded-lg bg-gradient-to-br ${course.theme.gradient} flex items-center justify-center text-white font-bold text-xs shadow-sm shrink-0`}>
+                      {course.displayId.split('_')[0]}
+                    </div>
+
+                    <div className="flex-1 min-w-0 text-center md:text-left">
+                      <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-700 transition-colors truncate">
+                        {course.title}
+                      </h3>
+                      <div className="flex flex-wrap justify-center md:justify-start gap-x-4 gap-y-1 mt-1 text-sm text-slate-500">
+                        <span className="flex items-center gap-1"><GraduationCap className="w-3 h-3" /> {course.degree}</span>
+                        <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {course.branch}</span>
+                        <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> {course.semester}</span>
+                        {course.sectionName && <span className="text-blue-600 font-medium">Sec {course.sectionName}</span>}
+                      </div>
+                    </div>
+
+                    <div className="hidden md:block">
+                      <ArrowRight className="w-5 h-5 text-gray-300 group-hover:text-blue-500 transform group-hover:translate-x-1 transition-all" />
+                    </div>
+                  </div>
+                )
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </ErrorBoundary>
   );
