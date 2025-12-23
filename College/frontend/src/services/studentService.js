@@ -155,3 +155,24 @@ export const fetchUserId = async () => {
     throw new Error(error.response?.data?.message || "Failed to fetch Userid");
   }
 };
+
+
+export const fetchStudentAcademicIds = async () => {
+  try {
+    const response = await api.get("/student/academic-ids");
+    console.log("Academic IDs response:", response);
+
+    if (response.data.status === "success") {
+      return response.data.data; // { deptId, batchId, semesterId }
+    } else {
+      throw new Error(
+        response.data.message || "Failed to fetch academic IDs"
+      );
+    }
+  } catch (error) {
+    console.error("fetchStudentAcademicIds error:", error);
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch academic IDs"
+    );
+  }
+};

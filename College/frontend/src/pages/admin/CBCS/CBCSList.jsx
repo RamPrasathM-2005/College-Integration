@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom'; // Add this import
 import {
   Search,
   Filter,
@@ -26,6 +27,7 @@ import {
 import { api } from '../../../services/authService';
 
 const CBCSList = () => {
+  const navigate = useNavigate(); // Add this hook for navigation
   const [cbcsList, setCbcsList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -38,21 +40,43 @@ const CBCSList = () => {
   const [selectedCBCS, setSelectedCBCS] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [expandedRows, setExpandedRows] = useState({});
-
-  // Mock departments (you can fetch these from API)
-  const departments = [
-    { id: 1, name: 'Computer Science Engineering' },
-    { id: 2, name: 'Electronics Engineering' },
-    { id: 3, name: 'Mechanical Engineering' },
-    { id: 4, name: 'Civil Engineering' }
-  ];
-
-  // Mock batches (you can fetch these from API)
+  const [departments, setDepartments] = useState([]); // State for departments
+  const [loadingDepts, setLoadingDepts] = useState(false);
+  
+  // Mock batches (you can fetch these from API if needed)
   const batches = [
     { id: 1, name: '2023-2027' },
     { id: 2, name: '2022-2026' },
     { id: 3, name: '2021-2025' }
   ];
+
+  // Fetch departments from API
+  const fetchDepartments = async () => {
+    setLoadingDepts(true);
+    try {
+      const response = await api.get('/departments');
+      const data = response.data;
+      
+      if (data.success || data.status === 'success') {
+        // Handle both possible API response structures
+        const deptData = data.departments || data.data || [];
+        const formattedDepartments = deptData.map(dept => ({
+          id: dept.Deptid || dept.id,
+          name: dept.Deptname || dept.name,
+          acronym: dept.Deptacronym || dept.acronym
+        }));
+        setDepartments(formattedDepartments);
+      } else {
+        setError('Failed to fetch departments');
+      }
+    } catch (err) {
+      console.error('Error fetching departments:', err);
+      // Don't set error for departments if it fails, just use empty array
+      setDepartments([]);
+    } finally {
+      setLoadingDepts(false);
+    }
+  };
 
   // Fetch CBCS list using api instance
   const fetchCBCSList = async () => {
@@ -77,6 +101,7 @@ const CBCSList = () => {
 
   useEffect(() => {
     fetchCBCSList();
+    fetchDepartments(); // Fetch departments on component mount
   }, []);
 
   // Filter and search function
@@ -106,10 +131,9 @@ const CBCSList = () => {
     }));
   };
 
-  // View CBCS details
+  // Navigate to CBCS details page
   const viewCBCSDetails = (cbcs) => {
-    setSelectedCBCS(cbcs);
-    setShowDetails(true);
+    navigate(`../cbcs-detail/${cbcs.cbcs_id}`,{replace:false});
   };
 
   // Download allocation excel using the api instance base URL
@@ -118,9 +142,6 @@ const CBCSList = () => {
         alert("CBCS ID missing");
         return;
     }
-    // Note: window.location.href won't send auth headers. 
-    // If your backend requires a token for downloads, you usually need a specialized endpoint 
-    // or a temporary signed URL. Here we use the direct URL based on the API base.
     const downloadUrl = `${api.defaults.baseURL}/cbcs/${cbcs_id}/download-excel`;
     window.open(downloadUrl, '_blank');
   };
@@ -264,8 +285,11 @@ const CBCSList = () => {
                 value={filters.department}
                 onChange={(e) => setFilters({ ...filters, department: e.target.value })}
                 className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+                disabled={loadingDepts}
               >
-                <option value="all">All Departments</option>
+                <option value="all">
+                  {loadingDepts ? 'Loading departments...' : 'All Departments'}
+                </option>
                 {departments.map(dept => (
                   <option key={dept.id} value={dept.id}>{dept.name}</option>
                 ))}
@@ -419,7 +443,7 @@ const CBCSList = () => {
                               <button
                                 onClick={() => viewCBCSDetails(cbcs)}
                                 className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-all"
-                                title="System Logs & Details"
+                                title="View Full Details"
                               >
                                 <Eye className="h-4 w-4" />
                               </button>
@@ -511,7 +535,7 @@ const CBCSList = () => {
                                         onClick={() => viewCBCSDetails(cbcs)}
                                         className="flex-1 px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
                                       >
-                                        Full Audit Trail
+                                        Full Details Page
                                       </button>
                                     </div>
                                   </div>
@@ -530,299 +554,8 @@ const CBCSList = () => {
         )}
       </div>
 
-      {/* CBCS Details Modal Component */}
-      <AnimatePresence>
-        {showDetails && selectedCBCS && (
-          <CBCSDetails 
-            cbcs={selectedCBCS} 
-            onClose={() => setShowDetails(false)} 
-          />
-        )}
-      </AnimatePresence>
+      {/* REMOVED the CBCSDetails component since we're navigating to separate page */}
     </div>
-  );
-};
-
-/* -------------------------------------------------------------------------- */
-/*                          CBCS Details Sub-Component                        */
-/* -------------------------------------------------------------------------- */
-const CBCSDetails = ({ cbcs, onClose }) => {
-  const [loading, setLoading] = useState(false);
-  const [details, setDetails] = useState(null);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const fetchDetails = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        // Fetch detailed information using api instance
-        const response = await api.get(`/cbcs/getcbcs/${cbcs.cbcs_id}`);
-        const data = response.data;
-        if (data.success || data.status === 'success') {
-          setDetails(data.data);
-        } else {
-          setError('Failed to fetch entry-level details');
-        }
-      } catch (err) {
-        setError('Error establishing connection: ' + (err.response?.data?.message || err.message));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDetails();
-  }, [cbcs.cbcs_id]);
-
-  const formatDateLong = (dateString) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 overflow-y-auto"
-    >
-      <div className="flex items-center justify-center min-h-screen p-4">
-        {/* Animated Backdrop */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm"
-          onClick={onClose}
-        />
-
-        {/* Modal Surface */}
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0, y: 20 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden"
-        >
-          {/* Top Decorative Header */}
-          <div className="bg-indigo-600 px-8 py-6 relative">
-            <div className="absolute top-0 right-0 p-8 opacity-10">
-              <GraduationCap className="h-32 w-32 text-white" />
-            </div>
-            <div className="flex items-center justify-between relative z-10">
-              <div className="flex items-center">
-                <div className="bg-white/20 p-3 rounded-2xl mr-4 backdrop-blur-md">
-                  <GraduationCap className="h-8 w-8 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-black text-white tracking-tight">
-                    CBCS Master Record #{cbcs.cbcs_id}
-                  </h3>
-                  <p className="text-indigo-100 text-sm font-bold uppercase tracking-widest mt-1 opacity-80">
-                    System Audit Trail & Logic Detail
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={onClose}
-                className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all text-white"
-              >
-                <XCircle className="h-6 w-6" />
-              </button>
-            </div>
-          </div>
-
-          {/* Modal Main Body */}
-          <div className="px-8 py-8 max-h-[70vh] overflow-y-auto no-scrollbar">
-            {loading ? (
-              <div className="flex flex-col justify-center items-center h-80 space-y-4">
-                <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-indigo-600"></div>
-                <p className="font-black text-gray-400 uppercase tracking-widest text-sm">Parsing Object Data...</p>
-              </div>
-            ) : error ? (
-              <div className="text-center py-12 bg-red-50 rounded-2xl border border-red-100">
-                <AlertCircle className="mx-auto h-16 w-16 text-red-400 mb-4" />
-                <h4 className="text-lg font-black text-red-900 mb-2 uppercase">Data Fetch Conflict</h4>
-                <p className="text-red-600 max-w-xs mx-auto text-sm">{error}</p>
-                <button 
-                  onClick={() => window.location.reload()}
-                  className="mt-6 px-6 py-2 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors"
-                >
-                  Reconnect
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-8">
-                {/* Core Registry Information */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-                    <h4 className="font-black text-gray-900 mb-5 flex items-center uppercase tracking-widest text-xs">
-                      <Building className="h-5 w-5 mr-3 text-indigo-500" />
-                      Organizational Entity
-                    </h4>
-                    <div className="space-y-4">
-                      <div className="bg-white p-3 rounded-xl shadow-sm">
-                        <span className="text-[10px] text-gray-400 font-black uppercase block mb-1">Affiliated Department</span>
-                        <p className="font-bold text-gray-900">{cbcs.DeptName}</p>
-                      </div>
-                      <div className="bg-white p-3 rounded-xl shadow-sm">
-                        <span className="text-[10px] text-gray-400 font-black uppercase block mb-1">Entity Identifier</span>
-                        <p className="font-mono text-sm font-bold text-indigo-600">DEPT_ID: {cbcs.Deptid}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-                    <h4 className="font-black text-gray-900 mb-5 flex items-center uppercase tracking-widest text-xs">
-                      <Calendar className="h-5 w-5 mr-3 text-indigo-500" />
-                      Academic Context
-                    </h4>
-                    <div className="space-y-4">
-                      <div className="bg-white p-3 rounded-xl shadow-sm">
-                        <span className="text-[10px] text-gray-400 font-black uppercase block mb-1">Batch Cohort</span>
-                        <p className="font-bold text-gray-900">{cbcs.batch}</p>
-                      </div>
-                      <div className="bg-white p-3 rounded-xl shadow-sm">
-                        <span className="text-[10px] text-gray-400 font-black uppercase block mb-1">Semester Cycle</span>
-                        <p className="font-bold text-gray-900">Academic Semester {cbcs.semesterNumber}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Key Performance & Status Indicators */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-indigo-50/50 rounded-2xl p-5 border border-indigo-100">
-                    <h4 className="font-black text-indigo-900 mb-4 text-[10px] uppercase tracking-widest">Process Logic</h4>
-                    <div className="space-y-3">
-                      <div className="flex items-center bg-white px-3 py-2 rounded-lg shadow-sm">
-                        <div className={`w-2.5 h-2.5 rounded-full mr-3 ${cbcs.complete === 'YES' ? 'bg-green-500' : 'bg-amber-500'}`} />
-                        <span className="text-xs font-black uppercase text-gray-700">
-                          {cbcs.complete === 'YES' ? 'Allocation Finalized' : 'Allocation Pending'}
-                        </span>
-                      </div>
-                      <div className="flex items-center bg-white px-3 py-2 rounded-lg shadow-sm">
-                        <div className={`w-2.5 h-2.5 rounded-full mr-3 ${cbcs.isActive === 'YES' ? 'bg-blue-500' : 'bg-gray-400'}`} />
-                        <span className="text-xs font-black uppercase text-gray-700">
-                          {cbcs.isActive === 'YES' ? 'Live on Portal' : 'Offline/Archived'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-emerald-50/50 rounded-2xl p-5 border border-emerald-100">
-                    <h4 className="font-black text-emerald-900 mb-4 text-[10px] uppercase tracking-widest">Student Census</h4>
-                    <div className="flex items-center">
-                      <div className="bg-white p-3 rounded-xl shadow-sm mr-4">
-                        <Users className="h-6 w-6 text-emerald-600" />
-                      </div>
-                      <div>
-                        <p className="text-3xl font-black text-emerald-900 leading-none">{cbcs.total_students}</p>
-                        <p className="text-[10px] font-black uppercase text-emerald-600 mt-1">Total Enrollment</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-purple-50/50 rounded-2xl p-5 border border-purple-100">
-                    <h4 className="font-black text-purple-900 mb-4 text-[10px] uppercase tracking-widest">Export Artifacts</h4>
-                    {cbcs.allocation_excel_path ? (
-                      <div className="flex items-center">
-                        <div className="bg-white p-3 rounded-xl shadow-sm mr-4">
-                          <FileSpreadsheet className="h-6 w-6 text-purple-600" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-black text-purple-900 uppercase">Excel Ready</p>
-                          <button
-                            onClick={() => {
-                                const downloadUrl = `${api.defaults.baseURL}/cbcs/${cbcs.cbcs_id}/download-excel`;
-                                window.open(downloadUrl, '_blank');
-                            }}
-                            className="text-[10px] font-bold text-purple-600 hover:underline flex items-center mt-1"
-                          >
-                            <Download className="h-3 w-3 mr-1" /> Download
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center opacity-50">
-                        <FileSpreadsheet className="h-6 w-6 text-gray-400 mr-3" />
-                        <p className="text-[10px] font-black text-gray-500 uppercase">Not Generated</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Event Metadata Timeline */}
-                <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-                  <h4 className="font-black text-gray-900 mb-5 text-[10px] uppercase tracking-widest">Record Timeline</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="flex justify-between items-center bg-white p-3 rounded-xl">
-                      <span className="text-[10px] font-black text-gray-400 uppercase">Initialized</span>
-                      <span className="text-xs font-bold text-gray-800">{formatDateLong(cbcs.createdDate)}</span>
-                    </div>
-                    <div className="flex justify-between items-center bg-white p-3 rounded-xl">
-                      <span className="text-[10px] font-black text-gray-400 uppercase">Created By</span>
-                      <span className="text-xs font-bold text-indigo-600">{cbcs.createdByName || `Internal System (${cbcs.createdBy})`}</span>
-                    </div>
-                    {cbcs.updatedDate && (
-                      <div className="flex justify-between items-center bg-white p-3 rounded-xl col-span-1 sm:col-span-2">
-                        <span className="text-[10px] font-black text-gray-400 uppercase">Last System Modification</span>
-                        <span className="text-xs font-bold text-gray-800">{formatDateLong(cbcs.updatedDate)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Comprehensive API Raw Debug Data */}
-                {details && (
-                  <div className="bg-gray-900 rounded-2xl p-6 shadow-2xl overflow-hidden relative">
-                    <div className="absolute top-4 right-4 text-white/10 font-black text-4xl select-none">DEBUG</div>
-                    <h4 className="font-black text-indigo-400 mb-4 text-[10px] uppercase tracking-widest">Master Object Raw Output</h4>
-                    <div className="max-h-64 overflow-y-auto no-scrollbar custom-scroll">
-                      <pre className="text-[10px] font-mono text-indigo-100 leading-relaxed whitespace-pre-wrap">
-                        {JSON.stringify(details, null, 2)}
-                      </pre>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Modal Footer Controls */}
-          <div className="bg-gray-50 px-8 py-5 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-              Generated by CBCS Management System
-            </div>
-            <div className="flex space-x-3 w-full sm:w-auto">
-              <button
-                onClick={onClose}
-                className="flex-1 sm:flex-none px-6 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-white transition-all font-black text-xs uppercase tracking-widest shadow-sm"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                    const downloadUrl = `${api.defaults.baseURL}/cbcs/${cbcs.cbcs_id}/download-excel`;
-                    window.open(downloadUrl, '_blank');
-                }}
-                className="flex-1 sm:flex-none px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all font-black text-xs uppercase tracking-widest flex items-center justify-center shadow-lg shadow-indigo-100"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Export Logic
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    </motion.div>
   );
 };
 

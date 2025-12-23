@@ -40,7 +40,6 @@ const CBCSDetails = () => {
     try {
       const response = await fetch(`http://localhost:4000/api/cbcs/cbcs/${id}`);
       const data = await response.json();
-      
       if (data.success) {
         setCbcs(data.cbcs);
         // Initialize expanded state for all subjects

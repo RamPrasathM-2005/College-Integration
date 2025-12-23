@@ -702,6 +702,21 @@ const initDatabase = async () => {
             ON DELETE RESTRICT ON UPDATE CASCADE
         );
     `);
+    //cbcs_section_staff
+    await connection.execute(`
+  CREATE TABLE IF NOT EXISTS CBCS_Section_Staff (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    cbcs_subject_id INT NOT NULL,
+    sectionId INT NOT NULL,
+    staffId INT,
+    CONSTRAINT fk_cbcs_section_subject FOREIGN KEY (cbcs_subject_id) REFERENCES CBCS_Subject(cbcs_subject_id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_cbcs_section_section FOREIGN KEY (sectionId) REFERENCES Section(sectionId)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_cbcs_section_staff FOREIGN KEY (staffId) REFERENCES users(Userid)
+        ON DELETE SET NULL ON UPDATE CASCADE
+  );
+`);
 
     //student choices
     await connection.execute(`

@@ -728,7 +728,7 @@ const CreateCBCS = () => {
                                         >
                                           Section {section.sectionName} 
                                           {section.staff.length > 0 && (
-                                            <span className="ml-1 text-xs">({section.staff.length} staff)</span>
+                                            <span className="ml-1 text-xs">{section.staff.map((s,index)=>s.userName)}</span>
                                           )}
                                         </div>
                                       ))}

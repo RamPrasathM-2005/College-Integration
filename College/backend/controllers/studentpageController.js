@@ -504,3 +504,54 @@ export const getSemesters = catchAsync(async (req, res) => {
     data: semesters || [],
   });
 });
+
+export const getStudentAcademicIds = catchAsync(async (req, res) => {
+  // 1. Ensure user is authenticated
+  if (!req.user || !req.user.Userid) {
+    return res.status(401).json({
+      status: "failure",
+      message: "User not authenticated"
+    });
+  }
+
+  const userId = req.user.Userid;
+
+  // 2. Query to resolve IDs using JOINs
+  const [rows] = await pool.execute(
+    `
+    SELECT
+      d.Deptid       AS deptId,
+      b.Batchid      AS batchId,
+      s.Semesterid   AS semesterId
+    FROM student_details sd
+    JOIN department d 
+      ON sd.Deptid = d.Deptid
+    JOIN Batch b 
+      ON sd.batch = b.batch
+     AND b.IsActive = 'YES'
+    JOIN Semester s
+      ON sd.semester = s.semesterNumber
+     AND s.IsActive = 'YES'
+    WHERE sd.Userid = ?
+    `,
+    [userId]
+  );
+
+  // 3. No student found
+  if (rows.length === 0) {
+    return res.status(404).json({
+      status: "failure",
+      message: "Student academic details not found"
+    });
+  }
+
+  // 4. Send only required IDs
+  res.status(200).json({
+    status: "success",
+    data: {
+      deptId: rows[0].deptId,
+      batchId: rows[0].batchId,
+      semesterId: rows[0].semesterId
+    }
+  });
+});

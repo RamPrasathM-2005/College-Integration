@@ -18,6 +18,7 @@ import {
   fetchSemesters,
   fetchEnrolledCourses,
   fetchAttendanceSummary,
+  fetchStudentAcademicIds
 } from '../../services/studentService';
 import { api } from '../../services/authService';
 
@@ -32,6 +33,14 @@ const StudentDashboard = () => {
   const [gpaHistory, setGpaHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const [academicIds, setAcademicIds] = useState({
+    regno: '',
+    batchId: '',
+    deptId: '',
+    semesterId: ''
+  });
+  const [idsLoading, setIdsLoading] = useState(true);
 
   const fetchGpaHistory = async () => {
     try {
@@ -104,6 +113,31 @@ const StudentDashboard = () => {
   }, [navigate]);
 
   useEffect(() => {
+    const loadAcademicIds = async () => {
+      if (!studentDetails?.regno) return;
+
+      try {
+        setIdsLoading(true);
+        const ids = await fetchStudentAcademicIds();
+        if (ids) {
+          setAcademicIds({
+            regno: ids.regno || studentDetails.regno || '',
+            batchId: ids.batchId || '',
+            deptId: ids.deptId || '',
+            semesterId: ids.semesterId || selectedSemester
+          });
+          console.log(ids);
+        }
+      } catch (err) {
+        console.error('Failed to fetch academic IDs:', err);
+      } finally {
+        setIdsLoading(false);
+      }
+    };
+    loadAcademicIds();
+  }, [studentDetails?.regno, selectedSemester]);
+
+  useEffect(() => {
     if (!selectedSemester || semesters.length === 0) return;
 
     const loadSemesterData = async () => {
@@ -138,6 +172,15 @@ const StudentDashboard = () => {
   const handleChooseCourses = () => {
     navigate('/student/choose-course');
   };
+
+   const handleViewCBCS = () => {
+    if (!academicIds.batchId || !academicIds.deptId || !academicIds.semesterId) {
+      alert('Academic details are still loading. Please wait.');
+      return;
+    }
+    navigate(`/student/stu/${academicIds.regno}/${academicIds.batchId}/${academicIds.deptId}/${academicIds.semesterId}`);
+  };
+
 
   const selectedGpaData = gpaHistory.find(h => h.semesterNumber.toString() === gpaSelectedSem) || gpaHistory[gpaHistory.length - 1] || null;
   const filteredHistory = gpaHistory.filter(h => h.semesterNumber <= parseInt(gpaSelectedSem || 0));
@@ -547,6 +590,17 @@ const StudentDashboard = () => {
                   </svg>
                   Choose Courses
                 </button>
+
+                <button
+                  onClick={handleViewCBCS}
+                  className="w-full sm:w-auto px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5     1.253"/>
+                  </svg>
+                  CBCS Selection
+                </button>
+
               </div>
             </div>
 

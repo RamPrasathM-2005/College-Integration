@@ -9,6 +9,7 @@ import {
   getAttendanceSummary,
   getUserId,
   getElectiveSelections,
+  getStudentAcademicIds
 } from "../../controllers/studentpageController.js";
 import { getStudentGpaHistory } from "../../controllers/gradeController.js";
 import { protect} from "../../controllers/auth/authController.js";
@@ -44,4 +45,5 @@ router.get("/attendance-summary", getAttendanceSummary);
 router.get('/elective-selections', protect, getElectiveSelections);
 router.get('/gpa-history', getStudentGpaHistory);
 
+router.get('/academic-ids',getStudentAcademicIds);
 export default router;
