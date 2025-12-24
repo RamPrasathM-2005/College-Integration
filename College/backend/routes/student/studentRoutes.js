@@ -9,7 +9,6 @@ import {
   getAttendanceSummary,
   getUserId,
   getElectiveSelections,
-  getStudentAcademicIds
 } from "../../controllers/studentpageController.js";
 
 
