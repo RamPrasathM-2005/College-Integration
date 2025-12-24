@@ -29,6 +29,7 @@ import AdminAttendance from './pages/admin/AttendanceAdmin';
 import Report from './pages/admin/Reports';
 import StudentEnrollmentsView from './pages/admin/StudentEnrollmentsView';
 import CgpaAllocation from './pages/admin/CgpaAllocation.jsx'
+import NptelCourses from './pages/admin/ManageCourses/ManageNptelCourses.jsx';
 import RequestCoursesAdmin from './pages/admin/RequestCoursesAdmin.jsx';
 // import UpdateStudentSem from './pages/admin/ManageStudents/UpdateStudentSem.jsx'; 
 import CreateCBCS from './pages/admin/CBCS/CreateCBCS.jsx';
@@ -50,8 +51,9 @@ import InternalMarks from "./pages/staff/InternalMarks";
 import RequestCoursesStaff from './pages/staff/RequestCoursesStaff.jsx'
 
 // Student Pages
-import StudentDashboard from "./pages/student/StudentDashboard";
-import ChooseCourse from "./pages/student/ChooseCourse";
+import StudentDashboard from './pages/student/StudentDashboard';
+import ChooseCourse from './pages/student/ChooseCourse';
+import NptelSelection from './pages/student/NptelSelection.jsx';
 
 import StudentCBCS from './pages/student/StudentCBCS.jsx';
 // NotFound
@@ -104,11 +106,13 @@ const routes = [
       { path: "/admin/attendance-report", element: <AttendanceReport />} ,
       { path: 'report', element: <Report /> },
       { path: 'student-staff-mapping', element: <StudentEnrollmentsView /> },
+
       {path : 'cgpa-allocation', element: <CgpaAllocation/>},
       {path: 'request-courses', element: <RequestCoursesAdmin/>},
       {path:'cbcs-creation',element:<CreateCBCS />},
       {path:'cbcs-list',element:<CBCSList />},
       {path:'cbcs-detail/:id',element:<CBCSDetail />},
+      { path: 'nptel-courses', element: <NptelCourses/>},
       // { path: 'student-sem-update', element: <UpdateStudentSem/ > },
       { path: "*", element: <NotFound /> },
     ],
@@ -150,6 +154,8 @@ const routes = [
     ),
     children: [
       { index: true, element: <StudentDashboard /> },
+
+      { path: 'nptel-selection', element: <NptelSelection /> },
       { path: "dashboard", element: <StudentDashboard /> },
       { path: "choose-course", element: <ChooseCourse /> },
       { path: 'stu/:regno/:batchId/:deptId/:semesterId',element:<StudentCBCS />},

@@ -157,22 +157,67 @@ export const fetchUserId = async () => {
 };
 
 
-export const fetchStudentAcademicIds = async () => {
+export const fetchNptelCourses = async (semesterId) => {
   try {
-    const response = await api.get("/student/academic-ids");
-    console.log("Academic IDs response:", response);
-
-    if (response.data.status === "success") {
-      return response.data.data; // { deptId, batchId, semesterId }
-    } else {
-      throw new Error(
-        response.data.message || "Failed to fetch academic IDs"
-      );
+    const response = await api.get('/student/nptel-courses', {
+      params: { semesterId }
+    });
+    if (response.data.status === 'success') {
+      return response.data.data;
     }
+    throw new Error(response.data.message);
   } catch (error) {
-    console.error("fetchStudentAcademicIds error:", error);
-    throw new Error(
-      error.response?.data?.message || "Failed to fetch academic IDs"
-    );
+    throw new Error(error.response?.data?.message || 'Failed to fetch NPTEL courses');
+  }
+};
+
+export const enrollNptelCourses = async (semesterId, nptelCourseIds) => {
+  try {
+    const response = await api.post('/student/nptel-enroll', {
+      semesterId,
+      nptelCourseIds
+    });
+    if (response.data.status === 'success') {
+      return response.data;
+    }
+    throw new Error(response.data.message);
+  } catch (error) {
+    throw new Error(error.response?.data?.message || 'Failed to enroll in NPTEL courses');
+  }
+};
+
+export const fetchStudentNptelEnrollments = async () => {
+  try {
+    const response = await api.get('/student/nptel-enrollments');
+    if (response.data.status === 'success') {
+      return response.data.data;
+    }
+    throw new Error(response.data.message);
+  } catch (error) {
+    throw new Error(error.response?.data?.message || 'Failed to fetch NPTEL enrollments');
+  }
+};
+
+export const requestNptelCreditTransfer = async (enrollmentId) => {
+  try {
+    const response = await api.post('/student/nptel-credit-transfer', { enrollmentId });
+    if (response.data.status === 'success') {
+      return response.data;
+    }
+    throw new Error(response.data.message);
+  } catch (error) {
+    throw new Error(error.response?.data?.message || 'Failed to request credit transfer');
+  }
+};
+
+export const fetchOecPecProgress = async () => {
+  try {
+    const response = await api.get('/student/oec-pec-progress');
+    if (response.data.status === 'success') {
+      return response.data.data;
+    }
+    throw new Error(response.data.message);
+  } catch (error) {
+    throw new Error(error.response?.data?.message || 'Failed to fetch OEC/PEC progress');
   }
 };

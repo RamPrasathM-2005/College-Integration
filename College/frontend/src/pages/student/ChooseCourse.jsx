@@ -6,6 +6,7 @@ import {
   fetchSemesters,
   fetchElectiveBuckets,
   allocateElectives,
+  fetchOecPecProgress, // NEW
 } from '../../services/studentService';
 
 const ChooseCourse = () => {
@@ -15,6 +16,7 @@ const ChooseCourse = () => {
   const [electiveBuckets, setElectiveBuckets] = useState([]);
   const [selections, setSelections] = useState({});
   const [studentDetails, setStudentDetails] = useState({});
+  const [progress, setProgress] = useState(null); // NEW: OEC/PEC progress
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -39,6 +41,10 @@ const ChooseCourse = () => {
         if (activeSemester) {
           setSelectedSemester(activeSemester.semesterId);
         }
+
+        // NEW: Fetch global progress
+        const prog = await fetchOecPecProgress();
+        setProgress(prog);
       } catch (err) {
         setError('Failed to fetch student data. Please try again.');
         console.error('Error fetching student data:', err);
@@ -104,6 +110,18 @@ const ChooseCourse = () => {
         throw new Error('Please select one course from each elective bucket.');
       }
 
+      // NEW: Validate against remaining
+      let oecSelected = 0, pecSelected = 0;
+      validSelections.forEach(sel => {
+        const bucket = electiveBuckets.find(b => b.bucketId === sel.bucketId);
+        if (bucket.bucketName.includes('OEC')) oecSelected++;
+        if (bucket.bucketName.includes('PEC')) pecSelected++;
+      });
+
+      if (oecSelected > progress.remaining.OEC || pecSelected > progress.remaining.PEC) {
+        throw new Error('Selection exceeds remaining requirements (check NPTEL fulfillments)');
+      }
+
       await allocateElectives(selectedSemester, validSelections);
       setSuccess('Elective courses allocated successfully!');
       setTimeout(() => navigate('/student/dashboard'), 2000);
@@ -143,6 +161,18 @@ const ChooseCourse = () => {
     <div className="container mx-auto p-6">
       <h1 className="text-3xl font-bold mb-6">Choose Elective Courses</h1>
 
+      {/* NEW: Progress Summary */}
+      {progress && (
+        <div className="bg-yellow-100 p-4 rounded-lg mb-6">
+          <h3 className="font-bold">OEC/PEC Requirements (per your regulation)</h3>
+          <p>OEC: {progress.completed.OEC}/{progress.required.OEC} completed ({progress.remaining.OEC} remaining)</p>
+          <p>PEC: {progress.completed.PEC}/{progress.required.PEC} completed ({progress.remaining.PEC} remaining)</p>
+          {progress.remaining.OEC === 0 && <p className="text-green-600">All OEC fulfilled (possibly by NPTEL)</p>}
+          {progress.remaining.PEC === 0 && <p className="text-green-600">All PEC fulfilled (possibly by NPTEL)</p>}
+          {(progress.remaining.OEC > 0 || progress.remaining.PEC > 0) && <p className="text-red-600">Select to meet remaining requirements</p>}
+        </div>
+      )}
+
       <div className="mb-6">
         <label htmlFor="semester" className="mr-2 font-medium">Select Semester:</label>
         <select
@@ -170,18 +200,24 @@ const ChooseCourse = () => {
                   <h3 className="text-lg font-medium">
                     {bucket.bucketName} (Bucket {bucket.bucketNumber})
                   </h3>
-                  <select
-                    value={selections[bucket.bucketId] || ''}
-                    onChange={(e) => handleSelectionChange(bucket.bucketId, e.target.value)}
-                    className="border rounded-md p-2 w-full mt-2"
-                  >
-                    <option value="">-- Select Course --</option>
-                    {bucket.courses.map((course) => (
-                      <option key={course.courseId} value={course.courseId}>
-                        {course.courseCode} - {course.courseTitle} ({course.category}, {course.credits} credits)
-                      </option>
-                    ))}
-                  </select>
+                  {/* NEW: Show alert if slot reduced */}
+                  {bucket.alert && <p className="text-red-500">{bucket.alert}</p>}
+                  {bucket.requiredSelections > 0 ? (
+                    <select
+                      value={selections[bucket.bucketId] || ''}
+                      onChange={(e) => handleSelectionChange(bucket.bucketId, e.target.value)}
+                      className="border rounded-md p-2 w-full mt-2"
+                    >
+                      <option value="">-- Select Course --</option>
+                      {bucket.courses.map((course) => (
+                        <option key={course.courseId} value={course.courseId}>
+                          {course.courseCode} - {course.courseTitle} ({course.category}, {course.credits} credits)
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-gray-500">No selection needed for this bucket</p>
+                  )}
                 </div>
               ))
             ) : (

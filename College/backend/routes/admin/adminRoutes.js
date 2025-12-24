@@ -102,6 +102,16 @@ import multer from 'multer';
 import { uploadGrades, viewGPA, viewCGPA } from '../../controllers/gradeController.js';
 import { getStudentsForGrade } from '../../controllers/gradeController.js';
 
+
+import {
+  addNptelCourse,
+  bulkAddNptelCourses,
+  getAllNptelCourses,
+  updateNptelCourse,
+  deleteNptelCourse,
+} from "../../controllers/nptelCourseController.js";
+
+
 const upload = multer({ dest: 'tmp/' });
 
 const router = express.Router();
@@ -245,12 +255,26 @@ router.get('/export/course/:courseCode', protect, exportCourseWiseCsvAdmin);
 
 router.get("/elective-selections", getElectiveSelections);
 
-
-
-
 router.post('/grades/import', protect, upload.single('file'), uploadGrades);
 router.get('/grades/gpa', protect, viewGPA);     
 router.get('/grades/cgpa', protect, viewCGPA);       
 router.get('/grades/students-grade', protect, getStudentsForGrade);
+
+
+
+
+/* =========================
+   📌 NPTEL Course Routes
+   ========================= */
+router.route("/nptel-courses")
+  .post(protect, addNptelCourse)
+  .get(protect, getAllNptelCourses);
+
+router.route("/nptel-courses/bulk")
+  .post(protect, bulkAddNptelCourses);
+
+router.route("/nptel-courses/:nptelCourseId")
+  .put(protect, updateNptelCourse)
+  .delete(protect, deleteNptelCourse);
 
 export default router;

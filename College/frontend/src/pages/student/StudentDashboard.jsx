@@ -18,7 +18,7 @@ import {
   fetchSemesters,
   fetchEnrolledCourses,
   fetchAttendanceSummary,
-  fetchStudentAcademicIds
+  fetchOecPecProgress,
 } from '../../services/studentService';
 import { api } from '../../services/authService';
 
@@ -30,6 +30,7 @@ const StudentDashboard = () => {
   const [courses, setCourses] = useState([]);
   const [studentDetails, setStudentDetails] = useState(null);
   const [attendanceSummary, setAttendanceSummary] = useState({});
+  const [progress, setProgress] = useState(null); // OEC/PEC progress
   const [gpaHistory, setGpaHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -101,6 +102,14 @@ const StudentDashboard = () => {
 
         await fetchGpaHistory();
 
+        // Fetch OEC/PEC progress
+        try {
+          const prog = await fetchOecPecProgress();
+          setProgress(prog);
+        } catch (err) {
+          console.warn('Could not fetch OEC/PEC progress:', err);
+          setProgress(null);
+        }
       } catch (err) {
         console.error('Dashboard failed:', err);
         setError('Failed to load dashboard');
@@ -292,8 +301,8 @@ const StudentDashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        {/* Header Section */}
+
+        {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
@@ -310,10 +319,9 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        {/* PROFESSIONAL GPA ANALYTICS SECTION */}
+        {/* GPA Analytics Section */}
         {gpaHistory.length > 0 && (
           <div className="mb-8 bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
-            {/* Header */}
             <div className="p-6 border-b border-slate-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -323,7 +331,7 @@ const StudentDashboard = () => {
                 <select
                   value={gpaSelectedSem}
                   onChange={handleGpaSemesterChange}
-                  className="px-4 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:border-slate-400"
+                  className="px-4 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
                 >
                   {gpaHistory.map(h => (
                     <option key={h.semesterNumber} value={h.semesterNumber.toString()}>
@@ -335,9 +343,7 @@ const StudentDashboard = () => {
             </div>
 
             <div className="p-6">
-              {/* Current GPA & CGPA Cards */}
               <div className={`grid ${showCgpa ? 'grid-cols-2' : 'grid-cols-1'} gap-6 mb-6`}>
-                {/* GPA Card */}
                 <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
                   <div className="flex items-center justify-between mb-4">
                     <div>
@@ -352,20 +358,13 @@ const StudentDashboard = () => {
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-5xl font-bold text-slate-800">{currentGpa || '—'}</span>
-                    <span className="text-lg text-slate-500 font-medium">/ 10</span>
+                    <span className="text-lg text-slate-500">/ 10</span>
                   </div>
                   <div className="mt-4 h-2 bg-white rounded-full overflow-hidden">
-                    <div 
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ 
-                        width: `${(parseFloat(currentGpa || 0) / 10) * 100}%`,
-                        backgroundColor: getGpaColor(currentGpa)
-                      }}
-                    />
+                    <div className="h-full rounded-full transition-all" style={{ width: `${(parseFloat(currentGpa || 0) / 10) * 100}%`, backgroundColor: getGpaColor(currentGpa) }} />
                   </div>
                 </div>
 
-                {/* CGPA Card */}
                 {showCgpa && (
                   <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-6 border border-emerald-200">
                     <div className="flex items-center justify-between mb-4">
@@ -381,19 +380,15 @@ const StudentDashboard = () => {
                     </div>
                     <div className="flex items-baseline gap-2">
                       <span className="text-5xl font-bold text-slate-800">{currentCgpa || '—'}</span>
-                      <span className="text-lg text-slate-500 font-medium">/ 10</span>
+                      <span className="text-lg text-slate-500">/ 10</span>
                     </div>
                     <div className="mt-4 h-2 bg-white rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(parseFloat(currentCgpa || 0) / 10) * 100}%` }}
-                      />
+                      <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${(parseFloat(currentCgpa || 0) / 10) * 100}%` }} />
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Statistics Grid */}
               <div className="grid grid-cols-3 gap-4 mb-6">
                 <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                   <p className="text-xs font-medium text-slate-500 mb-2">Average GPA</p>
@@ -409,20 +404,18 @@ const StudentDashboard = () => {
                 </div>
               </div>
 
-              {/* Academic Insight */}
               {(currentCgpa || currentGpa) && (
                 <div className={`bg-gradient-to-r ${recommendation.color} rounded-xl p-5 border border-slate-200 mb-6`}>
                   <div className="flex items-start gap-3">
                     <span className="text-2xl">{recommendation.icon}</span>
-                    <div className="flex-1">
+                    <div>
                       <h4 className={`text-base font-bold ${recommendation.textColor} mb-1`}>{recommendation.title}</h4>
-                      <p className="text-sm text-slate-700 leading-relaxed">{recommendation.message}</p>
+                      <p className="text-sm text-slate-700">{recommendation.message}</p>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Performance Chart */}
               <div className="bg-slate-50 rounded-xl p-6 border border-slate-200">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-base font-semibold text-slate-800">Performance Trend</h3>
@@ -440,7 +433,7 @@ const StudentDashboard = () => {
                   </div>
                 </div>
                 <ResponsiveContainer width="100%" height={240}>
-                  <AreaChart data={filteredHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <AreaChart data={filteredHistory}>
                     <defs>
                       <linearGradient id="colorGpa" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
@@ -452,49 +445,11 @@ const StudentDashboard = () => {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis 
-                      dataKey="semester" 
-                      tick={{ fill: '#64748b', fontSize: 11 }} 
-                      axisLine={{ stroke: '#cbd5e1' }}
-                    />
-                    <YAxis 
-                      domain={[0, 10]} 
-                      ticks={[0, 2, 4, 6, 8, 10]} 
-                      tick={{ fill: '#64748b', fontSize: 11 }}
-                      axisLine={{ stroke: '#cbd5e1' }}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#fff', 
-                        borderRadius: '8px', 
-                        border: '1px solid #e2e8f0', 
-                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
-                      }}
-                      formatter={(value, name) => [
-                        parseFloat(value).toFixed(2), 
-                        name === 'gpaValue' ? 'GPA' : 'CGPA'
-                      ]}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="gpaValue" 
-                      stroke="#3b82f6" 
-                      strokeWidth={2}
-                      fill="url(#colorGpa)"
-                      dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
-                      activeDot={{ r: 6 }}
-                    />
-                    {showCgpa && (
-                      <Area 
-                        type="monotone" 
-                        dataKey="cgpaValue" 
-                        stroke="#10b981" 
-                        strokeWidth={2}
-                        fill="url(#colorCgpa)"
-                        dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
-                        activeDot={{ r: 6 }}
-                      />
-                    )}
+                    <XAxis dataKey="semester" tick={{ fill: '#64748b', fontSize: 11 }} />
+                    <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fill: '#64748b', fontSize: 11 }} />
+                    <Tooltip formatter={(value) => parseFloat(value).toFixed(2)} />
+                    <Area type="monotone" dataKey="gpaValue" stroke="#3b82f6" strokeWidth={2} fill="url(#colorGpa)" dot={{ fill: '#3b82f6', r: 4 }} />
+                    {showCgpa && <Area type="monotone" dataKey="cgpaValue" stroke="#10b981" strokeWidth={2} fill="url(#colorCgpa)" dot={{ fill: '#10b981', r: 4 }} />}
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -502,64 +457,54 @@ const StudentDashboard = () => {
           </div>
         )}
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Main Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
+
             {/* Quick Info Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {studentDetails?.Deptname && (
                 <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-                  <div className="flex flex-col">
-                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mb-3">
-                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                      </svg>
-                    </div>
-                    <p className="text-xs text-slate-600 mb-1">Department</p>
-                    <p className="text-sm font-semibold text-slate-800 truncate">{studentDetails.Deptname}</p>
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mb-3">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
                   </div>
+                  <p className="text-xs text-slate-600 mb-1">Department</p>
+                  <p className="text-sm font-semibold text-slate-800 truncate">{studentDetails.Deptname}</p>
                 </div>
               )}
-
               {studentDetails?.section && (
                 <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-                  <div className="flex flex-col">
-                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mb-3">
-                      <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
-                    </div>
-                    <p className="text-xs text-slate-600 mb-1">Section</p>
-                    <p className="text-sm font-semibold text-slate-800">{studentDetails.section}</p>
+                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mb-3">
+                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
                   </div>
+                  <p className="text-xs text-slate-600 mb-1">Section</p>
+                  <p className="text-sm font-semibold text-slate-800">{studentDetails.section}</p>
                 </div>
               )}
-
               {studentDetails?.blood_group && (
                 <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-                  <div className="flex flex-col">
-                    <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center mb-3">
-                      <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                      </svg>
-                    </div>
-                    <p className="text-xs text-slate-600 mb-1">Blood Group</p>
-                    <p className="text-sm font-semibold text-slate-800">{studentDetails.blood_group}</p>
+                  <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center mb-3">
+                    <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
                   </div>
+                  <p className="text-xs text-slate-600 mb-1">Blood Group</p>
+                  <p className="text-sm font-semibold text-slate-800">{studentDetails.blood_group}</p>
                 </div>
               )}
-
               {studentDetails?.gender && (
                 <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-                  <div className="flex flex-col">
-                    <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mb-3">
-                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                    </div>
-                    <p className="text-xs text-slate-600 mb-1">Gender</p>
-                    <p className="text-sm font-semibold text-slate-800">{studentDetails.gender}</p>
+                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mb-3">
+                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
                   </div>
+                  <p className="text-xs text-slate-600 mb-1">Gender</p>
+                  <p className="text-sm font-semibold text-slate-800">{studentDetails.gender}</p>
                 </div>
               )}
             </div>
@@ -567,23 +512,23 @@ const StudentDashboard = () => {
             {/* Semester Selection */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3 w-full sm:w-auto">
+                <div className="flex items-center gap-3">
                   <label className="text-sm font-semibold text-slate-700 whitespace-nowrap">Select Semester</label>
                   <select
                     value={selectedSemester}
                     onChange={handleSemesterChange}
-                    className="flex-1 sm:flex-none px-4 py-2 border border-slate-300 rounded-lg bg-white text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent sm:min-w-48"
+                    className="px-4 py-2 border border-slate-300 rounded-lg bg-white text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-48"
                   >
                     {semesters.map(sem => (
                       <option key={sem.semesterId} value={sem.semesterId.toString()}>
-                        Semester {sem.semesterNumber}
+                        Semester {sem.semesterNumber} {sem.isActive === 'YES' ? '(Current)' : ''}
                       </option>
                     ))}
                   </select>
                 </div>
                 <button
                   onClick={handleChooseCourses}
-                  className="w-full sm:w-auto px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-sm"
+                  className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -604,15 +549,12 @@ const StudentDashboard = () => {
               </div>
             </div>
 
-            {/* Enrolled Courses Table */}
+            {/* Enrolled Courses */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="p-5 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50">
                 <h2 className="text-lg font-bold text-slate-800">Enrolled Courses</h2>
-                {courses.length > 0 && (
-                  <p className="text-sm text-slate-600 mt-1">{courses.length} {courses.length === 1 ? 'course' : 'courses'} this semester</p>
-                )}
+                {courses.length > 0 && <p className="text-sm text-slate-600 mt-1">{courses.length} courses this semester</p>}
               </div>
-              
               {courses.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
@@ -632,12 +574,8 @@ const StudentDashboard = () => {
                               {c.courseCode}
                             </span>
                           </td>
-                          <td className="px-5 py-3">
-                            <span className="font-medium text-slate-800 text-sm">{c.courseName}</span>
-                          </td>
-                          <td className="px-5 py-3 text-center">
-                            <span className="text-slate-700 text-sm">{c.section}</span>
-                          </td>
+                          <td className="px-5 py-3 font-medium text-slate-800 text-sm">{c.courseName}</td>
+                          <td className="px-5 py-3 text-center text-slate-700 text-sm">{c.section}</td>
                           <td className="px-5 py-3">
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 bg-gradient-to-br from-slate-200 to-slate-300 rounded-full flex items-center justify-center">
@@ -662,35 +600,67 @@ const StudentDashboard = () => {
                   </div>
                   <h3 className="text-base font-semibold text-slate-800 mb-2">No courses enrolled</h3>
                   <p className="text-slate-600 text-sm mb-4">Start by choosing your courses for this semester</p>
-                  <button
-                    onClick={handleChooseCourses}
-                    className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm"
-                  >
+                  <button onClick={handleChooseCourses} className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 text-sm">
                     Choose Courses
                   </button>
                 </div>
               )}
             </div>
+
+            {/* OEC/PEC Progress */}
+            {progress && (
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <h2 className="text-lg font-bold text-slate-800 mb-5">OEC/PEC Progress (Regulation Requirement)</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-6 border border-indigo-200 text-center">
+                    <p className="text-4xl font-bold text-indigo-700">
+                      {progress.completed.OEC} / {progress.required.OEC}
+                    </p>
+                    <p className="text-lg font-medium text-slate-700 mt-3">Open Elective (OEC)</p>
+                    <p className="text-sm text-slate-600 mt-2">
+                      Remaining: <strong>{progress.remaining.OEC}</strong>
+                    </p>
+                    {progress.remaining.OEC === 0 ? (
+                      <p className="text-green-600 font-bold mt-3">✓ Fully Completed!</p>
+                    ) : (
+                      <p className="text-orange-600 font-medium mt-3">Need {progress.remaining.OEC} more</p>
+                    )}
+                  </div>
+
+                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 border border-purple-200 text-center">
+                    <p className="text-4xl font-bold text-purple-700">
+                      {progress.completed.PEC} / {progress.required.PEC}
+                    </p>
+                    <p className="text-lg font-medium text-slate-700 mt-3">Professional Elective (PEC)</p>
+                    <p className="text-sm text-slate-600 mt-2">
+                      Remaining: <strong>{progress.remaining.PEC}</strong>
+                    </p>
+                    {progress.remaining.PEC === 0 ? (
+                      <p className="text-green-600 font-bold mt-3">✓ Fully Completed!</p>
+                    ) : (
+                      <p className="text-orange-600 font-medium mt-3">Need {progress.remaining.PEC} more</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Sidebar */}
           <div className="space-y-6">
-            {/* Attendance Summary */}
+            {/* Attendance */}
             <div className={`rounded-xl shadow-sm border-2 overflow-hidden ${
-              totalDays === 0 ? 'bg-white border-slate-200' : 
-              isLowAttendance ? 'bg-gradient-to-br from-red-50 to-orange-50 border-red-200' : 
+              totalDays === 0 ? 'bg-white border-slate-200' :
+              isLowAttendance ? 'bg-gradient-to-br from-red-50 to-orange-50 border-red-200' :
               'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200'
             }`}>
               <div className="p-5 border-b border-slate-200 bg-white/50">
                 <h3 className="text-lg font-bold text-slate-800">Attendance Summary</h3>
               </div>
-              
               {totalDays > 0 ? (
                 <div className="p-5">
-                  <div className="flex items-center justify-center mb-4">
-                    <div className={`w-32 h-32 rounded-full flex items-center justify-center ${
-                      isLowAttendance ? 'bg-red-100' : 'bg-green-100'
-                    }`}>
+                  <div className="flex justify-center mb-5">
+                    <div className={`w-32 h-32 rounded-full flex items-center justify-center ${isLowAttendance ? 'bg-red-100' : 'bg-green-100'}`}>
                       <div className="text-center">
                         <p className={`text-3xl font-bold ${isLowAttendance ? 'text-red-700' : 'text-green-700'}`}>
                           {attendancePercentage}%
@@ -699,90 +669,83 @@ const StudentDashboard = () => {
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="space-y-3 mb-4">
-                    <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+
+                  <div className="space-y-3 mb-5">
+                    <div className="flex justify-between p-3 bg-white rounded-lg">
                       <span className="text-sm text-slate-600">Total Days</span>
-                      <span className="text-lg font-bold text-slate-800">{totalDays}</span>
+                      <span className="font-bold text-slate-800">{totalDays}</span>
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                    <div className="flex justify-between p-3 bg-white rounded-lg">
                       <span className="text-sm text-slate-600">Days Present</span>
-                      <span className="text-lg font-bold text-green-600">{daysPresent}</span>
+                      <span className="font-bold text-green-600">{daysPresent}</span>
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-white rounded-lg">
+                    <div className="flex justify-between p-3 bg-white rounded-lg">
                       <span className="text-sm text-slate-600">Days Absent</span>
-                      <span className="text-lg font-bold text-red-600">{totalDays - daysPresent}</span>
+                      <span className="font-bold text-red-600">{totalDays - daysPresent}</span>
                     </div>
                   </div>
 
                   {isLowAttendance && (
-                    <div className="flex items-start gap-2 p-3 bg-red-100 border border-red-200 rounded-lg mb-4">
-                      <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <div className="p-3 bg-red-100 border border-red-200 rounded-lg flex items-start gap-2 mb-4">
+                      <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                       </svg>
                       <div>
-                        <p className="font-semibold text-red-800 text-sm">Low Attendance!</p>
-                        <p className="text-xs text-red-700 mt-1">Your attendance is below 75%. Please improve to meet requirements.</p>
+                        <p className="font-semibold text-red-800 text-sm">Low Attendance Alert</p>
+                        <p className="text-xs text-red-700">Below 75%. Improve to avoid issues.</p>
                       </div>
                     </div>
                   )}
 
-                  <div className="p-4 bg-white rounded-lg border border-slate-200">
+                  <div className="bg-white rounded-lg border border-slate-200 p-4">
                     <h4 className="text-sm font-semibold text-slate-700 mb-3">Monthly Trend</h4>
-                    <div className="h-48">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={attendanceTrendData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                          <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
-                          <YAxis domain={[0, 100]} stroke="#94a3b8" fontSize={12} tickFormatter={(v) => `${v}%`} />
-                          <Tooltip formatter={(v) => `${v}%`} />
-                          <Bar dataKey="percentage" fill={isLowAttendance ? '#ef4444' : '#10b981'} radius={[8, 8, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart data={attendanceTrendData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="month" fontSize={12} stroke="#94a3b8" />
+                        <YAxis domain={[0, 100]} fontSize={12} stroke="#94a3b8" tickFormatter={(v) => `${v}%`} />
+                        <Tooltip formatter={(v) => `${v}%`} />
+                        <Bar dataKey="percentage" fill={isLowAttendance ? '#ef4444' : '#10b981'} radius={[8, 8, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
               ) : (
-                <div className="p-8 text-center">
-                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                    </svg>
-                  </div>
-                  <p className="text-slate-600 text-sm">No attendance data available yet for this semester.</p>
+                <div className="p-8 text-center text-slate-600">
+                  No attendance data available yet.
                 </div>
               )}
             </div>
 
             {/* Contact Info */}
             {(studentDetails?.email || studentDetails?.personal_phone) && (
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200">
                 <div className="p-5 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-                  <h3 className="text-lg font-bold text-slate-800">Contact Info</h3>
+                  <h3 className="text-lg font-bold text-slate-800">Contact Information</h3>
                 </div>
                 <div className="p-5 space-y-4">
                   {studentDetails?.email && (
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
                         <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                         </svg>
                       </div>
                       <div>
-                        <p className="text-xs text-slate-600 mb-1">Email Address</p>
+                        <p className="text-xs text-slate-600 mb-1">Email</p>
                         <p className="text-sm font-medium text-slate-800 break-all">{studentDetails.email}</p>
                       </div>
                     </div>
                   )}
                   {studentDetails?.personal_phone && (
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
                         <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                         </svg>
                       </div>
                       <div>
-                        <p className="text-xs text-slate-600 mb-1">Phone Number</p>
+                        <p className="text-xs text-slate-600 mb-1">Phone</p>
                         <p className="text-sm font-medium text-slate-800">{studentDetails.personal_phone}</p>
                       </div>
                     </div>

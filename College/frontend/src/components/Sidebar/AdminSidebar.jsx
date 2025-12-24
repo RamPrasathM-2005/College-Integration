@@ -53,6 +53,7 @@ const AdminSidebar = () => {
     { to: "/admin/cbcs-creation", icon: MousePointerClick, label: "CBCS Creation" }, 
     { to: "/admin/cbcs-detail", icon: Info, label: "CBCS Details" },
     { to: "/admin/cbcs-list", icon: ListChecks, label: "CBCS List" },
+    { to: "/admin/nptel-courses", icon: Book, label: "NPTEL Courses" },
   ];
 
   const handleLogout = async () => {

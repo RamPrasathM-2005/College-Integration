@@ -57,42 +57,6 @@ export const getStudentDetails = catchAsync(async (req, res) => {
   res.status(200).json({ status: "success", data: rows[0] });
 });
 
-// export const getSemesters = catchAsync(async (req, res) => {
-//   const { batchYear } = req.query;
-
-//   if (!req.user || !req.user.Userid) {
-//     console.log('Authentication failed: No user or Userid');
-//     return res.status(401).json({ status: "failure", message: "User not authenticated" });
-//   }
-
-//   const [studentRows] = await pool.execute(
-//     `SELECT batch FROM student_details WHERE Userid = ?`,
-//     [req.user.Userid]
-//   );
-
-//   if (studentRows.length === 0) {
-//     console.log('No student found for Userid:', req.user.Userid);
-//     return res.status(404).json({ status: "failure", message: "Student not found" });
-//   }
-
-//   const batch = batchYear || studentRows[0].batch;
-//   console.log('Fetching semesters for batch:', batch);
-
-//   const [semesters] = await pool.execute(
-//     `SELECT s.semesterId, s.semesterNumber, s.startDate, s.endDate, s.isActive
-//      FROM Semester s
-//      JOIN Batch b ON s.batchId = b.batchId
-//      WHERE b.batch = ? AND b.isActive = 'YES'`,
-//     [batch]
-//   );
-
-//   console.log('Semesters fetched:', semesters);
-//   res.status(200).json({
-//     status: "success",
-//     data: semesters || [],
-//   });
-// });
-
 export const getMandatoryCourses = catchAsync(async (req, res) => {
   const { semesterId } = req.query;
   if (!semesterId) {
@@ -126,38 +90,120 @@ export const getElectiveBuckets = catchAsync(async (req, res) => {
     return res.status(400).json({ status: "failure", message: "semesterId is required" });
   }
 
-  const [buckets] = await pool.execute(
-    `SELECT 
-      eb.bucketId,
-      eb.bucketNumber,
-      eb.bucketName
-     FROM ElectiveBucket eb
-     WHERE eb.semesterId = ?`,
-    [semesterId]
-  );
+  if (!req.user || !req.user.Userid) {
+    return res.status(401).json({ status: "failure", message: "User not authenticated" });
+  }
 
-  const bucketsWithCourses = await Promise.all(
-    buckets.map(async (bucket) => {
-      const [courses] = await pool.execute(
-        `SELECT 
-          c.courseId,
-          c.courseCode,
-          c.courseTitle,
-          c.category,
-          c.credits
-         FROM ElectiveBucketCourse ebc
-         JOIN Course c ON ebc.courseId = c.courseId
-         WHERE ebc.bucketId = ? AND c.isActive = 'YES'`,
-        [bucket.bucketId]
-      );
-      return { ...bucket, courses };
-    })
-  );
+  const connection = await pool.getConnection();
+  try {
+    // Get regno and regulationId
+    const [student] = await connection.execute(
+      `SELECT sd.regno, b.regulationId
+       FROM student_details sd
+       JOIN Batch b ON sd.batch = b.batch
+       WHERE sd.Userid = ?`,
+      [req.user.Userid]
+    );
+    if (student.length === 0 || !student[0].regulationId) {
+      return res.status(404).json({ status: "failure", message: "Regulation not found for your batch" });
+    }
+    const { regno, regulationId } = student[0];
 
-  res.status(200).json({
-    status: "success",
-    data: bucketsWithCourses,
-  });
+    // Get required OEC/PEC from regulation
+    const [required] = await connection.execute(
+      `SELECT category, COUNT(*) as count
+       FROM RegulationCourse
+       WHERE regulationId = ? AND category IN ('OEC', 'PEC') AND isActive = 'YES'
+       GROUP BY category`,
+      [regulationId]
+    );
+    const requiredMap = { OEC: 0, PEC: 0 };
+    required.forEach(r => requiredMap[r.category] = r.count);
+
+    // Count approved NPTEL
+    const [nptel] = await connection.execute(`
+      SELECT nc.type, COUNT(*) as count
+      FROM NptelCreditTransfer nct
+      JOIN StudentNptelEnrollment sne ON nct.enrollmentId = sne.enrollmentId
+      JOIN NptelCourse nc ON sne.nptelCourseId = nc.nptelCourseId
+      WHERE nct.regno = ? AND nct.status = 'approved'
+      GROUP BY nc.type
+    `, [regno]);
+    const nptelMap = { OEC: 0, PEC: 0 };
+    nptel.forEach(r => nptelMap[r.type] = r.count);
+
+    // Count allocated college electives
+    const [college] = await connection.execute(`
+      SELECT c.category, COUNT(*) as count
+      FROM StudentElectiveSelection ses
+      JOIN Course c ON ses.selectedCourseId = c.courseId
+      WHERE ses.regno = ? AND ses.status = 'allocated' AND c.category IN ('OEC', 'PEC')
+      GROUP BY c.category
+    `, [regno]);
+    const collegeMap = { OEC: 0, PEC: 0 };
+    college.forEach(r => collegeMap[r.category] = r.count);
+
+    const remainingOec = Math.max(0, requiredMap.OEC - (nptelMap.OEC + collegeMap.OEC));
+    const remainingPec = Math.max(0, requiredMap.PEC - (nptelMap.PEC + collegeMap.PEC));
+
+    // Fetch buckets
+    const [buckets] = await connection.execute(
+      `SELECT 
+        eb.bucketId,
+        eb.bucketNumber,
+        eb.bucketName
+       FROM ElectiveBucket eb
+       WHERE eb.semesterId = ?`,
+      [semesterId]
+    );
+
+    const bucketsWithCourses = await Promise.all(
+      buckets.map(async (bucket) => {
+        const [courses] = await connection.execute(
+          `SELECT 
+            c.courseId,
+            c.courseCode,
+            c.courseTitle,
+            c.category,
+            c.credits
+           FROM ElectiveBucketCourse ebc
+           JOIN Course c ON ebc.courseId = c.courseId
+           WHERE ebc.bucketId = ? AND c.isActive = 'YES'`,
+          [bucket.bucketId]
+        );
+
+        // Apply reduction logic
+        let requiredSelections = courses.length > 0 ? 1 : 0; // default 1 if bucket has courses
+        let alert = null;
+
+        if (bucket.bucketName.toUpperCase().includes('OEC')) {
+          requiredSelections = remainingOec > 0 ? 1 : 0;
+          if (remainingOec === 0) {
+            alert = 'No OEC selection needed (fulfilled by NPTEL/previous)';
+            return { ...bucket, courses: [], requiredSelections: 0, alert };
+          }
+        } else if (bucket.bucketName.toUpperCase().includes('PEC')) {
+          requiredSelections = remainingPec > 0 ? 1 : 0;
+          if (remainingPec === 0) {
+            alert = 'No PEC selection needed (fulfilled by NPTEL/previous)';
+            return { ...bucket, courses: [], requiredSelections: 0, alert };
+          }
+        }
+
+        return { ...bucket, courses, requiredSelections, alert };
+      })
+    );
+
+    res.status(200).json({
+      status: "success",
+      data: bucketsWithCourses.filter(b => b.requiredSelections > 0 || b.alert), // optional: hide empty
+    });
+  } catch (err) {
+    console.error("Error in getElectiveBuckets:", err);
+    res.status(500).json({ status: "failure", message: "Server error" });
+  } finally {
+    connection.release();
+  }
 });
 
 export const allocateElectives = catchAsync(async (req, res) => {
@@ -238,65 +284,6 @@ export const allocateElectives = catchAsync(async (req, res) => {
     connection.release();
   }
 });
-
-// export const getStudentEnrolledCourses = catchAsync(async (req, res) => {
-//   const { semesterId } = req.query;
-
-//   if (!req.user || !req.user.Userid) {
-//     console.log('Authentication failed: No user or Userid');
-//     return res.status(401).json({ status: "failure", message: "User not authenticated" });
-//   }
-
-//   // Get student's regno
-//   const [studentRows] = await pool.execute(
-//     `SELECT sd.regno 
-//      FROM student_details sd 
-//      JOIN users u ON sd.Userid = u.Userid 
-//      WHERE u.Userid = ? AND u.status = 'active'`,
-//     [req.user.Userid]
-//   );
-
-//   if (studentRows.length === 0) {
-//     console.log('No student found for Userid:', req.user.Userid);
-//     return res.status(404).json({ status: "failure", message: "Student not found" });
-//   }
-//   const regno = studentRows[0].regno;
-//   console.log('Regno:', regno, 'SemesterId:', semesterId);
-
-//   let query = `
-//     SELECT 
-//       sc.courseId,
-//       c.courseCode, 
-//       c.courseTitle AS courseName, 
-//       sec.sectionName AS section,
-//       u.username AS staff,
-//       c.credits,
-//       c.category
-//     FROM StudentCourse sc
-//     JOIN Course c ON sc.courseId = c.courseId
-//     JOIN Section sec ON sc.sectionId = sec.sectionId
-//     LEFT JOIN StaffCourse stc ON sc.courseId = stc.courseId AND sc.sectionId = stc.sectionId
-//     LEFT JOIN users u ON stc.Userid = u.Userid
-//     WHERE sc.regno = ? AND c.isActive = 'YES' AND sec.isActive = 'YES'
-//   `;
-//   const params = [regno];
-
-//   if (semesterId) {
-//     query += ` AND c.semesterId = ?`;
-//     params.push(semesterId);
-//   }
-
-//   query += ` ORDER BY c.courseCode`;
-//   console.log('Executing query:', query, 'Params:', params);
-
-//   const [rows] = await pool.execute(query, params);
-//   console.log('Query results:', rows);
-
-//   res.status(200).json({
-//     status: "success",
-//     data: rows || [],
-//   });
-// });
 
 export const getAttendanceSummary = catchAsync(async (req, res) => {
   const { semesterId } = req.query;
@@ -461,7 +448,6 @@ export const getStudentEnrolledCourses = catchAsync(async (req, res) => {
   });
 });
 
-// getSemesters
 export const getSemesters = catchAsync(async (req, res) => {
   const { batchYear } = req.query;
 
@@ -505,53 +491,110 @@ export const getSemesters = catchAsync(async (req, res) => {
   });
 });
 
-export const getStudentAcademicIds = catchAsync(async (req, res) => {
-  // 1. Ensure user is authenticated
+export const getOecPecProgress = catchAsync(async (req, res) => {
   if (!req.user || !req.user.Userid) {
-    return res.status(401).json({
-      status: "failure",
-      message: "User not authenticated"
-    });
+    return res.status(401).json({ status: "failure", message: "User not authenticated" });
   }
 
   const userId = req.user.Userid;
+  const connection = await pool.getConnection();
 
-  // 2. Query to resolve IDs using JOINs
-  const [rows] = await pool.execute(
-    `
-    SELECT
-      d.Deptid       AS deptId,
-      b.Batchid      AS batchId,
-      s.Semesterid   AS semesterId
-    FROM student_details sd
-    JOIN department d 
-      ON sd.Deptid = d.Deptid
-    JOIN Batch b 
-      ON sd.batch = b.batch
-     AND b.IsActive = 'YES'
-    JOIN Semester s
-      ON sd.semester = s.semesterNumber
-     AND s.IsActive = 'YES'
-    WHERE sd.Userid = ?
-    `,
-    [userId]
-  );
+  try {
+    // Step 1: Fetch regno and regulationId safely
+    const [studentRows] = await connection.execute(
+      `SELECT sd.regno, b.regulationId
+       FROM student_details sd
+       JOIN Batch b ON sd.batch = b.batch AND b.isActive = 'YES'
+       WHERE sd.Userid = ?`,
+      [userId]
+    );
 
-  // 3. No student found
-  if (rows.length === 0) {
-    return res.status(404).json({
-      status: "failure",
-      message: "Student academic details not found"
-    });
-  }
-
-  // 4. Send only required IDs
-  res.status(200).json({
-    status: "success",
-    data: {
-      deptId: rows[0].deptId,
-      batchId: rows[0].batchId,
-      semesterId: rows[0].semesterId
+    if (studentRows.length === 0) {
+      return res.status(404).json({
+        status: "failure",
+        message: "Student record not found or no active batch"
+      });
     }
-  });
+
+    const { regno, regulationId } = studentRows[0];
+
+    if (!regno) {
+      return res.status(404).json({ status: "failure", message: "Student registration number not found" });
+    }
+
+    if (!regulationId) {
+      return res.status(404).json({
+        status: "failure",
+        message: "No regulation assigned to your batch"
+      });
+    }
+
+    // Step 2: Required OEC/PEC from regulation
+    const [required] = await connection.execute(
+      `SELECT category, COUNT(*) as count
+       FROM RegulationCourse
+       WHERE regulationId = ? AND category IN ('OEC', 'PEC') AND isActive = 'YES'
+       GROUP BY category`,
+      [regulationId]
+    );
+
+    const requiredMap = { OEC: 0, PEC: 0 };
+    required.forEach(r => {
+      requiredMap[r.category] = parseInt(r.count, 10) || 0;
+    });
+
+    // Step 3: Approved NPTEL credits
+    const [nptel] = await connection.execute(`
+      SELECT nc.type, COUNT(*) as count
+      FROM NptelCreditTransfer nct
+      JOIN StudentNptelEnrollment sne ON nct.enrollmentId = sne.enrollmentId
+      JOIN NptelCourse nc ON sne.nptelCourseId = nc.nptelCourseId
+      WHERE nct.regno = ? AND nct.status = 'approved'
+      GROUP BY nc.type
+    `, [regno]);
+
+    const nptelMap = { OEC: 0, PEC: 0 };
+    nptel.forEach(r => {
+      nptelMap[r.type] = parseInt(r.count, 10) || 0;
+    });
+
+    // Step 4: Allocated college electives
+    const [college] = await connection.execute(`
+      SELECT c.category, COUNT(*) as count
+      FROM StudentElectiveSelection ses
+      JOIN Course c ON ses.selectedCourseId = c.courseId
+      WHERE ses.regno = ? AND ses.status = 'allocated' AND c.category IN ('OEC', 'PEC')
+      GROUP BY c.category
+    `, [regno]);
+
+    const collegeMap = { OEC: 0, PEC: 0 };
+    college.forEach(r => {
+      collegeMap[r.category] = parseInt(r.count, 10) || 0;
+    });
+
+    const totalOec = nptelMap.OEC + collegeMap.OEC;
+    const totalPec = nptelMap.PEC + collegeMap.PEC;
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        required: requiredMap,
+        completed: { OEC: totalOec, PEC: totalPec },
+        remaining: {
+          OEC: Math.max(0, requiredMap.OEC - totalOec),
+          PEC: Math.max(0, requiredMap.PEC - totalPec)
+        },
+        fromNptel: nptelMap,
+        fromCollege: collegeMap
+      }
+    });
+  } catch (err) {
+    console.error("Error in getOecPecProgress:", err);
+    res.status(500).json({
+      status: "failure",
+      message: "Server error while fetching progress"
+    });
+  } finally {
+    connection.release();
+  }
 });
