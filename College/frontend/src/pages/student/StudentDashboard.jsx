@@ -578,7 +578,7 @@ const StudentDashboard = () => {
                     <p className="text-4xl font-bold text-purple-700">
                       {progress.completed.PEC} / {progress.required.PEC}
                     </p>
-                    <p className="text-lg font-medium text-slate-700 mt-3">Professional Elective (PEC)</p>
+                    <p className="text-lg font-medium text-slate-700 mt-3">Program Elective (PEC)</p>
                     <p className="text-sm text-slate-600 mt-2">
                       Remaining: <strong>{progress.remaining.PEC}</strong>
                     </p>

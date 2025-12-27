@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { logout } from '../../services/authService';
 
 import {
+  Book,
   LayoutDashboard,
   CalendarDays,
   ShieldCheck,
@@ -54,6 +55,7 @@ const AdminSidebar = () => {
     { to: "/admin/cbcs-detail", icon: Info, label: "CBCS Details" },
     { to: "/admin/cbcs-list", icon: ListChecks, label: "CBCS List" },
     { to: "/admin/nptel-courses", icon: Book, label: "NPTEL Courses" },
+    { to: "/admin/nptel-approvals", icon: ClipboardCheck, label: "NPTEL Approvals" },
   ];
 
   const handleLogout = async () => {

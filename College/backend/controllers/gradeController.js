@@ -8,7 +8,7 @@ import fs from 'fs';
 
 const upload = multer({ dest: 'tmp/' });
 
-// GPA — Current Semester Only (Perfect)
+// GPA — Current Semester Only
 const getStudentGPA = async (regno, semesterId) => {
   const [rows] = await pool.execute(`
     SELECT c.credits, gp.point
@@ -33,9 +33,8 @@ const getStudentGPA = async (regno, semesterId) => {
   return totalCredits > 0 ? (totalPoints / totalCredits).toFixed(2) : null;
 };
 
-// CGPA — Up to current semesterNumber (FINAL & CORRECT)
+// CGPA — Up to current semesterNumber
 const getStudentCGPA = async (regno, upToSemesterId) => {
-  // Get the semesterNumber of the current semesterId
   const [semResult] = await pool.execute(
     'SELECT semesterNumber FROM Semester WHERE semesterId = ?',
     [upToSemesterId]
@@ -44,7 +43,6 @@ const getStudentCGPA = async (regno, upToSemesterId) => {
   if (semResult.length === 0) return null;
   const targetSemesterNumber = semResult[0].semesterNumber;
 
-  // Calculate CGPA using semesterNumber (not semesterId)
   const [rows] = await pool.execute(`
     SELECT c.credits, gp.point
     FROM StudentGrade sg
@@ -74,6 +72,7 @@ const getStudentCGPA = async (regno, upToSemesterId) => {
 export const uploadGrades = catchAsync(async (req, res) => {
   const file = req.file;
   const semesterId = req.body.semesterId;
+  const isNptel = req.body.isNptel === 'true'; // ← NEW: NPTEL mode
 
   if (!file) {
     return res.status(400).json({ status: 'error', message: 'No file uploaded' });
@@ -167,6 +166,53 @@ export const uploadGrades = catchAsync(async (req, res) => {
   await conn.beginTransaction();
 
   try {
+    let processedRecords = records.length;
+
+    // ← NEW: NPTEL-specific validation
+    if (isNptel) {
+      const validNptelCodes = new Set();
+      const [nptelCourses] = await conn.execute(
+        `SELECT courseCode FROM NptelCourse WHERE isActive = 'YES'`
+      );
+      nptelCourses.forEach(r => validNptelCodes.add(r.courseCode));
+
+      const filtered = [];
+      for (const r of records) {
+        if (!validNptelCodes.has(r.courseCode)) {
+          console.warn(`Skipped invalid NPTEL courseCode: ${r.courseCode}`);
+          processedRecords--;
+          continue;
+        }
+
+        const [enrolled] = await conn.execute(
+          `SELECT 1 FROM StudentNptelEnrollment sne
+           JOIN NptelCourse nc ON sne.nptelCourseId = nc.nptelCourseId
+           WHERE sne.regno = ? AND nc.courseCode = ? AND sne.isActive = 'YES'`,
+          [r.regno, r.courseCode]
+        );
+
+        if (enrolled.length === 0) {
+          console.warn(`Student ${r.regno} not enrolled in NPTEL course ${r.courseCode} → skipped`);
+          processedRecords--;
+          continue;
+        }
+
+        filtered.push(r);
+      }
+
+      records.length = 0;
+      records.push(...filtered);
+
+      if (records.length === 0) {
+        await conn.commit();
+        return res.json({
+          status: 'success',
+          message: 'No valid NPTEL grades imported (check enrollment & course codes)',
+          processed: 0
+        });
+      }
+    }
+
     const insertStmt = `
       INSERT INTO StudentGrade (regno, courseCode, grade)
       VALUES (?, ?, ?)
@@ -177,7 +223,6 @@ export const uploadGrades = catchAsync(async (req, res) => {
     let updated = 0;
     let skippedStudents = 0;
     let skippedCourses = 0;
-    let processedRecords = 0;
 
     const successfullyProcessedRegnos = new Set();
 
@@ -189,11 +234,15 @@ export const uploadGrades = catchAsync(async (req, res) => {
         continue;
       }
 
-      const [course] = await conn.execute('SELECT 1 FROM Course WHERE courseCode = ?', [r.courseCode]);
-      if (course.length === 0) {
-        console.warn(`Course not found → skipped: ${r.courseCode}`);
-        skippedCourses++;
-        continue;
+      // For regular courses: check Course table
+      // For NPTEL: we already validated above, so skip this check if isNptel
+      if (!isNptel) {
+        const [course] = await conn.execute('SELECT 1 FROM Course WHERE courseCode = ?', [r.courseCode]);
+        if (course.length === 0) {
+          console.warn(`Course not found → skipped: ${r.courseCode}`);
+          skippedCourses++;
+          continue;
+        }
       }
 
       const [result] = await conn.execute(insertStmt, [r.regno, r.courseCode, r.grade]);
@@ -202,8 +251,6 @@ export const uploadGrades = catchAsync(async (req, res) => {
         if (result.affectedRows === 1) inserted++;
         if (result.affectedRows === 2) updated++;
       }
-
-      processedRecords++;
     }
 
     // SAVE CORRECT GPA & CGPA
@@ -228,7 +275,9 @@ export const uploadGrades = catchAsync(async (req, res) => {
 
     return res.json({
       status: 'success',
-      message: 'Grades imported & GPA/CGPA saved perfectly!',
+      message: isNptel 
+        ? 'NPTEL grades imported successfully! Students can now request credit transfer.'
+        : 'Grades imported & GPA/CGPA saved perfectly!',
       inserted,
       updated,
       skippedStudents,
@@ -245,6 +294,8 @@ export const uploadGrades = catchAsync(async (req, res) => {
     conn.release();
   }
 });
+
+
 
 // View GPA
 export const viewGPA = catchAsync(async (req, res) => {

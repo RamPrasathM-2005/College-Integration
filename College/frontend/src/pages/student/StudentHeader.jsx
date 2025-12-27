@@ -50,7 +50,7 @@ const StudentHeader = () => {
           onClick={handleNptelSelection}
           className="px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
         >
-          CHOOSE NPTEL
+          Choose NPTEL
         </button>
         <button
           onClick={handleLogout}

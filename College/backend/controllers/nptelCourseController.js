@@ -318,3 +318,66 @@ export const deleteNptelCourse = catchAsync(async (req, res) => {
     connection.release();
   }
 });
+
+export const getPendingNptelTransfers = catchAsync(async (req, res) => {
+  const [rows] = await pool.execute(`
+    SELECT 
+      nct.transferId,
+      nct.regno,
+      u.username AS studentName,
+      nc.courseTitle,
+      nc.courseCode,
+      nc.type,
+      nc.credits,
+      nct.grade,
+      nct.status,
+      nct.requestedAt,
+      nct.remarks
+    FROM NptelCreditTransfer nct
+    JOIN StudentNptelEnrollment sne ON nct.enrollmentId = sne.enrollmentId
+    JOIN NptelCourse nc ON nct.nptelCourseId = nc.nptelCourseId
+    JOIN users u ON (SELECT Userid FROM student_details WHERE regno = nct.regno) = u.Userid
+    ORDER BY nct.requestedAt DESC
+  `);
+
+  res.status(200).json({
+    status: "success",
+    data: rows
+  });
+});
+
+export const approveRejectTransfer = catchAsync(async (req, res) => {
+  const { transferId, action, remarks } = req.body;
+
+  if (!['approved', 'rejected'].includes(action)) {
+    return res.status(400).json({ status: "failure", message: "Invalid action" });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [result] = await connection.execute(
+      `UPDATE NptelCreditTransfer 
+       SET status = ?, reviewedAt = NOW(), reviewedBy = ?, remarks = ?
+       WHERE transferId = ?`,
+      [action, req.user.email || 'admin', remarks || null, transferId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error("Request not found");
+    }
+
+    await connection.commit();
+
+    res.status(200).json({
+      status: "success",
+      message: `Request ${action} successfully`
+    });
+  } catch (err) {
+    await connection.rollback();
+    res.status(400).json({ status: "failure", message: err.message });
+  } finally {
+    connection.release();
+  }
+});

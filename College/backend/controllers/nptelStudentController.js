@@ -166,26 +166,28 @@ export const getStudentNptelEnrollments = catchAsync(async (req, res) => {
 
     // Fetch enrolled NPTEL courses with transfer status
     const [rows] = await connection.execute(`
-      SELECT 
-        sne.enrollmentId, 
-        sne.nptelCourseId, 
-        nc.courseTitle, 
-        nc.courseCode, 
-        nc.type, 
-        nc.credits,
-        s.semesterNumber, 
-        s.startDate, 
-        s.endDate,
-        nct.transferId, 
-        nct.status AS transferStatus, 
-        nct.grade AS transferredGrade
-      FROM StudentNptelEnrollment sne
-      JOIN NptelCourse nc ON sne.nptelCourseId = nc.nptelCourseId
-      JOIN Semester s ON sne.semesterId = s.semesterId
-      LEFT JOIN NptelCreditTransfer nct ON sne.enrollmentId = nct.enrollmentId
-      WHERE sne.regno = ? AND sne.isActive = 'YES'
-      ORDER BY s.semesterNumber DESC, nc.courseTitle
-    `, [regno]);
+  SELECT 
+    sne.enrollmentId, 
+    sne.nptelCourseId, 
+    nc.courseTitle, 
+    nc.courseCode, 
+    nc.type, 
+    nc.credits,
+    s.semesterNumber, 
+    s.startDate, 
+    s.endDate,
+    sg.grade AS importedGrade,  -- ← NEW: Get grade from StudentGrade
+    nct.transferId, 
+    nct.status AS transferStatus, 
+    nct.grade AS transferredGrade
+  FROM StudentNptelEnrollment sne
+  JOIN NptelCourse nc ON sne.nptelCourseId = nc.nptelCourseId
+  JOIN Semester s ON sne.semesterId = s.semesterId
+  LEFT JOIN StudentGrade sg ON sne.regno = sg.regno AND nc.courseCode = sg.courseCode
+  LEFT JOIN NptelCreditTransfer nct ON sne.enrollmentId = nct.enrollmentId
+  WHERE sne.regno = ? AND sne.isActive = 'YES'
+  ORDER BY s.semesterNumber DESC, nc.courseTitle
+`, [regno]);
 
     res.status(200).json({
       status: "success",
@@ -201,44 +203,99 @@ export const getStudentNptelEnrollments = catchAsync(async (req, res) => {
 
 export const requestCreditTransfer = catchAsync(async (req, res) => {
   const { enrollmentId } = req.body;
-  const regno = req.user.regno;
-  const connection = await pool.getConnection();
 
+  if (!enrollmentId) {
+    return res.status(400).json({ 
+      status: "failure", 
+      message: "enrollmentId is required" 
+    });
+  }
+
+  if (!req.user || !req.user.Userid) {
+    return res.status(401).json({ status: "failure", message: "User not authenticated" });
+  }
+
+  const connection = await pool.getConnection();
   try {
-    // Check enrollment belongs to student
-    const [enroll] = await connection.execute(`
-      SELECT sne.enrollmentId, nc.courseCode, nc.type
+    // Fetch student's regno safely
+    const [studentRows] = await connection.execute(
+      `SELECT sd.regno FROM student_details sd WHERE sd.Userid = ?`,
+      [req.user.Userid]
+    );
+
+    if (studentRows.length === 0) {
+      return res.status(404).json({ status: "failure", message: "Student not found" });
+    }
+    const regno = studentRows[0].regno;
+
+    // Fetch enrollment details with NPTEL course code
+    const [enrollRows] = await connection.execute(`
+      SELECT sne.nptelCourseId, nc.courseCode
       FROM StudentNptelEnrollment sne
       JOIN NptelCourse nc ON sne.nptelCourseId = nc.nptelCourseId
-      WHERE sne.enrollmentId = ? AND sne.regno = ?
+      WHERE sne.enrollmentId = ? AND sne.regno = ? AND sne.isActive = 'YES'
     `, [enrollmentId, regno]);
 
-    if (enroll.length === 0) {
-      return res.status(404).json({ status: 'failure', message: 'Enrollment not found' });
-    }
-
-    // Check if grade exists in StudentGrade
-    const [gradeRow] = await connection.execute(`
-      SELECT grade FROM StudentGrade WHERE regno = ? AND courseCode = ?
-    `, [regno, enroll[0].courseCode]);
-
-    if (gradeRow.length === 0 || gradeRow[0].grade === 'U') {
-      return res.status(400).json({
-        status: 'failure',
-        message: 'Grade not found or failed (U). Cannot request transfer.'
+    if (enrollRows.length === 0) {
+      return res.status(404).json({ 
+        status: "failure", 
+        message: "Enrollment not found or does not belong to you" 
       });
     }
 
-    // Create transfer request
+    const { nptelCourseId, courseCode } = enrollRows[0];
+
+    // Check if grade exists in StudentGrade
+    const [gradeRows] = await connection.execute(
+      `SELECT grade FROM StudentGrade WHERE regno = ? AND courseCode = ?`,
+      [regno, courseCode]
+    );
+
+    if (gradeRows.length === 0) {
+      return res.status(400).json({
+        status: "failure",
+        message: "No grade found for this NPTEL course. Wait for admin to import grades."
+      });
+    }
+
+    const grade = gradeRows[0].grade;
+
+    if (grade === 'U') {
+      return res.status(400).json({
+        status: "failure",
+        message: "Grade is 'U' (Fail). Credit transfer not allowed."
+      });
+    }
+
+    // Check if request already exists
+    const [existing] = await connection.execute(
+      `SELECT transferId FROM NptelCreditTransfer WHERE enrollmentId = ?`,
+      [enrollmentId]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({
+        status: "failure",
+        message: "Credit transfer request already submitted"
+      });
+    }
+
+    // Create the request
     await connection.execute(`
-      INSERT INTO NptelCreditTransfer (enrollmentId, regno, nptelCourseId, grade)
-      VALUES (?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE grade = VALUES(grade)
-    `, [enrollmentId, regno, enroll[0].nptelCourseId, gradeRow[0].grade]);
+      INSERT INTO NptelCreditTransfer 
+        (enrollmentId, regno, nptelCourseId, grade, status)
+      VALUES (?, ?, ?, ?, 'pending')
+    `, [enrollmentId, regno, nptelCourseId, grade]);
 
     res.status(200).json({
-      status: 'success',
-      message: 'Credit transfer request submitted'
+      status: "success",
+      message: "Credit transfer request submitted successfully. Waiting for admin approval."
+    });
+  } catch (err) {
+    console.error("Error in requestCreditTransfer:", err);
+    res.status(500).json({ 
+      status: "failure", 
+      message: "Server error. Please try again." 
     });
   } finally {
     connection.release();

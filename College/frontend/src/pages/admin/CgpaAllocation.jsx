@@ -21,6 +21,7 @@ const CgpaAllocation = () => {
     batch: '',
     semester: ''
   });
+  const [isNptelImport, setIsNptelImport] = useState(false); // ← NEW: Toggle for NPTEL import
   const [batches, setBatches] = useState([]);
   const [semesters, setSemesters] = useState([]);
   const [students, setStudents] = useState([]);
@@ -76,7 +77,7 @@ const CgpaAllocation = () => {
     }
   }, [filters.batch]);
 
-  // CORRECTLY FETCH semesterId USING semesterNumber
+  // Fetch semesterId using semesterNumber
   useEffect(() => {
     if (filters.semester && filters.batch && filters.branch) {
       const fetchSemesterId = async () => {
@@ -142,7 +143,7 @@ const CgpaAllocation = () => {
     }
   }, [filters.branch, filters.batch, filters.degree, isFirstSemester]);
 
-  // AUTO RECALCULATE WHEN semesterId CHANGES
+  // Auto recalculate when semesterId changes
   useEffect(() => {
     if (currentSemesterId && students.length > 0) {
       refreshStudentsAndCalculateAll();
@@ -197,31 +198,32 @@ const CgpaAllocation = () => {
     }
   };
 
-const importCSV = async (e) => {
-  const file = e.target.files[0];
-  if (!file || !currentSemesterId) {
-    toast.error('Please select semester first');
-    return;
-  }
+  const importCSV = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !currentSemesterId) {
+      toast.error('Please select semester first');
+      return;
+    }
 
-  const fd = new FormData();
-  fd.append('file', file);
-  fd.append('semesterId', currentSemesterId); // CRITICAL LINE
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('semesterId', currentSemesterId);
+    fd.append('isNptel', isNptelImport ? 'true' : 'false'); // ← NEW: Send NPTEL flag
 
-  setLoading(true);
-  try {
-    await api.post('/admin/grades/import', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
-    toast.success('Grades imported & GPA/CGPA saved!');
-    await refreshStudentsAndCalculateAll();
-  } catch (err) {
-    toast.error(err.response?.data?.message || 'Import failed');
-  } finally {
-    setLoading(false);
-    e.target.value = '';
-  }
-};
+    setLoading(true);
+    try {
+      const response = await api.post('/admin/grades/import', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success(response.data.message || 'Grades imported successfully!');
+      await refreshStudentsAndCalculateAll();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Import failed');
+    } finally {
+      setLoading(false);
+      e.target.value = '';
+    }
+  };
 
   const calculateForStudent = async (regno) => {
     if (!currentSemesterId) return;
@@ -248,13 +250,13 @@ const importCSV = async (e) => {
     s.name.toLowerCase().includes(search.toLowerCase()) || s.regno.includes(search)
   );
 
-  const sampleCSV = `data:text/csv;charset=utf-8,regno,23CS44C,23CS45C,23CS46C%0A2312063,O,A+,B+%0A2312064,A+,O,A`;
+  const sampleCSV = `data:text/csv;charset=utf-8,regno,23CS44C,23CS45C,NPTEL-AI101%0A2312063,O,A+,B+%0A2312064,A+,O,A+`;
 
   return (
     <div className="p-6 max-w-7xl mx-auto bg-gray-50 min-h-screen">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">CGPA Allocation</h1>
-        <p className="text-gray-600">Import grades and view GPA/CGPA instantly</p>
+        <p className="text-gray-600">Import grades (Regular or NPTEL) and view GPA/CGPA instantly</p>
       </div>
 
       {filters.semester && (
@@ -302,15 +304,35 @@ const importCSV = async (e) => {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3 justify-end">
-          <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700">
-              <Upload className="w-4 h-4" /> Import CSV/XLSX
-              <input 
-                type="file" 
-                accept=".csv,.xlsx" 
-                onChange={importCSV} 
-                className="hidden" 
+        <div className="flex flex-wrap gap-3 justify-end items-center">
+          {/* ← NEW: NPTEL Import Toggle */}
+          <div className="flex items-center gap-3 mr-auto">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isNptelImport}
+                onChange={(e) => setIsNptelImport(e.target.checked)}
+                className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500"
               />
+              <span className="text-lg font-medium text-gray-700">
+                Import NPTEL Grades
+              </span>
+            </label>
+            {isNptelImport && (
+              <p className="text-sm text-gray-600">
+                Only grades for enrolled NPTEL courses will be accepted.
+              </p>
+            )}
+          </div>
+
+          <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700">
+            <Upload className="w-4 h-4" /> Import {isNptelImport ? 'NPTEL' : 'Regular'} Grades
+            <input 
+              type="file" 
+              accept=".csv,.xlsx" 
+              onChange={importCSV} 
+              className="hidden" 
+            />
           </label>
           <a href={sampleCSV} download="sample_grades.csv" className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
             <Download className="w-4 h-4" /> Sample

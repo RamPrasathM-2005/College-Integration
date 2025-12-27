@@ -109,6 +109,9 @@ import {
   getAllNptelCourses,
   updateNptelCourse,
   deleteNptelCourse,
+  getPendingNptelTransfers,
+  approveRejectTransfer
+
 } from "../../controllers/nptelCourseController.js";
 
 
@@ -276,5 +279,10 @@ router.route("/nptel-courses/bulk")
 router.route("/nptel-courses/:nptelCourseId")
   .put(protect, updateNptelCourse)
   .delete(protect, deleteNptelCourse);
+
+
+router.get("/nptel-credit-transfers", protect, getPendingNptelTransfers);
+router.post("/nptel-credit-transfer-action", protect, approveRejectTransfer);
+
 
 export default router;

@@ -672,21 +672,96 @@ const initDatabase = async () => {
         `);
 
     // Recreate StudentGrade using courseCode (not courseId)
-    await connection.execute(`
+    // await connection.execute(`
+    //         CREATE TABLE IF NOT EXISTS StudentGrade (
+    //             gradeId        INT PRIMARY KEY AUTO_INCREMENT,
+    //             regno          VARCHAR(50) NOT NULL,
+    //             courseCode     VARCHAR(20) NOT NULL,
+    //             grade          ENUM('O','A+','A','B+','B','U') NOT NULL,
+    //             createdAt      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    //             updatedAt      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    //             UNIQUE (regno, courseCode),
+    //             CONSTRAINT fk_sg_student FOREIGN KEY (regno) REFERENCES student_details(regno)
+    //                 ON UPDATE CASCADE ON DELETE CASCADE,
+    //             CONSTRAINT fk_sg_course_code FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
+    //                 ON UPDATE CASCADE ON DELETE CASCADE
+    //         )
+    //     `);
+
+
+            // StudentGrade - supports both regular and NPTEL courses (no strict FK to Course)
+        await connection.execute(`
             CREATE TABLE IF NOT EXISTS StudentGrade (
-                gradeId        INT PRIMARY KEY AUTO_INCREMENT,
-                regno          VARCHAR(50) NOT NULL,
-                courseCode     VARCHAR(20) NOT NULL,
-                grade          ENUM('O','A+','A','B+','B','U') NOT NULL,
-                createdAt      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updatedAt      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                UNIQUE (regno, courseCode),
+                gradeId INT PRIMARY KEY AUTO_INCREMENT,
+                regno VARCHAR(50) NOT NULL,
+                courseCode VARCHAR(20) NOT NULL,
+                grade ENUM('O','A+','A','B+','B','U') NOT NULL,
+                createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_regno_course (regno, courseCode),
                 CONSTRAINT fk_sg_student FOREIGN KEY (regno) REFERENCES student_details(regno)
                     ON UPDATE CASCADE ON DELETE CASCADE,
-                CONSTRAINT fk_sg_course_code FOREIGN KEY (courseCode) REFERENCES Course(courseCode)
-                    ON UPDATE CASCADE ON DELETE CASCADE
+                INDEX idx_regno (regno),
+                INDEX idx_courseCode (courseCode)
             )
         `);
+
+        // Ensure triggers exist for courseCode validation (regular OR NPTEL)
+        await connection.execute(`DROP TRIGGER IF EXISTS trg_studentgrade_insert_before`);
+        await connection.execute(`DROP TRIGGER IF EXISTS trg_studentgrade_update_before`);
+
+        await connection.execute(`
+            DELIMITER $$
+            CREATE TRIGGER trg_studentgrade_insert_before
+            BEFORE INSERT ON StudentGrade
+            FOR EACH ROW
+            BEGIN
+              DECLARE valid_regular INT DEFAULT 0;
+              DECLARE valid_nptel INT DEFAULT 0;
+
+              SELECT COUNT(*) INTO valid_regular
+              FROM Course
+              WHERE courseCode = NEW.courseCode AND isActive = 'YES';
+
+              SELECT COUNT(*) INTO valid_nptel
+              FROM NptelCourse
+              WHERE courseCode = NEW.courseCode AND isActive = 'YES';
+
+              IF valid_regular = 0 AND valid_nptel = 0 THEN
+                SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Invalid courseCode: Not found in regular courses or NPTEL courses';
+              END IF;
+            END$$
+            DELIMITER ;
+        `);
+
+        await connection.execute(`
+            DELIMITER $$
+            CREATE TRIGGER trg_studentgrade_update_before
+            BEFORE UPDATE ON StudentGrade
+            FOR EACH ROW
+            BEGIN
+              DECLARE valid_regular INT DEFAULT 0;
+              DECLARE valid_nptel INT DEFAULT 0;
+
+              SELECT COUNT(*) INTO valid_regular
+              FROM Course
+              WHERE courseCode = NEW.courseCode AND isActive = 'YES';
+
+              SELECT COUNT(*) INTO valid_nptel
+              FROM NptelCourse
+              WHERE courseCode = NEW.courseCode AND isActive = 'YES';
+
+              IF valid_regular = 0 AND valid_nptel = 0 THEN
+                SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Invalid courseCode: Not found in regular courses or NPTEL courses';
+              END IF;
+            END$$
+            DELIMITER ;
+        `);
+
+
+
     // 26) StudentSemesterGPA - Stores calculated GPA and CGPA per student per semester for analytics
     await connection.execute(`
             CREATE TABLE IF NOT EXISTS StudentSemesterGPA (

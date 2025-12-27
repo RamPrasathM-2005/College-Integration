@@ -35,6 +35,7 @@ import RequestCoursesAdmin from './pages/admin/RequestCoursesAdmin.jsx';
 import CreateCBCS from './pages/admin/CBCS/CreateCBCS.jsx';
 import CBCSList from './pages/admin/CBCS/CBCSList.jsx';
 import CBCSDetail from './pages/admin/CBCS/CBCSDetail.jsx';
+import NptelCreditTransferApproval from './pages/admin/NptelCreditTransferApproval.jsx';
 
 // Staff Pages
 
@@ -43,11 +44,6 @@ import Attendance from "./pages/staff/Attendance";
 import MarksAllocation from "./pages/staff/MarksAllocation";
 import Options from "./pages/staff/Options";
 import InternalMarks from "./pages/staff/InternalMarks";
-// import StaffDashboard from './pages/staff/Dashboard';
-// import Attendance from './pages/staff/Attendance';
-// import MarksAllocation from './pages/staff/MarksAllocation';
-// import Options from './pages/staff/Options';
-// import InternalMarks from './pages/staff/InternalMarks';
 import RequestCoursesStaff from './pages/staff/RequestCoursesStaff.jsx'
 
 // Student Pages
@@ -112,7 +108,8 @@ const routes = [
       {path:'cbcs-creation',element:<CreateCBCS />},
       {path:'cbcs-list',element:<CBCSList />},
       {path:'cbcs-detail/:id',element:<CBCSDetail />},
-      { path: 'nptel-courses', element: <NptelCourses/>},
+      {path: 'nptel-courses', element: <NptelCourses/>},
+      {path: 'nptel-approvals', element: <NptelCreditTransferApproval />},
       // { path: 'student-sem-update', element: <UpdateStudentSem/ > },
       { path: "*", element: <NotFound /> },
     ],
